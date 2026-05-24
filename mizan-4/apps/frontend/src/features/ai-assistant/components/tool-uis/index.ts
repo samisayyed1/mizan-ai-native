@@ -10,6 +10,7 @@ import { ActivitiesToolUI } from "./activities-tool-ui";
 import { AllocationToolUI } from "./allocation-tool-ui";
 import { CreateAccountToolUI } from "./create-account-tool-ui";
 import { CreateGoalToolUI } from "./create-goal-tool-ui";
+import { CreateLiabilityToolUI } from "./create-liability-tool-ui";
 import { GoalsToolUI } from "./goals-tool-ui";
 import { UpdateAccountToolUI } from "./update-account-tool-ui";
 import { HoldingsToolUI } from "./holdings-tool-ui";
@@ -27,6 +28,7 @@ import { ValuationToolUI } from "./valuation-tool-ui";
 export const toolUIs = {
   create_account: CreateAccountToolUI,
   create_goal: CreateGoalToolUI,
+  create_liability: CreateLiabilityToolUI,
   get_accounts: AccountsToolUI,
   get_asset_allocation: AllocationToolUI,
   get_goals: GoalsToolUI,
@@ -50,6 +52,7 @@ export {
   AllocationToolUI,
   CreateAccountToolUI,
   CreateGoalToolUI,
+  CreateLiabilityToolUI,
   GoalsToolUI,
   HoldingsToolUI,
   ImportCsvToolUI,

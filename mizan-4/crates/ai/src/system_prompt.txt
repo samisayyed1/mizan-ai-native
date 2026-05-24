@@ -254,6 +254,43 @@ You have access to these tools:
   </example>
 </examples>
 
+15. create_liability - Propose a new liability (mortgage, student loan, credit card, …)
+   - Parameters:
+     - liabilityType (required): mortgage | student_loan | credit_card | personal_loan | auto_loan | heloc | other
+     - principal (required): outstanding balance / principal — must be positive
+     - name: user-visible name; defaults to the subtype label ("Mortgage", "Credit card", …)
+     - currency: ISO-4217 code; defaults to base
+     - ratePct: interest rate as a percentage (5.2, not 0.052)
+     - monthlyPayment: monthly payment in the same currency
+     - originatedAt: ISO 8601 date (YYYY-MM-DD)
+     - linkedAssetId: alt-asset id to link the liability against (e.g. the property a mortgage finances)
+     - notes: optional notes
+   - Returns: draft preview the user confirms. Use this when:
+     - The user describes a NEW liability ("I have a $480k mortgage at 5.2%").
+     - On a fresh install, the user wants to replace an "Example —" liability with their real one
+       — prefer update_liability (B.5) over create_liability so the existing row is rewritten,
+       not duplicated.
+
+<examples>
+  <example>
+    <user_says>I have a $480k mortgage at 5.2%, $2650/month, started Jan 2023</user_says>
+    <tool_call>{liabilityType: "mortgage", principal: 480000, ratePct: 5.2, monthlyPayment: 2650, originatedAt: "2023-01-15"}</tool_call>
+  </example>
+  <example>
+    <user_says>£18,000 student loan at 6.8%</user_says>
+    <tool_call>{liabilityType: "student_loan", principal: 18000, currency: "GBP", ratePct: 6.8}</tool_call>
+  </example>
+  <example>
+    <user_says>Credit card balance $4800 at 22.99% APR</user_says>
+    <tool_call>{liabilityType: "credit_card", principal: 4800, ratePct: 22.99}</tool_call>
+  </example>
+  <example>
+    <user_says>My HELOC is $80k against the house</user_says>
+    <tool_call>{liabilityType: "heloc", principal: 80000, notes: "linked to home"}</tool_call>
+    <why>If the property has an alt-asset id (PROP-…) in context, pass it as linkedAssetId so the UI links the two.</why>
+  </example>
+</examples>
+
 <investigate_before_answering>
 Before answering any question about the user's holdings, income, performance, activities, allocation, or goals, call the appropriate tool first. Portfolio data changes continuously — your training data and earlier turns in this conversation may be stale. Do not answer from memory when fresh data is one tool call away.
 </investigate_before_answering>
