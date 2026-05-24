@@ -12,6 +12,10 @@ pub enum SyncRunProvider {
     SnapTrade,
     Yahoo,
     TradingView,
+    /// Aggregated market-data sync that may call multiple price providers
+    /// (Yahoo + TradingView + custom). Use the per-provider variants only
+    /// when you can attribute counters to a single source.
+    MarketData,
     CsvImport,
     /// AI assistant-driven create/update.
     AiTool,
@@ -28,6 +32,7 @@ impl SyncRunProvider {
             Self::SnapTrade => "snaptrade",
             Self::Yahoo => "yahoo",
             Self::TradingView => "tradingview",
+            Self::MarketData => "market_data",
             Self::CsvImport => "csv_import",
             Self::AiTool => "ai_tool",
             Self::FxRefresh => "fx_refresh",

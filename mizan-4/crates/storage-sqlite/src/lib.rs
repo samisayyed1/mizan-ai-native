@@ -42,9 +42,13 @@ pub mod limits;
 pub mod market_data;
 pub mod news;
 pub mod portfolio;
+pub mod daily_brief;
+pub mod net_worth_snapshot;
 pub mod settings;
 pub mod sync;
+pub mod sync_run_ledger;
 pub mod taxonomies;
+pub mod truth_ledger;
 
 // Re-export database utilities
 pub use db::{

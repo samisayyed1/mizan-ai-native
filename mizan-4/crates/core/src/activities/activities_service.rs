@@ -123,6 +123,11 @@ pub struct ActivityService {
     /// follow-on PRs. Optional because tests + legacy constructors
     /// don't need to thread one through.
     truth_ledger: Option<Arc<dyn crate::truth_engine::TruthLedger>>,
+    /// §A1/§A2 — durable retry queue. When the ledger append fails after
+    /// the activity row already committed (e.g. transient db error on
+    /// the ledger insert) we persist the AppendInput here so a startup
+    /// drainer can replay it. Optional like the ledger itself.
+    truth_ledger_retry_queue: Option<Arc<dyn crate::truth_engine::TruthLedgerRetryQueue>>,
 }
 
 #[derive(Clone, Copy)]
@@ -336,6 +341,7 @@ impl ActivityService {
             import_run_repository: None,
             event_sink: Arc::new(NoOpDomainEventSink),
             truth_ledger: None,
+            truth_ledger_retry_queue: None,
         }
     }
 
@@ -357,6 +363,7 @@ impl ActivityService {
             import_run_repository: Some(import_run_repository),
             event_sink: Arc::new(NoOpDomainEventSink),
             truth_ledger: None,
+            truth_ledger_retry_queue: None,
         }
     }
 
@@ -369,6 +376,101 @@ impl ActivityService {
     ) -> Self {
         self.truth_ledger = Some(truth_ledger);
         self
+    }
+
+    /// §A1/§A2 — wire a durable retry queue used when the ledger append
+    /// fails AFTER the activity row already committed. Without this,
+    /// transient db errors on the ledger leave the chain incomplete
+    /// silently; with this, every failed append is persisted for replay
+    /// by a startup drainer.
+    pub fn with_truth_ledger_retry_queue(
+        mut self,
+        queue: Arc<dyn crate::truth_engine::TruthLedgerRetryQueue>,
+    ) -> Self {
+        self.truth_ledger_retry_queue = Some(queue);
+        self
+    }
+
+    /// §A1/§A2 — append a hash-chained entry for a successful activity
+    /// mutation. `kind` is `ActivityRecorded` for fresh writes and
+    /// `ActivityReversed` for edits/deletes (the reversal entry carries
+    /// the same activity reference so the chain stays decodable by
+    /// replay). Best-effort: logged but never bubbled.
+    async fn append_activity_to_truth_ledger(
+        &self,
+        activity: &Activity,
+        kind: crate::truth_engine::LedgerEntryKind,
+        ledger_id: String,
+    ) {
+        let Some(ref ledger) = self.truth_ledger else {
+            return;
+        };
+        let mut metadata: std::collections::BTreeMap<String, serde_json::Value> =
+            std::collections::BTreeMap::new();
+        metadata.insert(
+            "activityType".to_string(),
+            serde_json::Value::String(activity.activity_type.clone()),
+        );
+        metadata.insert(
+            "activityId".to_string(),
+            serde_json::Value::String(activity.id.clone()),
+        );
+        if let Some(q) = activity.quantity {
+            metadata.insert(
+                "quantity".to_string(),
+                serde_json::Value::String(q.to_string()),
+            );
+        }
+        if let Some(p) = activity.unit_price {
+            metadata.insert(
+                "unitPrice".to_string(),
+                serde_json::Value::String(p.to_string()),
+            );
+        }
+        if let Some(f) = activity.fee {
+            metadata.insert(
+                "fee".to_string(),
+                serde_json::Value::String(f.to_string()),
+            );
+        }
+        if let Some(ref subtype) = activity.subtype {
+            metadata.insert(
+                "subtype".to_string(),
+                serde_json::Value::String(subtype.clone()),
+            );
+        }
+        let append_input = crate::truth_engine::AppendInput {
+            id: ledger_id,
+            kind: Some(kind),
+            account_id: Some(activity.account_id.clone()),
+            asset_id: activity.asset_id.clone(),
+            amount: activity.amount,
+            currency: Some(activity.currency.clone()),
+            metadata,
+            recorded_at: Some(activity.activity_date),
+        };
+        if let Err(e) = ledger.append(append_input.clone()).await {
+            log::warn!(
+                "Truth ledger append failed for activity {} ({:?}): {} — enqueueing for retry",
+                activity.id,
+                kind,
+                e
+            );
+            if let Some(ref queue) = self.truth_ledger_retry_queue {
+                if let Err(qe) = queue.enqueue(&append_input, &e.to_string()).await {
+                    log::error!(
+                        "Truth ledger retry-queue enqueue failed for {}: {} — audit chain may have a gap",
+                        append_input.id,
+                        qe
+                    );
+                }
+            } else {
+                log::error!(
+                    "Truth ledger append failed and no retry queue configured — audit chain has a gap at activity {}",
+                    activity.id
+                );
+            }
+        }
     }
 
     fn parse_activity_timestamp_utc(activity_date: &str) -> Option<DateTime<Utc>> {
@@ -2926,59 +3028,15 @@ impl ActivityServiceTrait for ActivityService {
             .map_err(Self::map_duplicate_idempotency_violation)?;
 
         // §A1/§A2 — append to immutable truth ledger. Best-effort: ledger
-        // failures must not roll back the activity write (the ledger is
-        // an audit overlay; the activity row remains source-of-truth
-        // until the holdings-replay migration lands).
-        if let Some(ref ledger) = self.truth_ledger {
-            let mut metadata: std::collections::BTreeMap<String, serde_json::Value> =
-                std::collections::BTreeMap::new();
-            metadata.insert(
-                "activityType".to_string(),
-                serde_json::Value::String(created.activity_type.clone()),
-            );
-            if let Some(q) = created.quantity {
-                metadata.insert(
-                    "quantity".to_string(),
-                    serde_json::Value::String(q.to_string()),
-                );
-            }
-            if let Some(p) = created.unit_price {
-                metadata.insert(
-                    "unitPrice".to_string(),
-                    serde_json::Value::String(p.to_string()),
-                );
-            }
-            if let Some(f) = created.fee {
-                metadata.insert(
-                    "fee".to_string(),
-                    serde_json::Value::String(f.to_string()),
-                );
-            }
-            if let Some(ref subtype) = created.subtype {
-                metadata.insert(
-                    "subtype".to_string(),
-                    serde_json::Value::String(subtype.clone()),
-                );
-            }
-            let amount = created.amount;
-            let append_input = crate::truth_engine::AppendInput {
-                id: format!("activity:{}", created.id),
-                kind: Some(crate::truth_engine::LedgerEntryKind::ActivityRecorded),
-                account_id: Some(created.account_id.clone()),
-                asset_id: created.asset_id.clone(),
-                amount,
-                currency: Some(created.currency.clone()),
-                metadata,
-                recorded_at: Some(created.activity_date),
-            };
-            if let Err(e) = ledger.append(append_input).await {
-                log::warn!(
-                    "Truth ledger append failed for activity {}: {} — activity persists but audit chain is incomplete",
-                    created.id,
-                    e
-                );
-            }
-        }
+        // failures must not roll back the activity write (the activity
+        // row remains source-of-truth until the holdings-replay
+        // migration lands; ledger failures are queued for retry).
+        self.append_activity_to_truth_ledger(
+            &created,
+            crate::truth_engine::LedgerEntryKind::ActivityRecorded,
+            format!("activity:{}:created", created.id),
+        )
+        .await;
 
         // Emit domain event after successful creation
         let account_ids = vec![created.account_id.clone()];
@@ -3002,6 +3060,25 @@ impl ActivityServiceTrait for ActivityService {
 
         let prepared = self.prepare_update_activity(activity).await?;
         let updated = self.activity_repository.update_activity(prepared).await?;
+
+        // §A1/§A2 — emit a counter-balanced pair: a reversal of the old
+        // economics + a fresh ActivityRecorded for the new economics.
+        // The reversal carries the OLD activity reference so a replayer
+        // can compute the net delta. ULID-style suffix avoids id reuse
+        // between repeated edits to the same activity.
+        let edit_seq = chrono::Utc::now().timestamp_micros();
+        self.append_activity_to_truth_ledger(
+            &existing,
+            crate::truth_engine::LedgerEntryKind::ActivityReversed,
+            format!("activity:{}:reversed:{}", existing.id, edit_seq),
+        )
+        .await;
+        self.append_activity_to_truth_ledger(
+            &updated,
+            crate::truth_engine::LedgerEntryKind::ActivityRecorded,
+            format!("activity:{}:edited:{}", updated.id, edit_seq),
+        )
+        .await;
 
         // Emit domain event after successful update
         // Include BOTH old and new account_ids and asset_ids (if they differ)
@@ -3043,6 +3120,17 @@ impl ActivityServiceTrait for ActivityService {
             .activity_repository
             .delete_activity(activity_id)
             .await?;
+
+        // §A1/§A2 — append an ActivityReversed entry so a replayer
+        // observes the delete and zeroes the activity's contribution
+        // to holdings + balances + performance.
+        let del_seq = chrono::Utc::now().timestamp_micros();
+        self.append_activity_to_truth_ledger(
+            &deleted,
+            crate::truth_engine::LedgerEntryKind::ActivityReversed,
+            format!("activity:{}:deleted:{}", deleted.id, del_seq),
+        )
+        .await;
 
         // Emit domain event after successful deletion
         let account_ids = vec![deleted.account_id.clone()];

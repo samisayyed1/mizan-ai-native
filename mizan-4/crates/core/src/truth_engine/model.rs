@@ -93,6 +93,29 @@ pub struct LedgerEntry {
 }
 
 impl LedgerEntry {
+    /// Public constructor for storage backends that compute `sequence`
+    /// and `prev_hash` inside their own transaction (e.g. SQLite reads
+    /// the chain tip then inserts). Same hashing semantics as the
+    /// in-memory service uses internally.
+    #[allow(clippy::too_many_arguments)]
+    pub fn assemble_via_service(
+        id: String,
+        sequence: u64,
+        kind: LedgerEntryKind,
+        prev_hash: String,
+        account_id: Option<String>,
+        asset_id: Option<String>,
+        amount: Option<Decimal>,
+        currency: Option<String>,
+        metadata: BTreeMap<String, serde_json::Value>,
+        recorded_at: DateTime<Utc>,
+    ) -> Self {
+        Self::assemble(
+            id, sequence, kind, prev_hash, account_id, asset_id, amount, currency, metadata,
+            recorded_at,
+        )
+    }
+
     /// Construct + hash a fresh entry. `sequence` and `prev_hash` come
     /// from the ledger (the service injects them at `append` time);
     /// callers shouldn't try to compute these themselves.

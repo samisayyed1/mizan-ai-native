@@ -402,25 +402,22 @@ pub async fn import_activities(
         SyncRunEntry, SyncRunMode, SyncRunProvider, SyncRunSummary,
     };
     let run_id = uuid::Uuid::new_v4().to_string();
-    let started = SyncRunEntry::started(
+    let started_entry = SyncRunEntry::started(
         run_id.clone(),
         SyncRunProvider::CsvImport,
         SyncRunMode::OneOff,
     );
-    if let Err(e) = state.sync_ledger().append(started).await {
+    if let Err(e) = state.sync_ledger().append(started_entry.clone()).await {
         debug!("Sync ledger append (start) failed: {}", e);
     }
 
     // Domain events handle recalculation and asset enrichment automatically
     let result = match state.activity_service().import_activities(activities).await {
         Ok(r) => {
-            // §A4 — close with success counters from the ImportActivitiesSummary.
-            let finished = SyncRunEntry::started(
-                run_id.clone(),
-                SyncRunProvider::CsvImport,
-                SyncRunMode::OneOff,
-            )
-            .finish(SyncRunSummary {
+            // §A4 — close the SAME entry instance so started_at is preserved
+            // (avoids the "two rows with the same run_id but different start
+            // times" subtle bug if the backing store ever drops idempotency).
+            let finished = started_entry.clone().finish(SyncRunSummary {
                 fetched: r.summary.total,
                 inserted: r.summary.imported,
                 skipped: r.summary.skipped,
@@ -433,13 +430,14 @@ pub async fn import_activities(
         }
         Err(e) => {
             let err_msg = e.to_string();
-            // §A4 — close with failure + raw error JSON.
-            let failed = SyncRunEntry::started(
-                run_id,
-                SyncRunProvider::CsvImport,
-                SyncRunMode::OneOff,
-            )
-            .fail(format!("{{\"raw\":\"{}\"}}", err_msg.replace('"', "'")));
+            // §A4 — close the same entry with structured §A24 error envelope.
+            let error_json = serde_json::json!({
+                "__mizan_error": true,
+                "code": "CSV_IMPORT_FAILED",
+                "message": err_msg.clone(),
+            })
+            .to_string();
+            let failed = started_entry.fail(error_json);
             if let Err(emit_err) = state.sync_ledger().append(failed).await {
                 debug!("Sync ledger append (fail) failed: {}", emit_err);
             }

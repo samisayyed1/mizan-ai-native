@@ -30,6 +30,17 @@ pub struct AppendInput {
     pub recorded_at: Option<DateTime<Utc>>,
 }
 
+/// Durable queue used by write-path callers to persist ledger appends
+/// that failed transiently after the originating row already committed.
+/// Implementations live in the storage layer (so they can be backed by
+/// the same db connection); `mizan-core` only depends on the trait.
+#[async_trait]
+pub trait TruthLedgerRetryQueue: Send + Sync {
+    /// Persist an AppendInput for later replay. Idempotent on
+    /// `AppendInput.id` — re-enqueueing bumps the attempt count + last_error.
+    async fn enqueue(&self, input: &AppendInput, reason: &str) -> Result<()>;
+}
+
 /// Append-only immutable ledger.
 #[async_trait]
 pub trait TruthLedger: Send + Sync {

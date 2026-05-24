@@ -3,17 +3,25 @@ use mizan_connect::BrokerSyncServiceTrait;
 use mizan_core::{
     self, accounts, activities,
     assets::{self, AlternativeAssetServiceTrait},
-    daily_brief::{DailyBriefService, InMemoryDailyBriefService},
+    daily_brief::DailyBriefService,
     events::DomainEventSink,
     fx, goals, health, limits,
-    net_worth_snapshot::{InMemoryNetWorthSnapshotService, NetWorthSnapshotService},
+    net_worth_snapshot::NetWorthSnapshotService,
     news, portfolio, quotes, settings,
-    sync_ledger::{InMemorySyncRunLedger, SyncRunLedger},
+    sync_ledger::SyncRunLedger,
     taxonomies,
-    truth_engine::{InMemoryTruthLedger, TruthLedger},
+    truth_engine::TruthLedger,
 };
 use mizan_device_sync::{engine::DeviceSyncRuntimeState, DeviceEnrollService};
-use mizan_storage_sqlite::{portfolio::snapshot::SnapshotRepository, sync::AppSyncRepository};
+use mizan_storage_sqlite::{
+    daily_brief::SqliteDailyBriefService,
+    net_worth_snapshot::SqliteNetWorthSnapshotService,
+    portfolio::snapshot::SnapshotRepository,
+    sync::AppSyncRepository,
+    sync_run_ledger::SqliteSyncRunLedger,
+    truth_ledger::{SqliteTruthLedger, SqliteTruthLedgerRetryQueue},
+    DbPool, WriteHandle,
+};
 use std::sync::{Arc, RwLock};
 
 use super::TauriAiEnvironment;
@@ -81,6 +89,10 @@ pub struct ServiceContext {
     /// alt-asset writes append to. Holdings derivation will move to ledger
     /// replay in a follow-on PR.
     pub truth_ledger: Arc<dyn TruthLedger>,
+    /// §A1/§A2 — durable retry queue for ledger appends that failed
+    /// transiently after the originating row already committed. Drained
+    /// on app boot + can be re-drained on demand from the support bundle.
+    pub truth_ledger_retry_queue: Arc<SqliteTruthLedgerRetryQueue>,
 }
 
 impl ServiceContext {
@@ -228,24 +240,46 @@ impl ServiceContext {
     pub fn truth_ledger(&self) -> Arc<dyn TruthLedger> {
         Arc::clone(&self.truth_ledger)
     }
+    pub fn truth_ledger_retry_queue(&self) -> Arc<SqliteTruthLedgerRetryQueue> {
+        Arc::clone(&self.truth_ledger_retry_queue)
+    }
 }
 
-/// Construct in-memory defaults for the §v3.1 foundation services.
-/// Each foundation is wrapped in `Arc` so it can be cloned cheaply
-/// across handlers + schedulers. Replace with SQLite-backed impls
-/// in dedicated follow-on PRs (each one is a single field swap).
-pub fn build_v31_foundation_defaults() -> (
+/// Construct the §v3.1 foundation services backed by SQLite (production).
+/// Each row survives app restarts + powers the support bundle / audit
+/// surfaces. The retry queue is returned alongside so the boot path can
+/// drain stale appends before they go stale.
+pub fn build_v31_foundation_defaults(
+    pool: Arc<DbPool>,
+    writer: WriteHandle,
+) -> (
     Arc<AiSafetyRuntime>,
     Arc<dyn SyncRunLedger>,
     Arc<dyn NetWorthSnapshotService>,
     Arc<dyn DailyBriefService>,
     Arc<dyn TruthLedger>,
+    Arc<SqliteTruthLedgerRetryQueue>,
 ) {
+    let sync_ledger: Arc<dyn SyncRunLedger> = Arc::new(SqliteSyncRunLedger::new(
+        Arc::clone(&pool),
+        writer.clone(),
+    ));
+    let nw_snapshot: Arc<dyn NetWorthSnapshotService> = Arc::new(
+        SqliteNetWorthSnapshotService::new(Arc::clone(&pool), writer.clone()),
+    );
+    let daily_brief: Arc<dyn DailyBriefService> =
+        Arc::new(SqliteDailyBriefService::new(Arc::clone(&pool), writer.clone()));
+    let truth_ledger: Arc<dyn TruthLedger> = Arc::new(SqliteTruthLedger::new(
+        Arc::clone(&pool),
+        writer.clone(),
+    ));
+    let retry_queue = Arc::new(SqliteTruthLedgerRetryQueue::new(pool, writer));
     (
         Arc::new(AiSafetyRuntime::new()),
-        Arc::new(InMemorySyncRunLedger::new()),
-        Arc::new(InMemoryNetWorthSnapshotService::new()),
-        Arc::new(InMemoryDailyBriefService::new()),
-        Arc::new(InMemoryTruthLedger::new()),
+        sync_ledger,
+        nw_snapshot,
+        daily_brief,
+        truth_ledger,
+        retry_queue,
     )
 }

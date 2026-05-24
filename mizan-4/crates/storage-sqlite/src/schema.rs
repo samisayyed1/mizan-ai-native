@@ -496,6 +496,76 @@ diesel::table! {
     }
 }
 
+// ─── §v3.1 foundation tables ────────────────────────────────────────
+// Hand-written (not @generated) because we author the migrations
+// without running `diesel print-schema` on a live DB. Diesel macros
+// still type-check these against the actual SQL at runtime.
+
+diesel::table! {
+    sync_run_ledger (run_id) {
+        run_id -> Text,
+        provider -> Text,
+        mode -> Text,
+        account_id -> Nullable<Text>,
+        thread_id -> Nullable<Text>,
+        started_at -> BigInt,
+        finished_at -> Nullable<BigInt>,
+        outcome -> Text,
+        summary_json -> Text,
+        error_json -> Nullable<Text>,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    net_worth_snapshots (snapshot_date, base_currency) {
+        snapshot_date -> Text,
+        base_currency -> Text,
+        total_assets -> Text,
+        total_liabilities -> Text,
+        net_worth -> Text,
+        breakdown_json -> Text,
+        source -> Text,
+        captured_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    daily_briefs (brief_date, base_currency) {
+        brief_date -> Text,
+        base_currency -> Text,
+        payload_json -> Text,
+        delivered_at -> Nullable<BigInt>,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    truth_ledger_entries (id) {
+        id -> Text,
+        sequence -> BigInt,
+        kind -> Text,
+        recorded_at -> BigInt,
+        account_id -> Nullable<Text>,
+        asset_id -> Nullable<Text>,
+        amount -> Nullable<Text>,
+        currency -> Nullable<Text>,
+        metadata_json -> Text,
+        prev_hash -> Text,
+        entry_hash -> Text,
+    }
+}
+
+diesel::table! {
+    truth_ledger_retry_queue (id) {
+        id -> Text,
+        payload_json -> Text,
+        queued_at -> BigInt,
+        attempts -> Integer,
+        last_error -> Nullable<Text>,
+    }
+}
+
 diesel::joinable!(accounts -> platforms (platform_id));
 diesel::joinable!(activities -> accounts (account_id));
 diesel::joinable!(activities -> assets (asset_id));
@@ -549,4 +619,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     sync_table_state,
     taxonomies,
     taxonomy_categories,
+    sync_run_ledger,
+    net_worth_snapshots,
+    daily_briefs,
+    truth_ledger_entries,
+    truth_ledger_retry_queue,
 );

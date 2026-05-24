@@ -182,9 +182,20 @@ pub async fn initialize_context(
     ));
 
     // §v3.1 foundation services — built here (instead of later) so the
-    // truth_ledger can be threaded into ActivityService below.
-    let (ai_safety, sync_ledger, net_worth_snapshot_service, daily_brief_service, truth_ledger) =
-        crate::context::registry::build_v31_foundation_defaults();
+    // truth_ledger can be threaded into ActivityService below. SQLite-
+    // backed so every audit/snapshot/brief/ledger row survives restarts.
+    let (
+        ai_safety,
+        sync_ledger,
+        net_worth_snapshot_service,
+        daily_brief_service,
+        truth_ledger,
+        truth_ledger_retry_queue,
+    ) = crate::context::registry::build_v31_foundation_defaults(pool.clone(), writer.clone());
+
+    let truth_ledger_retry_queue_trait:
+        Arc<dyn mizan_core::truth_engine::TruthLedgerRetryQueue> =
+        Arc::clone(&truth_ledger_retry_queue) as _;
 
     let activity_service = Arc::new(
         ActivityService::with_import_run_repository(
@@ -196,7 +207,8 @@ pub async fn initialize_context(
             core_import_run_repository,
         )
         .with_event_sink(domain_event_sink.clone())
-        .with_truth_ledger(Arc::clone(&truth_ledger)),
+        .with_truth_ledger(Arc::clone(&truth_ledger))
+        .with_truth_ledger_retry_queue(Arc::clone(&truth_ledger_retry_queue_trait)),
     );
     let goal_service = Arc::new(GoalService::new(goal_repo.clone(), account_service.clone()));
     let limits_service = Arc::new(ContributionLimitService::new_with_timezone(
@@ -409,6 +421,7 @@ pub async fn initialize_context(
             net_worth_snapshot_service,
             daily_brief_service,
             truth_ledger,
+            truth_ledger_retry_queue,
         },
         event_receiver,
         sync_outbox_wake_receiver,

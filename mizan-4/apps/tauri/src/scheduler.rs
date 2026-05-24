@@ -220,16 +220,17 @@ pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc
     info!("Running startup market-data quote sync...");
 
     // §A4 — open a sync ledger entry so the user / support can see the run
-    // happened. Marketdata sync covers Yahoo + TradingView; recording the
-    // top-level run is enough for triage. Per-provider granularity can
-    // come later when the quote_service surfaces per-provider counters.
+    // happened. Marketdata aggregates Yahoo + TradingView + custom price
+    // providers; the SyncResult does not surface per-provider counters
+    // today (deeper plumbing tracked separately). Tag the run with the
+    // MarketData aggregate variant so the audit row is honest.
     let run_id = uuid::Uuid::new_v4().to_string();
-    let started = SyncRunEntry::started(
+    let started_entry = SyncRunEntry::started(
         run_id.clone(),
-        SyncRunProvider::Yahoo, // Top-level marketdata sync; per-provider breakdown later
+        SyncRunProvider::MarketData,
         SyncRunMode::Incremental,
     );
-    if let Err(e) = context.sync_ledger().append(started).await {
+    if let Err(e) = context.sync_ledger().append(started_entry.clone()).await {
         debug!("Sync ledger append (start) failed: {}", e);
     }
 
@@ -241,15 +242,14 @@ pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc
                 result.quotes_synced, result.synced
             );
 
-            // §A4 — close the ledger entry with success counters.
-            let finished = SyncRunEntry::started(
-                run_id.clone(),
-                SyncRunProvider::Yahoo,
-                SyncRunMode::Incremental,
-            )
-            .finish(SyncRunSummary {
+            // §A4 — close the SAME entry (preserves started_at) by
+            // calling .finish on the held instance instead of building
+            // a second `started()` with a fresh timestamp.
+            let finished = started_entry.clone().finish(SyncRunSummary {
                 fetched: result.synced as u32,
                 inserted: result.quotes_synced as u32,
+                skipped: result.skipped as u32,
+                errors: result.failed as u32,
                 ..Default::default()
             });
             if let Err(e) = context.sync_ledger().append(finished).await {
@@ -270,13 +270,16 @@ pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc
                 "Startup quote sync failed: {}. Health Center banner will surface this to the user.",
                 e
             );
-            // §A4 — close ledger with failure + raw error.
-            let failed = SyncRunEntry::started(
-                run_id,
-                SyncRunProvider::Yahoo,
-                SyncRunMode::Incremental,
-            )
-            .fail(format!("{{\"raw\":\"{}\"}}", e.to_string().replace('"', "'")));
+            // §A4 — close the SAME entry with failure outcome. Wrap the
+            // raw error string in a §A24 envelope so support can grep
+            // by `__mizan_error: true`.
+            let error_json = serde_json::json!({
+                "__mizan_error": true,
+                "code": "MARKETDATA_SYNC_FAILED",
+                "message": e.to_string(),
+            })
+            .to_string();
+            let failed = started_entry.fail(error_json);
             if let Err(emit_err) = context.sync_ledger().append(failed).await {
                 debug!("Sync ledger append (fail) failed: {}", emit_err);
             }
@@ -318,17 +321,21 @@ pub async fn run_startup_net_worth_snapshot(context: &std::sync::Arc<ServiceCont
     let total_assets = nw.assets.total;
     let total_liabilities = nw.liabilities.total;
 
-    // Build a per-category breakdown from the asset breakdown surfaced by
-    // NetWorthResponse. Liability sums collapse into one entry so the
-    // chart can stack assets + 1 liability.
-    let mut breakdown: Vec<NetWorthBreakdownEntry> = nw
-        .assets
-        .breakdown
-        .iter()
-        .map(|b| NetWorthBreakdownEntry {
-            key: b.category.clone(),
-            value: b.value,
-        })
+    // Build a per-category breakdown from the asset breakdown surfaced
+    // by NetWorthResponse. The breakdown can contain multiple rows per
+    // category (one per holding), so we aggregate by category before
+    // persisting — without this the dashboard chart double-counts on
+    // any account with >1 instrument.
+    let mut category_totals: std::collections::BTreeMap<String, rust_decimal::Decimal> =
+        std::collections::BTreeMap::new();
+    for b in nw.assets.breakdown.iter() {
+        *category_totals
+            .entry(b.category.clone())
+            .or_insert(rust_decimal::Decimal::ZERO) += b.value;
+    }
+    let mut breakdown: Vec<NetWorthBreakdownEntry> = category_totals
+        .into_iter()
+        .map(|(key, value)| NetWorthBreakdownEntry { key, value })
         .collect();
     if !total_liabilities.is_zero() {
         breakdown.push(NetWorthBreakdownEntry {

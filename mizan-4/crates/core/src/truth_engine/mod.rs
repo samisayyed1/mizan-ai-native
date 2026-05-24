@@ -31,4 +31,4 @@ pub use model::{
     canonical_payload, derive_entry_hash, LedgerEntry, LedgerEntryKind, LedgerIntegrityError,
     GENESIS_PREV_HASH,
 };
-pub use service::{AppendInput, InMemoryTruthLedger, TruthLedger};
+pub use service::{AppendInput, InMemoryTruthLedger, TruthLedger, TruthLedgerRetryQueue};

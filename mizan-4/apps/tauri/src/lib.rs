@@ -181,31 +181,41 @@ mod desktop {
         // holding values render with live prices on first paint.
         // Without this the user sees blank cells for ~2 minutes on every
         // cold launch.
-        let startup_quote_handle = handle.clone();
-        let startup_quote_context = Arc::clone(&context);
+        // Single chained startup task: quote sync → NW snapshot → daily
+        // brief → ledger retry drain. Each step `awaits` the previous so
+        // we don't rely on a hardcoded sleep to fake ordering — the
+        // snapshot ALWAYS sees the freshest quote cache, the brief
+        // ALWAYS sees today's snapshot, and any queued ledger appends
+        // get one drain attempt per boot.
+        let startup_handle = handle.clone();
+        let startup_chain_context = Arc::clone(&context);
         tauri::async_runtime::spawn(async move {
-            scheduler::run_startup_quote_sync(&startup_quote_handle, &startup_quote_context).await;
-        });
+            // 1) Refresh quotes so the snapshot below reads fresh prices.
+            scheduler::run_startup_quote_sync(&startup_handle, &startup_chain_context).await;
 
-        // §A12 — daily Net Worth Snapshot. Fires once at boot so the
-        // dashboard history line + §A22 delta both have a row to read.
-        // Snapshot service is in-memory today; SQLite-backed swap is a
-        // single field change in registry.rs.
-        let nw_snapshot_context = Arc::clone(&context);
-        let nw_snapshot_handle = handle.clone();
-        tauri::async_runtime::spawn(async move {
-            // Let the startup quote sync land first so the snapshot
-            // reflects fresh prices, not stale cache.
-            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            scheduler::run_startup_net_worth_snapshot(&nw_snapshot_context).await;
+            // 2) §A12 — capture today's NW snapshot. Idempotent: same-day
+            // re-runs replace the row, never duplicate it.
+            scheduler::run_startup_net_worth_snapshot(&startup_chain_context).await;
 
-            // §A22 — daily Investor Brief depends on the §A12 snapshot
-            // being written first. Fire it once the snapshot above has
-            // had a chance to complete.
-            scheduler::run_startup_daily_brief(&nw_snapshot_context).await;
+            // 3) §A22 — daily Investor Brief. Reads §A12 + today's
+            // movers; safe to call even if the snapshot above failed
+            // (the brief will log + skip).
+            scheduler::run_startup_daily_brief(&startup_chain_context).await;
 
-            // Ensure the handle is captured so the closure is Send.
-            let _ = &nw_snapshot_handle;
+            // 4) §A1/§A2 — drain any ledger appends that failed on a
+            // previous run. Bounded at 5 attempts/row to prevent
+            // infinite retries on permanently-bad payloads.
+            let queue = startup_chain_context.truth_ledger_retry_queue();
+            let ledger = startup_chain_context.truth_ledger();
+            match queue.drain(ledger, 5).await {
+                Ok(stats) if stats.succeeded > 0 || stats.failed > 0 => log::info!(
+                    "Truth-ledger retry drain: {} succeeded, {} still failing",
+                    stats.succeeded,
+                    stats.failed
+                ),
+                Ok(_) => log::debug!("Truth-ledger retry drain: queue empty"),
+                Err(e) => log::warn!("Truth-ledger retry drain failed: {e}"),
+            }
         });
 
         // Periodic market data sync continues every 6h. Initial delay is
