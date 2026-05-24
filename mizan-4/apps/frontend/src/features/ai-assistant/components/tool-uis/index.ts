@@ -7,6 +7,7 @@
 
 import { AccountsToolUI } from "./accounts-tool-ui";
 import { ActivitiesToolUI } from "./activities-tool-ui";
+import { AddAlternativeAssetToolUI } from "./add-alternative-asset-tool-ui";
 import { AllocationToolUI } from "./allocation-tool-ui";
 import { CreateAccountToolUI } from "./create-account-tool-ui";
 import { CreateGoalToolUI } from "./create-goal-tool-ui";
@@ -26,6 +27,7 @@ import { ValuationToolUI } from "./valuation-tool-ui";
  * Used by MessagePrimitive.Parts in thread.tsx.
  */
 export const toolUIs = {
+  add_alternative_asset: AddAlternativeAssetToolUI,
   create_account: CreateAccountToolUI,
   create_goal: CreateGoalToolUI,
   create_liability: CreateLiabilityToolUI,
@@ -49,6 +51,7 @@ export type ToolUIName = keyof typeof toolUIs;
 export {
   AccountsToolUI,
   ActivitiesToolUI,
+  AddAlternativeAssetToolUI,
   AllocationToolUI,
   CreateAccountToolUI,
   CreateGoalToolUI,

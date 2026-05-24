@@ -19,6 +19,7 @@ pub mod activities;
 pub mod allocation;
 pub mod cash_balances;
 pub mod constants;
+pub mod add_alternative_asset;
 pub mod create_account;
 pub mod create_goal;
 pub mod create_liability;
@@ -42,6 +43,7 @@ pub use accounts::GetAccountsTool;
 pub use activities::SearchActivitiesTool;
 pub use allocation::GetAssetAllocationTool;
 pub use cash_balances::GetCashBalancesTool;
+pub use add_alternative_asset::AddAlternativeAssetTool;
 pub use create_account::CreateAccountTool;
 pub use create_goal::CreateGoalTool;
 pub use create_liability::CreateLiabilityTool;
@@ -79,6 +81,7 @@ pub struct ToolSet<E: AiEnvironment> {
     pub update_account: UpdateAccountTool<E>,
     pub create_goal: CreateGoalTool<E>,
     pub create_liability: CreateLiabilityTool<E>,
+    pub add_alternative_asset: AddAlternativeAssetTool<E>,
 }
 
 impl<E: AiEnvironment> ToolSet<E> {
@@ -101,7 +104,8 @@ impl<E: AiEnvironment> ToolSet<E> {
             create_account: CreateAccountTool::new(env.clone()),
             update_account: UpdateAccountTool::new(env.clone()),
             create_goal: CreateGoalTool::new(env.clone()),
-            create_liability: CreateLiabilityTool::new(env),
+            create_liability: CreateLiabilityTool::new(env.clone()),
+            add_alternative_asset: AddAlternativeAssetTool::new(env),
         }
     }
 }

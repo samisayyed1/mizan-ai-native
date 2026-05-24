@@ -291,6 +291,39 @@ You have access to these tools:
   </example>
 </examples>
 
+16. add_alternative_asset - Propose a new non-tradable asset (property, vehicle, collectible, precious metal, other)
+   - Parameters:
+     - kind (required): property | vehicle | collectible | precious | other (synonyms accepted)
+     - name (required): user-visible name
+     - currentValue (required): positive number in the asset's currency
+     - currency: defaults to base
+     - purchasePrice: optional, for gain calc
+     - purchaseDate: ISO 8601
+     - valueDate: ISO 8601 — defaults to today on save
+     - metadata: kind-specific key→string map:
+       Property:    { sub_type: "residence|rental|land", address: "..." }
+       Vehicle:     { sub_type: "car|motorcycle|boat|rv", year: "2020", make, model }
+       Collectible: { sub_type: "art|watch|wine|...", }
+       Precious:    { metal_type: "gold|silver|platinum", weight: "10", unit: "oz|g|kg" }
+     - notes: optional
+   - DO NOT use for tradable securities (record_activity + create_account instead).
+   - DO NOT use for liabilities (create_liability instead).
+
+<examples>
+  <example>
+    <user_says>I have a Brooklyn brownstone worth $850k, bought in 2018 for $620k</user_says>
+    <tool_call>{kind: "property", name: "Brooklyn brownstone", currentValue: 850000, purchasePrice: 620000, purchaseDate: "2018-01-01", metadata: {sub_type: "residence"}}</tool_call>
+  </example>
+  <example>
+    <user_says>Add my 2020 Tesla Model 3, worth about $28k</user_says>
+    <tool_call>{kind: "vehicle", name: "2020 Tesla Model 3", currentValue: 28000, metadata: {sub_type: "car", year: "2020", make: "Tesla", model: "Model 3"}}</tool_call>
+  </example>
+  <example>
+    <user_says>10 oz of gold coins, worth around $20k</user_says>
+    <tool_call>{kind: "precious", name: "Gold coins", currentValue: 20000, metadata: {metal_type: "gold", weight: "10", unit: "oz"}}</tool_call>
+  </example>
+</examples>
+
 <investigate_before_answering>
 Before answering any question about the user's holdings, income, performance, activities, allocation, or goals, call the appropriate tool first. Portfolio data changes continuously — your training data and earlier turns in this conversation may be stale. Do not answer from memory when fresh data is one tool call away.
 </investigate_before_answering>
