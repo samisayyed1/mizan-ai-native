@@ -19,6 +19,11 @@ pub mod activities;
 pub mod allocation;
 pub mod cash_balances;
 pub mod constants;
+pub mod add_alternative_asset;
+pub mod create_account;
+pub mod create_goal;
+pub mod create_liability;
+pub mod update_account;
 pub mod csv_intel;
 pub mod goals;
 pub mod health;
@@ -38,6 +43,11 @@ pub use accounts::GetAccountsTool;
 pub use activities::SearchActivitiesTool;
 pub use allocation::GetAssetAllocationTool;
 pub use cash_balances::GetCashBalancesTool;
+pub use add_alternative_asset::AddAlternativeAssetTool;
+pub use create_account::CreateAccountTool;
+pub use create_goal::CreateGoalTool;
+pub use create_liability::CreateLiabilityTool;
+pub use update_account::UpdateAccountTool;
 pub use goals::GetGoalsTool;
 pub use health::GetHealthStatusTool;
 pub use holdings::GetHoldingsTool;
@@ -67,6 +77,11 @@ pub struct ToolSet<E: AiEnvironment> {
     pub record_activities: RecordActivitiesTool<E>,
     pub import_csv: ImportCsvTool<E>,
     pub health_status: GetHealthStatusTool<E>,
+    pub create_account: CreateAccountTool<E>,
+    pub update_account: UpdateAccountTool<E>,
+    pub create_goal: CreateGoalTool<E>,
+    pub create_liability: CreateLiabilityTool<E>,
+    pub add_alternative_asset: AddAlternativeAssetTool<E>,
 }
 
 impl<E: AiEnvironment> ToolSet<E> {
@@ -85,7 +100,12 @@ impl<E: AiEnvironment> ToolSet<E> {
             record_activity: RecordActivityTool::new(env.clone()),
             record_activities: RecordActivitiesTool::new(env.clone()),
             import_csv: ImportCsvTool::new(env.clone(), base_currency),
-            health_status: GetHealthStatusTool::new(env),
+            health_status: GetHealthStatusTool::new(env.clone()),
+            create_account: CreateAccountTool::new(env.clone()),
+            update_account: UpdateAccountTool::new(env.clone()),
+            create_goal: CreateGoalTool::new(env.clone()),
+            create_liability: CreateLiabilityTool::new(env.clone()),
+            add_alternative_asset: AddAlternativeAssetTool::new(env),
         }
     }
 }
