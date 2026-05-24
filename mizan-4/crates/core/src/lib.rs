@@ -17,6 +17,8 @@ pub mod goals;
 pub mod health;
 pub mod limits;
 pub mod news;
+#[cfg(test)]
+pub mod perf_budget;
 pub mod planning;
 pub mod portfolio;
 pub mod quotes;
