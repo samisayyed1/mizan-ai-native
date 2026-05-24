@@ -16,6 +16,7 @@ pub mod fx;
 pub mod goals;
 pub mod health;
 pub mod limits;
+pub mod mizan_error;
 pub mod news;
 pub mod planning;
 pub mod portfolio;
@@ -33,3 +34,8 @@ pub use portfolio::*;
 // Re-export error types
 pub use errors::Error;
 pub use errors::Result;
+
+// Re-export the structured Mizan error contract (§A24).
+pub use mizan_error::{
+    wrap as wrap_mizan_error, DataSafetyStatus, MizanError, MizanErrorSeverity, RetryPolicy,
+};
