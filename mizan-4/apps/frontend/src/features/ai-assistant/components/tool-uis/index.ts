@@ -10,6 +10,7 @@ import { ActivitiesToolUI } from "./activities-tool-ui";
 import { AllocationToolUI } from "./allocation-tool-ui";
 import { CreateAccountToolUI } from "./create-account-tool-ui";
 import { GoalsToolUI } from "./goals-tool-ui";
+import { UpdateAccountToolUI } from "./update-account-tool-ui";
 import { HoldingsToolUI } from "./holdings-tool-ui";
 import { ImportCsvToolUI } from "./import-csv-tool-ui";
 import { IncomeToolUI } from "./income-tool-ui";
@@ -35,6 +36,7 @@ export const toolUIs = {
   record_activity: RecordActivityToolUI,
   record_activities: RecordActivitiesToolUI,
   search_activities: ActivitiesToolUI,
+  update_account: UpdateAccountToolUI,
 } as const;
 
 export type ToolUIName = keyof typeof toolUIs;
@@ -52,6 +54,7 @@ export {
   PerformanceToolUI,
   RecordActivityToolUI,
   RecordActivitiesToolUI,
+  UpdateAccountToolUI,
   ValuationToolUI,
 };
 
