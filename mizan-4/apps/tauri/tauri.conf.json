@@ -27,7 +27,7 @@
       "minimumSystemVersion": "10.13"
     }
   },
-  "productName": "Mizan",
+  "productName": "Mizan AI",
   "mainBinaryName": "Mizan",
   "version": "3.4.1",
   "identifier": "app.mizan",
@@ -53,7 +53,7 @@
         "theme": "Light",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "title": "Mizan",
+        "title": "Mizan AI",
         "width": 1440,
         "height": 960
       }
