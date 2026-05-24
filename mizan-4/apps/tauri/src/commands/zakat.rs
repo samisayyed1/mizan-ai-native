@@ -1,9 +1,9 @@
 //! Zakat assessment command.
 //!
 //! Wraps the pure-math + portfolio-aggregator already shipped in
-//! `crates/core/src/portfolio/zakat/`. Gated on `advanced_reports`
-//! (Pro+) — the desktop's UpgradeGate raises automatically on
-//! `GatedError("advanced_reports", …)` for Free/Basic users.
+//! `crates/core/src/portfolio/zakat/`. Gated on `zakat_engine` (Gold-only,
+//! per Feroz 25 May 2026) — the desktop's UpgradeGate raises automatically
+//! on `GatedError("zakat_engine", …)` for Silver users.
 
 use std::sync::Arc;
 
@@ -26,14 +26,14 @@ pub async fn compute_zakat(
     base_currency_override: Option<String>,
     state: State<'_, Arc<ServiceContext>>,
 ) -> Result<ZakatReport, String> {
-    // Pro-gated. Free users get a clean modal pointing them at the Pro tier.
+    // Gold-gated. Silver users get a clean modal pointing them at the Gold tier.
     let entitlements = crate::commands::entitlements::resolve_entitlements(&state).await;
     crate::commands::entitlements::gated(
-        entitlements.advanced_reports,
-        "advanced_reports",
-        "pro",
+        entitlements.zakat_engine,
+        "zakat_engine",
+        "gold",
         &entitlements.plan,
-        "Zakat assessment is a Pro feature. Upgrade to compute it across your full \
+        "Zakat assessment is a Gold feature. Upgrade to compute it across your full \
          portfolio, with deductions for short-term debts.",
     )?;
 

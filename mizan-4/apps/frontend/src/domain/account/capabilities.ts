@@ -7,7 +7,7 @@ export type AccountCapabilities = {
   csvIngestion: true;
   conversationalAssets: true;
   alternativeAssets: true;
-  zakatEngine: true;
+  zakatEngine: boolean;
   balanceMasking: true;
   plaidSync: boolean;
   liveLiabilityTracking: boolean;
@@ -27,7 +27,6 @@ const BASE_CAPABILITIES = {
   csvIngestion: true,
   conversationalAssets: true,
   alternativeAssets: true,
-  zakatEngine: true,
   balanceMasking: true,
 } as const;
 
@@ -35,6 +34,7 @@ const CAPABILITIES: Record<MizanAccountTier, AccountCapabilities> = {
   silver: {
     tier: "silver",
     ...BASE_CAPABILITIES,
+    zakatEngine: false,
     plaidSync: false,
     liveLiabilityTracking: false,
     backgroundMonitoring: false,
@@ -47,6 +47,7 @@ const CAPABILITIES: Record<MizanAccountTier, AccountCapabilities> = {
   gold: {
     tier: "gold",
     ...BASE_CAPABILITIES,
+    zakatEngine: true,
     plaidSync: true,
     liveLiabilityTracking: true,
     backgroundMonitoring: true,

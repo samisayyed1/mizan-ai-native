@@ -7,18 +7,18 @@ import { useEntitlements, useUpgradeGate } from "@/features/mizan-connect";
 /**
  * Home Zakat card (M4.4).
  *
- * Promotes the Zakat assessment as a top-level dashboard tile so Pro users
- * see it without burying it in Settings. Free/Basic users see the same
- * card but tapping it opens the UpgradeGate rather than the page.
+ * Promotes the Zakat assessment as a top-level dashboard tile so Gold users
+ * see it without burying it in Settings. Silver users see the same card
+ * but tapping it opens the UpgradeGate rather than the page.
  */
 export function ZakatCard() {
   const { entitlements } = useEntitlements();
   const { requestUpgrade } = useUpgradeGate();
-  const locked = !entitlements.advancedReports;
+  const locked = !entitlements.zakatEngine;
 
   const handleClick = () => {
     if (locked) {
-      requestUpgrade("advanced_reports");
+      requestUpgrade("zakat_engine");
     }
   };
 
@@ -30,7 +30,7 @@ export function ZakatCard() {
           <h3 className="text-sm font-semibold">Zakat assessment</h3>
           {locked && (
             <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
-              Pro
+              Gold
             </span>
           )}
         </div>

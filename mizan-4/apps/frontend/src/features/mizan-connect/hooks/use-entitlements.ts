@@ -21,6 +21,7 @@ const SILVER_ENTITLEMENTS: Entitlements = {
   marketRefreshDailyLimit: 0,
   csvImportsMonthly: UNLIMITED,
   advancedReports: false,
+  zakatEngine: false,
   advisorMode: false,
 };
 

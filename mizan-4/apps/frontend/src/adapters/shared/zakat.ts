@@ -1,8 +1,8 @@
 // Zakat assessment adapter (M3.7).
 //
-// Thin wrapper around the Tauri `compute_zakat` command. Pro-gated server-
-// side; on Free/Basic the call rejects with a `GatedError("advanced_reports")`
-// which the central UpgradeGate handler picks up.
+// Thin wrapper around the Tauri `compute_zakat` command. Gold-gated server-
+// side (per Feroz 25 May 2026); on Silver the call rejects with a
+// `GatedError("zakat_engine")` which the central UpgradeGate handler picks up.
 
 import { invoke } from "./platform";
 
