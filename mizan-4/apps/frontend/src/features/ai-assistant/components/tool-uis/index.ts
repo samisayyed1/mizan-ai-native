@@ -15,6 +15,7 @@ import { IncomeToolUI } from "./income-tool-ui";
 import { PerformanceToolUI } from "./performance-tool-ui";
 import { RecordActivityToolUI } from "./record-activity-tool-ui";
 import { RecordActivitiesToolUI } from "./record-activities-tool-ui";
+import { UpdateLiabilityToolUI } from "./update-liability-tool-ui";
 import { ValuationToolUI } from "./valuation-tool-ui";
 
 /**
@@ -33,6 +34,7 @@ export const toolUIs = {
   record_activity: RecordActivityToolUI,
   record_activities: RecordActivitiesToolUI,
   search_activities: ActivitiesToolUI,
+  update_liability: UpdateLiabilityToolUI,
 } as const;
 
 export type ToolUIName = keyof typeof toolUIs;
@@ -49,6 +51,7 @@ export {
   PerformanceToolUI,
   RecordActivityToolUI,
   RecordActivitiesToolUI,
+  UpdateLiabilityToolUI,
   ValuationToolUI,
 };
 
