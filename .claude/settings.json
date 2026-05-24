@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cmd=$(jq -r \".tool_input.command // empty\"); if [[ -z \"$cmd\" ]]; then exit 0; fi; if [[ -n \"$MIZAN_ALLOW_PRODUCTION\" ]]; then exit 0; fi; if echo \"$cmd\" | grep -Eq \"(^|[^a-zA-Z0-9_-])(git[[:space:]]+push|gh[[:space:]]+pr[[:space:]]+merge|fly[[:space:]]+deploy|stripe[[:space:]]+(live|--live))(\\b|$)\"; then echo \"[mizan-ai-native] BLOCKED: production action attempted before MVP validation gate passed.\" >&2; echo \"See MIZAN_AI_NATIVE_PLAN.md \\\"Release sequencing lock\\\" / Post-MVP track.\" >&2; echo \"Override with MIZAN_ALLOW_PRODUCTION=1 only when Sami has explicitly OK\\u2019d the action.\" >&2; exit 2; fi; exit 0'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'file_path=$(jq -r \".tool_input.file_path // empty\" 2>/dev/null); if [[ -n \"$file_path\" && -f \"$file_path\" ]]; then if [[ \"$file_path\" == *.rs ]]; then rustfmt --edition 2021 \"$file_path\" 2>/dev/null || true; elif [[ \"$file_path\" =~ \\.(ts|tsx|js|jsx|css|md|json|yml|yaml)$ ]]; then npx --yes --quiet prettier --write \"$file_path\" 2>/dev/null || true; fi; fi'"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git stash list:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git remote -v:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo fmt --check:*)",
+      "Bash(cargo sqlx prepare --check:*)",
+      "Bash(pnpm --filter frontend type-check:*)",
+      "Bash(pnpm --filter frontend lint:quiet:*)",
+      "Bash(pnpm --filter frontend test -- --run:*)",
+      "Bash(pnpm --filter frontend build:*)",
+      "Bash(pnpm prettier --check:*)",
+      "Bash(jq:*)",
+      "Bash(node --version:*)",
+      "Bash(rustc --version:*)",
+      "Bash(cargo --version:*)",
+      "Bash(pnpm --version:*)"
+    ]
+  }
+}
