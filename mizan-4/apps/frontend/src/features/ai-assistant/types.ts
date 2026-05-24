@@ -79,7 +79,25 @@ export type ChatMessagePart =
       meta?: Record<string, unknown>;
       error?: string;
     }
-  | { type: "error"; code: string; message: string };
+  | { type: "error"; code: string; message: string }
+  /**
+   * Agent-run progress card. Accumulates AgentInnerEvent's as the
+   * runtime emits them; the message renderer pipes the list into
+   * <AgentProgressCard events={part.events} />.
+   *
+   * One agent part per agent run; the agent runId pins the
+   * identity. Subsequent events for the same runId UPDATE this
+   * part in-place rather than appending new parts.
+   */
+  | {
+      type: "agent";
+      runId: string;
+      recipeId?: string;
+      /** Snake-case AgentInnerEvent's exactly as they arrived on
+       *  the SSE stream. The card's reducer replays the list to
+       *  derive current state, so order matters. */
+      events: import("./types").AgentInnerEvent[];
+    };
 
 /**
  * Structured message content from the backend.
@@ -374,7 +392,10 @@ export interface AgentPlanStep {
   args: unknown;
   dependsOn: string[];
   summary: string;
-  verify: unknown | null;
+  /** VerifyExpectation object or null. Opaque on the frontend — the
+   *  planner LLM emits it, the runtime acts on it; the UI never needs
+   *  to introspect it. Kept untyped for forward-compat. */
+  verify: unknown;
 }
 
 interface AgentEnvelopeEvent extends AiStreamEventBase {
