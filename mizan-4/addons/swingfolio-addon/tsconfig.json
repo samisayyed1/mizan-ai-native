@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Addon-specific settings
+    "noEmit": true,
+
+    // Path mapping for addon
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@mizan/addon-sdk": ["../../packages/addon-sdk/src"],
+      "@mizan/ui": ["../../packages/ui/src"],
+      "@mizan/ui/*": ["../../packages/ui/src/*"]
+    }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "./tsconfig.node.json" },
+    { "path": "../../packages/ui" },
+    { "path": "../../packages/addon-sdk" }
+  ]
+}

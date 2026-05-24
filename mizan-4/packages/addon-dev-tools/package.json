@@ -1,0 +1,50 @@
+{
+  "name": "@mizan/addon-dev-tools",
+  "version": "3.4.1",
+  "description": "Development tools for Mizan addons - hot reload server and CLI",
+  "main": "index.js",
+  "bin": {
+    "mizan": "cli.js"
+  },
+  "keywords": [
+    "mizan",
+    "addon",
+    "development",
+    "cli",
+    "hot-reload"
+  ],
+  "author": "Mizan Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/afadil/mizan.git",
+    "directory": "packages/addon-dev-tools"
+  },
+  "bugs": {
+    "url": "https://github.com/afadil/mizan/issues"
+  },
+  "homepage": "https://github.com/afadil/mizan/tree/main/packages/addon-dev-tools#readme",
+  "files": [
+    "cli.js",
+    "dev-server.js",
+    "index.js",
+    "scaffold.js",
+    "templates/",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "commander": "^14.0.3",
+    "cors": "^2.8.6",
+    "express": "^4.22.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

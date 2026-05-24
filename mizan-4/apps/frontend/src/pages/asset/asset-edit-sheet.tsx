@@ -1,0 +1,1275 @@
+import { getExchanges, resolveSymbolQuote } from "@/adapters";
+import { MultiSelectTaxonomy } from "@/components/classification/multi-select-taxonomy";
+import { SingleSelectTaxonomy } from "@/components/classification/single-select-taxonomy";
+import { TickerAvatar } from "@/components/ticker-avatar";
+import { useCustomProviders } from "@/hooks/use-custom-providers";
+import { useMarketDataProviders } from "@/hooks/use-market-data-providers";
+import { useTaxonomies } from "@/hooks/use-taxonomies";
+import type { Asset, Quote } from "@/lib/types";
+import { formatPrice } from "@/lib/utils";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Alert,
+  AlertDescription,
+  CurrencyInput,
+  Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  ResponsiveSelect,
+  type ResponsiveSelectOption,
+  SearchableSelect,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  Switch,
+} from "@mizan/ui";
+import { Badge } from "@mizan/ui/components/ui/badge";
+import { Button } from "@mizan/ui/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@mizan/ui/components/ui/form";
+import { Icons } from "@mizan/ui/components/ui/icons";
+import { Input } from "@mizan/ui/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@mizan/ui/components/ui/select";
+import { Skeleton } from "@mizan/ui/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@mizan/ui/components/ui/tabs";
+import { Textarea } from "@mizan/ui/components/ui/textarea";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type Path, useFieldArray, useForm, useWatch } from "react-hook-form";
+import * as z from "zod";
+import { toast } from "@mizan/ui/components/ui/use-toast";
+import { useAssetProfileMutations } from "./hooks/use-asset-profile-mutations";
+
+// Schema for a single provider override (type is derived from asset kind)
+const providerOverrideSchema = z.object({
+  provider: z.string(),
+  symbol: z.string(),
+});
+
+// Derive override type from asset kind
+function getOverrideTypeForKind(kind: string): "equity_symbol" | "crypto_symbol" | "fx_symbol" {
+  switch (kind) {
+    case "FX":
+      return "fx_symbol";
+    default:
+      return "equity_symbol";
+  }
+}
+
+// QuoteMode values matching Rust enum
+const QuoteMode = {
+  MARKET: "MARKET",
+  MANUAL: "MANUAL",
+} as const;
+
+type QuoteMode = (typeof QuoteMode)[keyof typeof QuoteMode];
+
+const assetFormSchema = z.object({
+  name: z.string().optional(),
+  notes: z.string().optional(),
+  isin: z.string().optional(),
+  instrumentType: z.string().optional(),
+  quoteCcy: z.string().min(1, "Currency is required"),
+  instrumentExchangeMic: z.string().optional(),
+  quoteMode: z.enum([QuoteMode.MARKET, QuoteMode.MANUAL]),
+  preferredProvider: z.string().optional(),
+  providerConfig: z.array(providerOverrideSchema).optional(),
+});
+
+type AssetFormValues = z.infer<typeof assetFormSchema>;
+type ProviderOverride = z.infer<typeof providerOverrideSchema>;
+
+const normalizeMic = (mic?: string | null): string => mic?.trim().toUpperCase() ?? "";
+
+const PROVIDER_SYMBOL_HINTS: Record<string, string> = {
+  YAHOO: "e.g. AAPL, LYMS.DE",
+  COINGECKO: "e.g. bitcoin, ethereum",
+  TWELVEDATA: "e.g. AAPL, EUR/USD",
+};
+
+function getSymbolPlaceholder(provider: string): string {
+  return PROVIDER_SYMBOL_HINTS[provider] ?? "e.g. AAPL";
+}
+
+function isResolvedByRequestedProvider(
+  resolvedProviderId: string | undefined,
+  requestedProvider: string | undefined,
+): boolean {
+  const requested = requestedProvider?.trim();
+  if (!requested) return true;
+  if (!resolvedProviderId) return false;
+
+  if (requested.startsWith("CUSTOM:")) {
+    const customProviderId = requested.slice("CUSTOM:".length);
+    return resolvedProviderId === `CUSTOM_SCRAPER:${customProviderId}`;
+  }
+
+  return resolvedProviderId === requested;
+}
+
+const EDIT_INSTRUMENT_TYPE_OPTIONS = [
+  { value: "EQUITY", label: "Equity (Stock, ETF, Fund)" },
+  { value: "CRYPTO", label: "Cryptocurrency" },
+  { value: "BOND", label: "Bond" },
+  { value: "OPTION", label: "Option" },
+  { value: "METAL", label: "Metal (Commodity)" },
+] as const;
+
+function extractIsin(metadata: unknown): string {
+  if (!metadata || typeof metadata !== "object") return "";
+  const identifiers = (metadata as Record<string, unknown>).identifiers;
+  if (!identifiers || typeof identifiers !== "object") return "";
+  return ((identifiers as Record<string, unknown>).isin as string) ?? "";
+}
+
+// Parse provider overrides from config JSON (supports nested and flat formats)
+function parseProviderOverrides(
+  config: Record<string, unknown> | null | undefined,
+): ProviderOverride[] {
+  if (!config) return [];
+  // Nested format: { overrides: { YAHOO: { symbol: "..." } } }
+  // Flat format (legacy): { YAHOO: { symbol: "..." } }
+  const source = (config.overrides as Record<string, unknown> | undefined) ?? config;
+  const result: ProviderOverride[] = [];
+  for (const [provider, value] of Object.entries(source)) {
+    if (typeof value === "object" && value !== null) {
+      const obj = value as Record<string, unknown>;
+      const symbol = obj.symbol as string;
+      if (symbol) {
+        result.push({ provider, symbol });
+      }
+    }
+  }
+  return result;
+}
+
+// Extract preferred_provider from config JSON
+// Returns "CUSTOM:<code>" when preferred_provider is CUSTOM_SCRAPER with custom_provider_code
+function parsePreferredProvider(
+  config: Record<string, unknown> | null | undefined,
+): string | undefined {
+  if (!config) return undefined;
+  const pref = config.preferred_provider;
+  if (typeof pref !== "string") return undefined;
+  if (pref === "CUSTOM_SCRAPER") {
+    const code = config.custom_provider_code;
+    return typeof code === "string" ? `CUSTOM:${code}` : pref;
+  }
+  return pref;
+}
+
+// Serialize form values to nested provider config JSON
+function serializeProviderConfig(
+  preferredProvider: string | undefined,
+  overrides: ProviderOverride[],
+  assetKind: string,
+): Record<string, unknown> | null {
+  const overrideType = getOverrideTypeForKind(assetKind);
+  const overridesMap: Record<string, unknown> = {};
+  for (const override of overrides ?? []) {
+    if (override.provider && override.symbol) {
+      overridesMap[override.provider] = {
+        type: overrideType,
+        symbol: override.symbol,
+      };
+    }
+  }
+  const hasOverrides = Object.keys(overridesMap).length > 0;
+
+  // Handle CUSTOM:<code> format
+  let actualProvider = preferredProvider;
+  let customProviderCode: string | undefined;
+  if (preferredProvider?.startsWith("CUSTOM:")) {
+    actualProvider = "CUSTOM_SCRAPER";
+    customProviderCode = preferredProvider.slice("CUSTOM:".length);
+  }
+
+  const hasPref = !!actualProvider;
+  if (!hasOverrides && !hasPref) return null;
+  const result: Record<string, unknown> = {};
+  if (hasPref) result.preferred_provider = actualProvider;
+  if (customProviderCode) result.custom_provider_code = customProviderCode;
+  if (hasOverrides) result.overrides = overridesMap;
+  return result;
+}
+
+type EditTab = "general" | "classification" | "market-data" | "fx-settings";
+
+// Extracted component for pricing mode toggle with controlled popover
+// Uses "Automatic Updates" toggle: ON = automatic, OFF = manual (more intuitive)
+function PricingModeToggle({
+  isManualMode,
+  onConfirm,
+}: {
+  isManualMode: boolean;
+  onConfirm: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const isAutomatic = !isManualMode;
+
+  return (
+    <div className="rounded-lg border p-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0 flex-1 space-y-1">
+          <Label className="text-sm font-medium">Automatic Updates</Label>
+          <p className="text-muted-foreground text-xs">
+            {isAutomatic
+              ? "Prices sync automatically from market data providers."
+              : "Automatic syncing is off. You manage prices manually."}
+          </p>
+        </div>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <button type="button" className="shrink-0">
+              <Switch checked={isAutomatic} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[360px] p-4" align="end">
+            <div className="space-y-4">
+              <h4 className="font-medium">
+                {isAutomatic ? "Disable Automatic Updates?" : "Enable Automatic Updates?"}
+              </h4>
+              {isAutomatic ? (
+                <>
+                  <p className="text-muted-foreground text-sm">
+                    Turning this off will stop automatic price updates. You&apos;ll need to enter
+                    and maintain price data yourself.
+                  </p>
+                  <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
+                    Automatic price updates will be disabled.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-muted-foreground text-sm">
+                    Turning this on will enable price fetching from market data providers. Your
+                    manually entered quotes will be preserved but may be overwritten on sync.
+                  </p>
+                  <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
+                    Manual quotes may be replaced by provider data.
+                  </p>
+                </>
+              )}
+              <div className="flex justify-end space-x-2">
+                <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => {
+                    onConfirm();
+                    setOpen(false);
+                  }}
+                >
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </div>
+  );
+}
+
+interface AssetEditSheetProps {
+  asset: Asset | null;
+  latestQuote?: Quote | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  defaultTab?: EditTab;
+}
+
+type SymbolValidationStatus = "idle" | "loading" | "valid" | "invalid";
+
+interface SymbolMappingRowProps {
+  index: number;
+  fieldId: string;
+  initialSymbol?: string;
+  control: ReturnType<typeof useForm<AssetFormValues>>["control"];
+  mappingProviderOptions: ResponsiveSelectOption[];
+  onRemove: () => void;
+  onValidationChange: (fieldId: string, status: SymbolValidationStatus) => void;
+}
+
+function SymbolMappingRow({
+  index,
+  fieldId,
+  initialSymbol,
+  control,
+  mappingProviderOptions,
+  onRemove,
+  onValidationChange,
+}: SymbolMappingRowProps) {
+  const [validationStatus, setValidationStatus] = useState<SymbolValidationStatus>(
+    initialSymbol?.trim() ? "valid" : "idle",
+  );
+  // Track whether we are on the first render to avoid re-validating pre-loaded values.
+  const isFirstRender = useRef(true);
+  const validationRequestSeq = useRef(0);
+
+  const symbol = useWatch({
+    control,
+    name: `providerConfig.${index}.symbol` as Path<AssetFormValues>,
+  }) as string | undefined;
+  const provider = useWatch({
+    control,
+    name: `providerConfig.${index}.provider` as Path<AssetFormValues>,
+  }) as string | undefined;
+  const instrumentType = useWatch({
+    control,
+    name: "instrumentType" as Path<AssetFormValues>,
+  }) as string | undefined;
+  const exchangeMic = useWatch({
+    control,
+    name: "instrumentExchangeMic" as Path<AssetFormValues>,
+  }) as string | undefined;
+  const quoteCcy = useWatch({
+    control,
+    name: "quoteCcy" as Path<AssetFormValues>,
+  }) as string | undefined;
+
+  useEffect(() => {
+    const requestId = ++validationRequestSeq.current;
+
+    // Skip validation on mount when the symbol is already known-good (loaded from DB).
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      if (symbol?.trim() === initialSymbol?.trim() && initialSymbol?.trim()) {
+        return;
+      }
+    }
+
+    const trimmedSymbol = symbol?.trim();
+    if (!trimmedSymbol) {
+      setValidationStatus("idle");
+      onValidationChange(fieldId, "idle");
+      return;
+    }
+
+    setValidationStatus("idle");
+    const requestExchangeMic = normalizeMic(exchangeMic) || undefined;
+    const requestInstrumentType = instrumentType?.trim() || undefined;
+    const requestQuoteCcy = quoteCcy?.trim() || undefined;
+    const requestProvider = provider?.trim() || undefined;
+
+    const timer = setTimeout(async () => {
+      if (validationRequestSeq.current !== requestId) return;
+
+      setValidationStatus("loading");
+      onValidationChange(fieldId, "idle");
+      try {
+        const result = await resolveSymbolQuote(
+          trimmedSymbol,
+          requestExchangeMic,
+          requestInstrumentType,
+          requestProvider,
+          requestQuoteCcy,
+        );
+        if (validationRequestSeq.current !== requestId) return;
+
+        const status: SymbolValidationStatus =
+          result?.price != null &&
+          isResolvedByRequestedProvider(result.resolvedProviderId, requestProvider)
+            ? "valid"
+            : "invalid";
+        setValidationStatus(status);
+        onValidationChange(fieldId, status);
+      } catch {
+        if (validationRequestSeq.current !== requestId) return;
+
+        setValidationStatus("invalid");
+        onValidationChange(fieldId, "invalid");
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [symbol, provider, instrumentType, exchangeMic, quoteCcy, fieldId, onValidationChange]); // eslint-disable-line react-hooks/exhaustive-deps -- initialSymbol is intentionally captured at mount time only
+
+  return (
+    <tr className="border-b last:border-b-0">
+      <td className="px-4 py-2">
+        <FormField
+          control={control}
+          name={`providerConfig.${index}.provider` as Path<AssetFormValues>}
+          render={({ field: providerField }) => (
+            <FormItem className="space-y-0">
+              <FormControl>
+                <ResponsiveSelect
+                  value={providerField.value as string | undefined}
+                  onValueChange={providerField.onChange}
+                  options={mappingProviderOptions}
+                  placeholder="Select provider"
+                  sheetTitle="Data Provider"
+                  sheetDescription="Select the data provider for this symbol mapping"
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+      </td>
+      <td className="px-4 py-2">
+        <FormField
+          control={control}
+          name={`providerConfig.${index}.symbol` as Path<AssetFormValues>}
+          render={({ field: symbolField }) => (
+            <FormItem className="space-y-0">
+              <FormControl>
+                <div className="relative flex items-center">
+                  <Input
+                    placeholder={getSymbolPlaceholder(provider ?? "")}
+                    {...{
+                      ...symbolField,
+                      value: (symbolField.value as string | undefined) ?? "",
+                    }}
+                    className="h-9 pr-8"
+                  />
+                  <span className="absolute right-2 flex items-center">
+                    {validationStatus === "loading" && (
+                      <span data-testid="symbol-validation-loading">
+                        <Icons.Spinner className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
+                      </span>
+                    )}
+                    {validationStatus === "valid" && (
+                      <span data-testid="symbol-validation-valid">
+                        <Icons.Check className="h-3.5 w-3.5 text-green-500" />
+                      </span>
+                    )}
+                    {validationStatus === "invalid" && (
+                      <span data-testid="symbol-validation-invalid">
+                        <Icons.AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </FormControl>
+            </FormItem>
+          )}
+        />
+      </td>
+      <td className="px-2 py-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={onRemove}
+          aria-label="Remove lot"
+        >
+          <Icons.Close className="h-4 w-4" />
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
+export function AssetEditSheet({
+  asset,
+  latestQuote,
+  open,
+  onOpenChange,
+  defaultTab = "general",
+}: AssetEditSheetProps) {
+  const [activeTab, setActiveTab] = useState<EditTab>(defaultTab);
+  const [symbolValidations, setSymbolValidations] = useState<
+    Record<string, SymbolValidationStatus>
+  >({});
+
+  const handleSymbolValidationChange = useCallback(
+    (fieldId: string, status: SymbolValidationStatus) => {
+      setSymbolValidations((prev) => ({ ...prev, [fieldId]: status }));
+    },
+    [],
+  );
+  const { data: taxonomies = [], isLoading: isTaxonomiesLoading } = useTaxonomies();
+  const { updateAssetProfileMutation } = useAssetProfileMutations();
+  const { data: marketDataProviders = [] } = useMarketDataProviders();
+  const { data: customProviders = [] } = useCustomProviders();
+
+  // Built-in providers only (exclude CUSTOM_SCRAPER dispatcher and custom provider rows)
+  const builtinProviders = useMemo(
+    () =>
+      marketDataProviders.filter((p) => p.id !== "CUSTOM_SCRAPER" && p.providerType !== "custom"),
+    [marketDataProviders],
+  );
+
+  const providerOptions: ResponsiveSelectOption[] = useMemo(() => {
+    const options: ResponsiveSelectOption[] = [
+      { value: "__auto__", label: "Auto (default)" },
+      ...builtinProviders.map((p) => ({ value: p.id, label: p.name })),
+    ];
+    for (const cp of customProviders) {
+      options.push({ value: `CUSTOM:${cp.id}`, label: cp.name });
+    }
+    return options;
+  }, [builtinProviders, customProviders]);
+
+  // Provider options for symbol mapping (without Auto, includes custom providers)
+  const mappingProviderOptions: ResponsiveSelectOption[] = useMemo(() => {
+    const options: ResponsiveSelectOption[] = builtinProviders.map((p) => ({
+      value: p.id,
+      label: p.name,
+    }));
+    for (const cp of customProviders) {
+      options.push({ value: `CUSTOM:${cp.id}`, label: cp.name });
+    }
+    return options;
+  }, [builtinProviders, customProviders]);
+
+  const { data: exchanges = [] } = useQuery({
+    queryKey: ["exchanges"],
+    queryFn: getExchanges,
+    staleTime: Infinity,
+  });
+
+  const currentMic = normalizeMic(asset?.instrumentExchangeMic);
+
+  const exchangeOptions = useMemo(() => {
+    const options = exchanges.map((e) => ({
+      value: normalizeMic(e.mic),
+      label: `${e.longName} (${e.name})`,
+    }));
+
+    if (currentMic && !options.some((option) => option.value === currentMic)) {
+      options.unshift({
+        value: currentMic,
+        label: asset?.exchangeName ? `${asset.exchangeName} (${currentMic})` : currentMic,
+      });
+    }
+
+    return options;
+  }, [exchanges, currentMic, asset?.exchangeName]);
+
+  // Split taxonomies by selection type
+  const { singleSelectTaxonomies, multiSelectTaxonomies } = useMemo(() => {
+    const sorted = [...taxonomies].sort((a, b) => a.sortOrder - b.sortOrder);
+    return {
+      singleSelectTaxonomies: sorted.filter((t) => t.isSingleSelect),
+      multiSelectTaxonomies: sorted.filter((t) => !t.isSingleSelect),
+    };
+  }, [taxonomies]);
+
+  const form = useForm<AssetFormValues>({
+    resolver: zodResolver(assetFormSchema),
+    defaultValues: {
+      name: asset?.name ?? "",
+      notes: asset?.notes ?? "",
+      isin: extractIsin(asset?.metadata),
+      instrumentType: asset?.instrumentType ?? "",
+      quoteCcy: asset?.quoteCcy ?? "",
+      instrumentExchangeMic: normalizeMic(asset?.instrumentExchangeMic),
+      quoteMode: asset?.quoteMode === "MANUAL" ? QuoteMode.MANUAL : QuoteMode.MARKET,
+      preferredProvider: parsePreferredProvider(
+        asset?.providerConfig as Record<string, unknown> | null,
+      ),
+      providerConfig: parseProviderOverrides(
+        asset?.providerConfig as Record<string, unknown> | null,
+      ),
+    },
+  });
+
+  const {
+    fields: overrideFields,
+    append: appendOverride,
+    remove: removeOverride,
+  } = useFieldArray({
+    control: form.control,
+    name: "providerConfig",
+  });
+
+  // Reset form when asset changes
+  useEffect(() => {
+    if (asset) {
+      form.reset({
+        name: asset.name ?? "",
+        notes: asset.notes ?? "",
+        isin: extractIsin(asset.metadata),
+        instrumentType: asset.instrumentType ?? "",
+        quoteCcy: asset.quoteCcy ?? "",
+        instrumentExchangeMic: normalizeMic(asset.instrumentExchangeMic),
+        quoteMode: asset.quoteMode === "MANUAL" ? QuoteMode.MANUAL : QuoteMode.MARKET,
+        preferredProvider: parsePreferredProvider(
+          asset.providerConfig as Record<string, unknown> | null,
+        ),
+        providerConfig: parseProviderOverrides(
+          asset.providerConfig as Record<string, unknown> | null,
+        ),
+      });
+    }
+  }, [asset, form]);
+
+  // Reset tab and validation state when sheet opens
+  useEffect(() => {
+    if (open) {
+      setActiveTab(defaultTab);
+      setSymbolValidations({});
+    }
+  }, [open, defaultTab, asset?.id]);
+
+  const handleSave = useCallback(
+    async (values: AssetFormValues) => {
+      if (!asset) return;
+
+      const hasInvalidMappings = Object.values(symbolValidations).some((s) => s === "invalid");
+      if (hasInvalidMappings) {
+        toast.warning(
+          "Some symbol mappings could not be validated. Prices may not update for those entries.",
+        );
+      }
+
+      // Serialize provider config to nested JSON format
+      const serializedOverrides = serializeProviderConfig(
+        values.preferredProvider,
+        values.providerConfig ?? [],
+        asset.kind ?? "INVESTMENT",
+      );
+      const normalizedMic = normalizeMic(values.instrumentExchangeMic);
+
+      try {
+        // Merge ISIN into existing metadata without clobbering other fields
+        const existingMeta: Record<string, unknown> = asset.metadata ?? {};
+        const existingIdentifiers: Record<string, unknown> =
+          typeof existingMeta.identifiers === "object" && existingMeta.identifiers !== null
+            ? (existingMeta.identifiers as Record<string, unknown>)
+            : {};
+        const isinTrimmed = values.isin?.trim() ?? "";
+        const newIdentifiers = isinTrimmed
+          ? { ...existingIdentifiers, isin: isinTrimmed }
+          : Object.fromEntries(Object.entries(existingIdentifiers).filter(([k]) => k !== "isin"));
+        const newMetadata = {
+          ...existingMeta,
+          ...(Object.keys(newIdentifiers).length > 0
+            ? { identifiers: newIdentifiers }
+            : { identifiers: undefined }),
+        };
+
+        // Update profile with all fields including quote mode
+        await updateAssetProfileMutation.mutateAsync({
+          id: asset.id,
+          displayCode: asset.displayCode,
+          name: values.name || "",
+          notes: values.notes ?? "",
+          instrumentType: values.instrumentType || null,
+          quoteMode: values.quoteMode,
+          quoteCcy: values.quoteCcy,
+          instrumentExchangeMic: normalizedMic || null,
+          providerConfig: serializedOverrides,
+          metadata: newMetadata,
+        });
+
+        onOpenChange(false);
+      } catch {
+        // Error toast is shown by mutation's onError callback
+        // Keep sheet open so user can retry
+      }
+    },
+    [asset, updateAssetProfileMutation, onOpenChange, symbolValidations],
+  );
+
+  const isManualMode = form.watch("quoteMode") === QuoteMode.MANUAL;
+  const isSaving = updateAssetProfileMutation.isPending;
+
+  // Check if current asset kind is system-managed (shouldn't allow editing)
+  const isSystemManagedKind = asset?.kind === "FX";
+
+  if (!asset) return null;
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="pb-safe flex h-full w-full flex-col sm:max-w-2xl">
+        <SheetHeader className="shrink-0 pb-4">
+          <div className="flex items-center gap-3">
+            <TickerAvatar symbol={asset.displayCode ?? ""} className="size-10" />
+            <div className="min-w-0 flex-1">
+              <SheetTitle className="truncate text-lg">
+                {asset.displayCode ?? asset.name ?? "Unknown"}
+              </SheetTitle>
+              <SheetDescription className="truncate text-sm">
+                {asset.name || "Edit asset"}
+              </SheetDescription>
+            </div>
+          </div>
+        </SheetHeader>
+
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as EditTab)}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          {asset.kind === "FX" ? (
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="market-data">Market Data</TabsTrigger>
+            </TabsList>
+          ) : (
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="general" className="px-1.5 text-xs sm:px-3 sm:text-sm">
+                General
+              </TabsTrigger>
+              <TabsTrigger value="classification" className="px-1.5 text-xs sm:px-3 sm:text-sm">
+                Classification
+              </TabsTrigger>
+              <TabsTrigger value="market-data" className="px-1.5 text-xs sm:px-3 sm:text-sm">
+                Market Data
+              </TabsTrigger>
+            </TabsList>
+          )}
+
+          <div className="min-h-0 flex-1 overflow-y-auto pt-4">
+            {/* General Tab */}
+            <TabsContent value="general" className="mt-0 h-full">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleSave)} className="space-y-6">
+                  {/* FX: Base and Quote Currency (both disabled) */}
+                  {asset.kind === "FX" ? (
+                    <div className="space-y-6">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Base Currency</label>
+                          <Input
+                            value={asset.instrumentSymbol ?? ""}
+                            disabled
+                            className="bg-muted/50"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Quote Currency</label>
+                          <Input value={asset.quoteCcy ?? ""} disabled className="bg-muted/50" />
+                        </div>
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Name</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Asset display name" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="isin"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>ISIN</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g. FR0010959676"
+                                className="font-mono uppercase"
+                                {...field}
+                                onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="notes"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Notes</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                rows={6}
+                                placeholder="Add any context or links"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className="flex justify-end gap-3 pt-4">
+                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={isSaving}>
+                          {isSaving ? "Saving..." : "Save Changes"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Regular assets: Symbol, Currency, Name, Notes, Asset Type, Exchange */
+                    <div className="space-y-6">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Symbol</label>
+                          <Input value={asset.displayCode ?? ""} disabled className="bg-muted/50" />
+                        </div>
+                        <FormField
+                          control={form.control}
+                          name="quoteCcy"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Currency</FormLabel>
+                              <FormControl>
+                                <CurrencyInput
+                                  value={field.value}
+                                  onChange={field.onChange}
+                                  placeholder="Select currency"
+                                  valueDisplay="code"
+                                  allowCustom
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Editable fields */}
+                      <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Name</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Asset display name" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="isin"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>ISIN</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g. FR0010959676"
+                                className="font-mono uppercase"
+                                {...field}
+                                onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="notes"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Notes</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                rows={10}
+                                placeholder="Add any context or links"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Instrument Type and Exchange */}
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <FormField
+                          control={form.control}
+                          name="instrumentType"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Instrument Type</FormLabel>
+                              <Select
+                                onValueChange={field.onChange}
+                                value={field.value ?? ""}
+                                disabled={isSystemManagedKind}
+                              >
+                                <FormControl>
+                                  <SelectTrigger className="h-11">
+                                    <SelectValue placeholder="Select type" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {EDIT_INSTRUMENT_TYPE_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="instrumentExchangeMic"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Exchange</FormLabel>
+                              <FormControl>
+                                <SearchableSelect
+                                  options={exchangeOptions}
+                                  value={field.value ?? ""}
+                                  onValueChange={field.onChange}
+                                  placeholder="Select exchange"
+                                  searchPlaceholder="Search exchanges..."
+                                  className="h-11"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-3 pt-4">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => onOpenChange(false)}
+                          disabled={isSaving}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={isSaving}>
+                          {isSaving ? (
+                            <span className="flex items-center gap-2">
+                              <Icons.Spinner className="h-4 w-4 animate-spin" /> Saving
+                            </span>
+                          ) : (
+                            "Save changes"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </form>
+              </Form>
+            </TabsContent>
+
+            {/* Classification Tab */}
+            <TabsContent value="classification" className="mt-0 h-full">
+              <div className="space-y-8 pb-8">
+                {isTaxonomiesLoading && <ClassificationSkeleton />}
+
+                {!isTaxonomiesLoading &&
+                  singleSelectTaxonomies.length === 0 &&
+                  multiSelectTaxonomies.length === 0 && (
+                    <div className="py-8 text-center">
+                      <p className="text-muted-foreground text-sm">
+                        No taxonomies configured. Create taxonomies in Settings to classify assets.
+                      </p>
+                    </div>
+                  )}
+
+                {!isTaxonomiesLoading &&
+                  singleSelectTaxonomies.map((taxonomy) => (
+                    <SingleSelectTaxonomy
+                      key={taxonomy.id}
+                      taxonomyId={taxonomy.id}
+                      assetId={asset.id}
+                      label={taxonomy.name}
+                    />
+                  ))}
+
+                {!isTaxonomiesLoading &&
+                  multiSelectTaxonomies.map((taxonomy) => (
+                    <MultiSelectTaxonomy
+                      key={taxonomy.id}
+                      taxonomyId={taxonomy.id}
+                      assetId={asset.id}
+                      label={taxonomy.name}
+                    />
+                  ))}
+              </div>
+            </TabsContent>
+
+            {/* Market Data Tab */}
+            <TabsContent value="market-data" className="mt-0 h-full">
+              <div className="space-y-6 pb-8">
+                <Form {...form}>
+                  <div className="space-y-6">
+                    {/* Latest Quote Card - First */}
+                    <div className="bg-muted/30 rounded-lg border p-4">
+                      {latestQuote ? (
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <p className="text-xl font-semibold">
+                              {formatPrice(latestQuote.close, latestQuote.currency)}
+                            </p>
+                            <p className="text-muted-foreground text-xs">Latest price</p>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">
+                              {new Date(latestQuote.timestamp).toLocaleDateString()}
+                            </p>
+                            <p className="text-muted-foreground text-xs">
+                              {new Date(latestQuote.timestamp).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
+                          <div>
+                            <Badge variant="secondary" className="text-xs">
+                              {latestQuote.dataSource}
+                            </Badge>
+                            <p className="text-muted-foreground mt-1 text-xs">Source</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <Alert variant="destructive" className="border-0 bg-transparent p-0">
+                          <Icons.AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            Unable to fetch price data for this asset. Check if the symbol is
+                            correct or try adding a symbol mapping below.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
+
+                    {/* Pricing Mode Toggle Card */}
+                    <PricingModeToggle
+                      isManualMode={isManualMode}
+                      onConfirm={() => {
+                        form.setValue(
+                          "quoteMode",
+                          isManualMode ? QuoteMode.MARKET : QuoteMode.MANUAL,
+                        );
+                      }}
+                    />
+
+                    {/* Preferred Provider - Only show for automatic pricing */}
+                    {!isManualMode && (
+                      <FormField
+                        control={form.control}
+                        name="preferredProvider"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Preferred Provider</FormLabel>
+                            {customProviders.length > 0 ? (
+                              <Select
+                                value={field.value ?? "__auto__"}
+                                onValueChange={(v) =>
+                                  field.onChange(v === "__auto__" ? undefined : v)
+                                }
+                              >
+                                <FormControl>
+                                  <SelectTrigger className="h-11">
+                                    <SelectValue placeholder="Auto (default)" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="__auto__">Auto (default)</SelectItem>
+                                  <SelectGroup>
+                                    <SelectLabel>Built-in</SelectLabel>
+                                    {builtinProviders.map((p) => (
+                                      <SelectItem key={p.id} value={p.id}>
+                                        {p.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                  <SelectGroup>
+                                    <SelectLabel>Custom</SelectLabel>
+                                    {customProviders.map((cp) => (
+                                      <SelectItem key={cp.id} value={`CUSTOM:${cp.id}`}>
+                                        {cp.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <FormControl>
+                                <ResponsiveSelect
+                                  value={field.value ?? "__auto__"}
+                                  onValueChange={(v) =>
+                                    field.onChange(v === "__auto__" ? undefined : v)
+                                  }
+                                  options={providerOptions}
+                                  placeholder="Auto (default)"
+                                  sheetTitle="Preferred Provider"
+                                  sheetDescription="Select which provider to use first for this asset"
+                                  triggerClassName="h-11"
+                                />
+                              </FormControl>
+                            )}
+                            <p className="text-muted-foreground text-xs">
+                              Choose which provider to try first when fetching prices.
+                            </p>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {/* Symbol Mapping - Only show for automatic pricing */}
+                    {!isManualMode && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className="text-sm font-medium">Symbol Mapping</label>
+                            <p className="text-muted-foreground text-xs">
+                              Use a different ticker for specific providers if the default
+                              doesn&apos;t work.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => appendOverride({ provider: "YAHOO", symbol: "" })}
+                          >
+                            <Icons.Plus className="mr-1 h-3 w-3" />
+                            Add
+                          </Button>
+                        </div>
+
+                        {overrideFields.length === 0 ? (
+                          <div className="rounded-lg border border-dashed p-6 text-center">
+                            <Icons.Link className="text-muted-foreground/50 mx-auto h-8 w-8" />
+                            <p className="text-muted-foreground mt-2 text-sm">
+                              No symbol mappings configured
+                            </p>
+                            <p className="text-muted-foreground text-xs">
+                              Using &quot;{asset.displayCode ?? ""}&quot; for all providers.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="bg-muted/50 border-b">
+                                  <th className="text-muted-foreground px-4 py-2 text-left text-xs font-medium">
+                                    Provider
+                                  </th>
+                                  <th className="text-muted-foreground px-4 py-2 text-left text-xs font-medium">
+                                    Symbol
+                                  </th>
+                                  <th className="w-10"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {overrideFields.map((field, index) => (
+                                  <SymbolMappingRow
+                                    key={field.id}
+                                    index={index}
+                                    fieldId={field.id}
+                                    initialSymbol={field.symbol}
+                                    control={form.control}
+                                    mappingProviderOptions={mappingProviderOptions}
+                                    onRemove={() => {
+                                      setSymbolValidations((prev) => {
+                                        const next = { ...prev };
+                                        delete next[field.id];
+                                        return next;
+                                      });
+                                      removeOverride(index);
+                                    }}
+                                    onValidationChange={handleSymbolValidationChange}
+                                  />
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Save Actions */}
+                    <div className="flex justify-end gap-3 border-t pt-4">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => onOpenChange(false)}
+                        disabled={isSaving}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={form.handleSubmit(handleSave)}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? (
+                          <span className="flex items-center gap-2">
+                            <Icons.Spinner className="h-4 w-4 animate-spin" /> Saving
+                          </span>
+                        ) : (
+                          "Save changes"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </Form>
+              </div>
+            </TabsContent>
+          </div>
+        </Tabs>
+
+        <div className="mt-auto border-t pt-4 sm:hidden">
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => onOpenChange(false)}
+          >
+            Close
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function ClassificationSkeleton() {
+  return (
+    <div className="space-y-8">
+      {Array.from({ length: 2 }).map((_, i) => (
+        <div key={`single-${i}`} className="space-y-2">
+          <Skeleton className="h-4 w-28" />
+          <div className="flex flex-wrap gap-1.5">
+            {Array.from({ length: 4 }).map((_, j) => (
+              <Skeleton key={j} className="h-7 w-16 rounded-full" />
+            ))}
+          </div>
+        </div>
+      ))}
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={`multi-${i}`} className="space-y-2">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-10 w-full rounded-md" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default AssetEditSheet;

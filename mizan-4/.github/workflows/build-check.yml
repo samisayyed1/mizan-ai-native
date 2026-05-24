@@ -1,0 +1,94 @@
+name: Build check
+
+# Cross-platform "does it compile" smoke test on PRs and main pushes.
+# Catches breaks like "this PR works on macOS but the Windows linker
+# now hates it" BEFORE we tag a release that would silently fail on
+# one platform.
+#
+# Distinct from pr-check.yml — that runs the full lint+test suite on
+# Ubuntu only. This runs the Tauri build (no bundling) on all three
+# desktop OSes to catch platform-specific compile breaks.
+#
+# Does NOT bundle, sign, or publish anything. Build artifacts are
+# discarded.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-14
+          - name: windows
+            os: windows-latest
+          - name: linux
+            os: ubuntu-22.04
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: build-check-${{ matrix.name }}
+
+      - name: Install Linux build dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `@mizan/ui` ships its types from `dist/` via project references.
+      # Frontend tsc fails (TS6305) on a fresh checkout if those .d.ts
+      # files aren't built first. pr-check.yml runs the same step.
+      - name: Build package types
+        run: pnpm run build:types
+
+      - name: Build frontend
+        run: pnpm run build
+
+      # `cargo check` over the workspace, including the Tauri app crate.
+      # Faster than `cargo build`, but still surfaces missing-feature /
+      # platform-specific compile errors. We skip `tauri build` proper —
+      # bundling adds 5+ minutes per OS and isn't needed to catch
+      # source-level breakage.
+      - name: Cargo check (workspace)
+        run: cargo check --workspace --all-targets

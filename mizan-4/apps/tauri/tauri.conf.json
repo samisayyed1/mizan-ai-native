@@ -1,0 +1,65 @@
+{
+  "build": {
+    "beforeDevCommand": "node ./apps/tauri/scripts/sync-ios-composer-icon.mjs && pnpm --filter frontend dev:tauri",
+    "beforeBuildCommand": "node ./apps/tauri/scripts/sync-ios-composer-icon.mjs && pnpm --filter frontend build:tauri",
+    "frontendDist": "../../dist",
+    "devUrl": "http://localhost:1420"
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "msi", "appimage"],
+    "icon": [
+      "icons/icon.png",
+      "icons/ios/AppIcon-512@2x.png",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "Sami Sayyed",
+    "copyright": "© 2026 Mizan. Originally Copyright (c) Teymz Inc. (Wealthfolio).",
+    "category": "public.app-category.finance",
+    "shortDescription": "A private portfolio terminal.",
+    "longDescription": "Mizan is a private investment portfolio tracker. All data lives on your device. End-to-end encrypted broker connections via Mizan Connect.",
+    "macOS": {
+      "bundleVersion": "20260301.1",
+      "minimumSystemVersion": "10.13"
+    }
+  },
+  "productName": "Mizan",
+  "mainBinaryName": "Mizan",
+  "version": "3.4.1",
+  "identifier": "app.mizan",
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        { "host": "connect.mizan.app", "pathPrefix": ["/deeplink"] },
+        { "host": "connect-staging.mizan.app", "pathPrefix": ["/deeplink"] }
+      ],
+      "desktop": {
+        "schemes": ["mizan"]
+      },
+      "schemes": ["mizan"]
+    }
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "dragDropEnabled": false,
+        "fullscreen": false,
+        "resizable": true,
+        "theme": "Light",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "title": "Mizan",
+        "width": 1440,
+        "height": 960
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' tauri: ipc: 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: asset: tauri:; font-src 'self' data:; script-src 'self' 'wasm-unsafe-eval' tauri:; connect-src 'self' ipc: tauri: https: ws: wss:; frame-src 'self' tauri:; worker-src 'self' blob:"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+[Unit]
+Description=Mizan Investment Tracker
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mizan
+EnvironmentFile=/opt/mizan/.env
+ExecStart=/usr/local/bin/mizan-server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

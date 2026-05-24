@@ -1,0 +1,102 @@
+name: Release server tarball
+
+# Build a standalone tarball of `apps/server` for self-hosters who want
+# to run Mizan in web mode (Proxmox LXC, bare metal, systemd, etc.).
+# Independent of release.yml so a desktop-only ship doesn't have to
+# wait on the server tarball, and vice versa.
+#
+# Output (attached to the same Release as release.yml's installers):
+#   - mizan-server-<ver>-linux-amd64.tar.gz
+#   - mizan-server-<ver>-linux-amd64.tar.gz.sha256
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-server-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prebuild:
+    # ubuntu-22.04 = glibc 2.35; binaries are forward-compatible with
+    # Debian 12+ and Ubuntu 22.04+.
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev libsqlite3-dev build-essential
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: prebuild-server-linux-amd64
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend (web target)
+        env:
+          BUILD_TARGET: web
+          CONNECT_AUTH_URL: ${{ vars.CONNECT_AUTH_URL }}
+          CONNECT_AUTH_PUBLISHABLE_KEY: ${{ vars.CONNECT_AUTH_PUBLISHABLE_KEY }}
+        run: pnpm --filter frontend... build
+
+      - name: Build server binary
+        env:
+          CONNECT_AUTH_URL: ${{ vars.CONNECT_AUTH_URL }}
+          CONNECT_AUTH_PUBLISHABLE_KEY: ${{ vars.CONNECT_AUTH_PUBLISHABLE_KEY }}
+          CONNECT_API_URL: ${{ vars.CONNECT_API_URL }}
+        run: cargo build --release --manifest-path apps/server/Cargo.toml
+
+      - name: Stage tarball contents
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          STAGE="mizan-server-${VERSION}-linux-amd64"
+          mkdir -p "${STAGE}"
+          cp target/release/mizan-server "${STAGE}/mizan-server"
+          cp -r dist "${STAGE}/dist"
+          cp LICENSE "${STAGE}/LICENSE" 2>/dev/null || true
+          cp packaging/server-prebuild/mizan.service.example "${STAGE}/mizan.service.example"
+          cp packaging/server-prebuild/README.md "${STAGE}/README.md"
+
+      - name: Create tarball + checksum
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          STAGE="mizan-server-${VERSION}-linux-amd64"
+          tar -czf "${STAGE}.tar.gz" "${STAGE}"
+          sha256sum "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256"
+
+      - name: Upload to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          # release.yml creates the Release with releaseDraft: false; this
+          # workflow just appends assets to the same tag.
+          draft: false
+          files: |
+            mizan-server-*-linux-amd64.tar.gz
+            mizan-server-*-linux-amd64.tar.gz.sha256

@@ -1,0 +1,48 @@
+[package]
+name = "mizan-ai"
+version.workspace = true
+edition.workspace = true
+description = "AI assistant with LLM orchestration using rig-core for Mizan"
+authors = ["Aziz Fadil"]
+license = "AGPL-3.0"
+repository = "https://github.com/afadil/mizan"
+
+[features]
+default = []
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+async-trait = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
+
+# LLM orchestration (rig-core crate exports as "rig")
+rig = { package = "rig-core", version = "0.30" }
+
+# Lazy static initialization
+once_cell = "1"
+
+# CSV parsing
+csv = "1.3"
+
+# Streaming
+tokio-stream = "0.1"
+
+# Numbers (for Decimal to f64 conversion)
+rust_decimal = { workspace = true }
+
+# Sibling crates
+mizan-core = { path = "../core" }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

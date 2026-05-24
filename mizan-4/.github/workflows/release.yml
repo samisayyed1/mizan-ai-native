@@ -1,0 +1,163 @@
+name: Release
+
+# Build + publish Mizan desktop installers for end users.
+#
+# Trigger: push a tag like `v1.0.0` (see RELEASING.md).
+# Output: 4 installers attached to a GitHub Release with the tag name:
+#   - macOS Apple Silicon  → Mizan_<ver>_aarch64.dmg
+#   - macOS Intel          → Mizan_<ver>_x64.dmg
+#   - Windows x64          → Mizan_<ver>_x64_en-US.msi
+#   - Linux x64            → Mizan_<ver>_amd64.AppImage
+#
+# Builds are intentionally UNSIGNED (Chunk DL-1 decision). Users see a
+# one-time "unverified developer" warning. Code-signing setup will be a
+# separate chunk if/when an Apple Developer account + Authenticode cert
+# are obtained. The signing-related env vars in tauri-action below
+# default to empty when their secrets aren't set, so unsigned is the
+# zero-config path.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+# Two pushes of the same tag (rare, but: re-tag, force-push) shouldn't
+# trample each other mid-build. Different tags can run in parallel.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      # One platform failing shouldn't kill the others — better to ship
+      # 3/4 installers than 0/4.
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-aarch64
+            os: macos-14
+            target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+          - name: macos-x86_64
+            os: macos-13
+            target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: "--target x86_64-pc-windows-msvc"
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: "--target x86_64-unknown-linux-gnu"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Cache per-target so macOS-arm and macOS-x86 don't poison
+          # each other's lockfiles / build artifacts.
+          key: release-${{ matrix.target }}
+
+      - name: Install Linux build dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build the React frontend BEFORE invoking tauri-action.
+      # tauri-action also runs the configured beforeBuildCommand, but
+      # surfacing a frontend failure here gives a clearer error than
+      # waiting for it to fail mid-bundle.
+      #
+      # The CONNECT_* env block has to be present on BOTH this step and
+      # the tauri-action step below. Without it here, Vite reads
+      # `import.meta.env.CONNECT_AUTH_URL` as undefined and the bundled
+      # JS hard-codes `CONNECT_ENABLED = false`. tauri-action's later
+      # beforeBuildCommand re-runs the same build with env, but Tauri's
+      # generate_context! macro expansion is cached against the dist/
+      # produced here — so the second build can be silently shadowed.
+      # Setting env on both steps makes the chain idempotent.
+      - name: Build frontend
+        env:
+          CONNECT_AUTH_URL: ${{ vars.CONNECT_AUTH_URL }}
+          CONNECT_AUTH_PUBLISHABLE_KEY: ${{ vars.CONNECT_AUTH_PUBLISHABLE_KEY }}
+          CONNECT_API_URL: ${{ vars.CONNECT_API_URL }}
+          CONNECT_OAUTH_CALLBACK_URL: ${{ vars.CONNECT_OAUTH_CALLBACK_URL }}
+        run: pnpm run build:tauri
+
+      # The actual desktop bundler. tauri-action handles:
+      #  - cargo tauri build with the matrix --target
+      #  - reading bundle.targets from tauri.conf.json
+      #  - creating/updating the GitHub Release
+      #  - uploading bundle artifacts as release assets
+      #
+      # __VERSION__ is replaced by tauri-action with the package version
+      # from tauri.conf.json.
+      - name: Build and publish Tauri bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Frontend env vars baked into the bundle. Empty -> Connect
+          # disabled, app runs in offline-only mode.
+          CONNECT_AUTH_URL: ${{ vars.CONNECT_AUTH_URL }}
+          CONNECT_AUTH_PUBLISHABLE_KEY: ${{ vars.CONNECT_AUTH_PUBLISHABLE_KEY }}
+          CONNECT_API_URL: ${{ vars.CONNECT_API_URL }}
+          CONNECT_OAUTH_CALLBACK_URL: ${{ vars.CONNECT_OAUTH_CALLBACK_URL }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Mizan ${{ github.ref_name }}"
+          releaseBody: |
+            See the assets below to download Mizan for your platform.
+
+            - **macOS Apple Silicon** — `*_aarch64.dmg`
+            - **macOS Intel** — `*_x64.dmg`
+            - **Windows x64** — `*_x64_en-US.msi`
+            - **Linux x64** — `*_amd64.AppImage`
+
+            ### Installation notes
+
+            Bundles are unsigned. On first launch:
+            - **macOS:** Right-click the app in Applications and choose **Open** the first time. macOS Gatekeeper will prompt; click **Open** to confirm.
+            - **Windows:** SmartScreen will warn. Click **More info → Run anyway**.
+            - **Linux:** `chmod +x Mizan_*.AppImage && ./Mizan_*.AppImage`
+
+            See the commit log for changes since the previous release.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

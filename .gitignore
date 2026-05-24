@@ -1,0 +1,41 @@
+# Top-level monorepo ignores. Subproject ignores live in
+# mizan-4/.gitignore and mizan-connect/.gitignore and apply
+# transparently — anything specific to those apps belongs there.
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Secrets / env (defence in depth — subprojects also ignore these)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local notes & scratch
+NOTES.md
+SCRATCH.md
+tasks
+**/*.local.md
+
+# Local-only Claude artifacts
+.claude/scheduled_tasks.lock
+.claude/*.lock
+.codex/
+
+# Smoke / scratch artifacts
+artifacts/

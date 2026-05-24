@@ -1,0 +1,9 @@
+{
+  "updateAvailable": false,
+  "latestVersion": "3.4.1",
+  "notes": "v3.4.1 — Mizan Connect demo polish, end-to-end Decimal precision across every per-unit price / quantity / cost basis display, day-boundary chart period filters, mutation toasts that surface real backend errors, accessibility regression guards on every icon-only button, and 30+ smaller hardening fixes. See the GitHub release notes for the full changelog.",
+  "pubDate": "2026-05-17T00:00:00.000Z",
+  "downloadUrl": "https://github.com/samisayyed1/mizan-4/releases/latest",
+  "changelogUrl": "https://github.com/samisayyed1/mizan-4/releases",
+  "screenshots": []
+}
