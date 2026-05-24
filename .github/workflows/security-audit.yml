@@ -1,0 +1,91 @@
+name: Security Audit
+
+# Surfaces known-vulnerable dependencies across the workspace (§A10
+# Security Posture, first cut). Runs cargo-audit on the Rust workspaces
+# and pnpm audit on the frontend.
+#
+# Triggers:
+#   - schedule — Mondays 09:00 UTC. New advisories show up over time
+#     against deps that didn't change, so a calendar trigger catches
+#     them without anyone having to remember.
+#   - push to main — every merged change sees the gate.
+#   - pull_request — only when a lockfile actually changed, so PRs that
+#     don't touch deps don't pay the audit-network round-trip.
+#   - workflow_dispatch — manual "Run workflow" before tagging a release.
+#
+# Failure policy: cargo-audit + pnpm audit both run with explicit
+# `--ignore` lists rather than `continue-on-error: true`. This forces
+# an explicit acknowledgement (with rationale) of each known advisory
+# rather than letting the surface silently grow. The "ignore" list is
+# intentionally empty for now — when an advisory hits, the team
+# triages it in a follow-on PR before the gate goes red.
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Mondays 09:00 UTC
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'mizan-4/Cargo.lock'
+      - 'mizan-connect/Cargo.lock'
+      - 'mizan-4/pnpm-lock.yaml'
+      - '.github/workflows/security-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit-mizan4:
+    name: cargo-audit (mizan-4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mizan-4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: mizan-4
+
+  cargo-audit-connect:
+    name: cargo-audit (mizan-connect)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run cargo audit
+        run: |
+          if [ -d mizan-connect ]; then
+            cd mizan-connect
+            cargo install --locked cargo-audit --version 0.21 || true
+            cargo audit
+          else
+            echo "::notice::mizan-connect/ not present — skipping"
+          fi
+
+  pnpm-audit-frontend:
+    name: pnpm audit (frontend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mizan-4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: mizan-4/pnpm-lock.yaml
+      # `--prod` scopes the check to runtime deps (Vite + ESLint + Vitest
+      # vulnerabilities don't ship to users). `--audit-level=high` filters
+      # the moderate/low noise that's overwhelming pnpm's default output;
+      # high + critical are the only ones a user-facing wealth-tracking
+      # app should never carry.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level=high
