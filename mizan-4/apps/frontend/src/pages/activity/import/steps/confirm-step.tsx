@@ -182,6 +182,17 @@ export function ConfirmStep() {
           dispatch(setStep("review"));
           return;
         }
+
+        // Backend returned success:false but no per-row errors — usually a
+        // global failure like "Account is required for all activities."
+        // Previously this fell through and the result step showed "Import
+        // complete" with 0 rows. Now we surface the actual error message
+        // on the confirm step so the user knows why nothing landed.
+        setImportError(
+          result.summary.errorMessage ||
+            "Import failed but the backend didn't say why. Open the developer console (Cmd+Option+I) and check the Mizan log for details.",
+        );
+        return;
       }
 
       const frontendSkipped = summary.skipped + summary.errors;

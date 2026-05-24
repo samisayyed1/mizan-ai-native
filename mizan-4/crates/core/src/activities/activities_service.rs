@@ -3866,32 +3866,68 @@ impl ActivityServiceTrait for ActivityService {
             }
         }
 
-        // ── 11. Synchronous quote sync for imported assets ────────────────────
+        // ── 11. Background post-import quote sync ─────────────────────────────
         //
-        // Historically the import flow returned to the UI immediately and
-        // left quote fetching to the background sync. Users hit the
-        // dashboard within seconds, the background sync hadn't caught
-        // up, the holdings_valuation_service fell back to $0 (later: cost
-        // basis), and the headline portfolio total looked wildly wrong
-        // until the next recalc. Symptom: a 78-position Yahoo Portfolio
-        // import showed $187K against an actual $236K market value.
+        // We used to AWAIT the quote sync inline so the dashboard always
+        // had live prices on first paint. But a 78-position broker
+        // export with a rate-limited Yahoo could leave the import call
+        // hanging for many seconds — sometimes long enough that users
+        // gave up and reported "import doesn't work" while the rows
+        // were already in the DB.
         //
-        // Enterprise-grade fix: BEFORE the import call returns, run an
-        // incremental quote sync against the asset IDs we just inserted
-        // activities for, AWAIT it, and capture the per-symbol outcome.
-        // The UI can then render "12 symbols got live prices, 3 using
-        // cost basis" with surgical accuracy on the first paint —
-        // instead of a silently-wrong total that self-corrects after an
-        // unspecified delay.
+        // Now the sync runs in a detached tokio task. The activity insert
+        // is still atomic (single transaction). The cost-basis fallback
+        // in holdings_valuation_service renders an accurate-if-
+        // conservative total during the few seconds between activity
+        // commit and quote arrival, and the spawned task re-emits
+        // `activities_changed` when it settles so the dashboard re-fetches
+        // and converges to live prices without the user noticing.
         //
         // Symbols Yahoo can't resolve (delisted, OTC, foreign exchanges
-        // the provider doesn't carry) remain on the cost-basis fallback
-        // shipped in #19. That's the safety net; this is the upgrade.
-        let quote_sync_report = if inserted_count > 0 && !asset_ids.is_empty() {
-            Some(self.run_post_import_quote_sync(&asset_ids).await)
-        } else {
-            None
-        };
+        // the provider doesn't carry) keep the cost-basis fallback.
+        if inserted_count > 0 && !asset_ids.is_empty() {
+            let quote_service = std::sync::Arc::clone(&self.quote_service);
+            let event_sink = std::sync::Arc::clone(&self.event_sink);
+            let account_ids_for_event = account_ids.clone();
+            let asset_ids_for_event = asset_ids.clone();
+            let currencies_for_event = currencies.clone();
+            let earliest_at_for_event = earliest_at;
+            let asset_ids_for_sync = asset_ids.clone();
+
+            tokio::spawn(async move {
+                use crate::quotes::SyncMode;
+                match quote_service
+                    .sync(SyncMode::Incremental, Some(asset_ids_for_sync.clone()))
+                    .await
+                {
+                    Ok(result) => {
+                        debug!(
+                            "Background post-import quote sync: {} quotes added for {} assets",
+                            result.quotes_synced,
+                            asset_ids_for_sync.len()
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Background post-import quote sync failed for {} assets: {}. \
+                             Dashboard will use cost-basis fallback until next recalc.",
+                            asset_ids_for_sync.len(),
+                            e
+                        );
+                    }
+                }
+
+                // Re-emit so the dashboard refetches holdings now that
+                // live prices have landed. The first emission below
+                // catches the row insert; this catches the price arrival.
+                event_sink.emit(DomainEvent::activities_changed(
+                    account_ids_for_event,
+                    asset_ids_for_event,
+                    currencies_for_event,
+                    earliest_at_for_event,
+                ));
+            });
+        }
 
         // ── 12. Emit events + build ordered result ────────────────────────────
         if inserted_count > 0 {
@@ -3913,7 +3949,12 @@ impl ActivityServiceTrait for ActivityService {
                 assets_created: 0,
                 success: true,
                 error_message: None,
-                quote_sync: quote_sync_report,
+                // The quote sync runs in a detached task and signals
+                // completion via a follow-up `activities_changed` event
+                // the dashboard already listens to. The inline per-symbol
+                // report is no longer returned because the import call
+                // doesn't wait for the sync.
+                quote_sync: None,
             },
         })
     }
@@ -4243,6 +4284,7 @@ impl ActivityService {
     /// service will keep the dashboard sane until the next sync attempt.
     /// Failing the import outright would be worse: the user would lose
     /// the parsed rows and have to re-upload.
+    #[allow(dead_code)] // kept for tests + future per-symbol report API
     pub(crate) async fn run_post_import_quote_sync(
         &self,
         asset_ids: &[String],
@@ -4745,6 +4787,7 @@ mod securities_transfer_tests {
 /// so the unit tests below can exercise every branch (full success,
 /// partial failure, all not-found, mixed skipped + failed, etc.)
 /// without standing up the whole ActivityService dependency graph.
+#[allow(dead_code)] // exercised in tests + run_post_import_quote_sync
 fn categorise_post_import_sync(
     asset_ids: &[String],
     id_set: &HashSet<&String>,
