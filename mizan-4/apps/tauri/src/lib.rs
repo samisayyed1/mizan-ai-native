@@ -500,6 +500,7 @@ pub fn run() {
             commands::limits::calculate_deposits_for_contribution_limit,
             // Utility commands
             commands::utilities::get_app_info,
+            commands::utilities::build_support_bundle,
             commands::utilities::check_for_updates,
             commands::utilities::install_app_update,
             commands::utilities::backup_database,

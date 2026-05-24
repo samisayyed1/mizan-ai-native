@@ -374,6 +374,7 @@ export {
   backupDatabase,
   backupDatabaseToPath,
   backupDatabaseToPathEncrypted,
+  buildSupportBundle,
   checkForUpdates,
   getAppInfo,
   getPlatform,

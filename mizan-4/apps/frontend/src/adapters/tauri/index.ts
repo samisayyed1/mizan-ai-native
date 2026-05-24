@@ -138,6 +138,7 @@ export {
   backupDatabaseToPathEncrypted,
   restoreDatabase,
   getAppInfo,
+  buildSupportBundle,
   checkForUpdates,
   installUpdate,
   getPlatform,

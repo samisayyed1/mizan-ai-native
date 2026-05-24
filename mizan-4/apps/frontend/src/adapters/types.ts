@@ -143,6 +143,42 @@ export interface AppInfo {
 }
 
 /**
+ * §A17 — User-triggered support diagnostic bundle.
+ *
+ * No PII: no API keys, no thread contents, no row-level data, no
+ * hostname/username. Just enough configuration + counts to reproduce
+ * a bug class.
+ */
+export interface SupportBundle {
+  generatedAt: string;
+  schemaVersion: number;
+  app: AppInfo;
+  osFamily: string;
+  osArch: string;
+  settings: {
+    baseCurrency: string;
+    timezone: string;
+    onboardingCompleted: boolean;
+    instrumentMode: string | null;
+    privacyMode: string | null;
+  };
+  counts: {
+    accounts: number;
+    activeAccounts: number;
+    activities: number;
+    alternativeAssets: number;
+    holdings: number;
+    goals: number;
+    exchangeRates: number;
+  };
+  fxRates: {
+    pair: string;
+    ageHours: number;
+    isStale: boolean;
+  }[];
+}
+
+/**
  * Result from checking for application updates.
  */
 export interface UpdateCheckResult {

@@ -1,8 +1,21 @@
 // Settings Commands
 import type { Settings, UpdateInfo } from "@/lib/types";
-import type { AppInfo, PlatformInfo } from "../types";
+import type { AppInfo, PlatformInfo, SupportBundle } from "../types";
 
 import { invoke, logger, tauriInvoke } from "./core";
+
+/**
+ * §A17 — fetch a sanitised diagnostic bundle the user can copy / send
+ * to support. No PII included. Throws on Tauri command rejection.
+ */
+export const buildSupportBundle = async (): Promise<SupportBundle> => {
+  try {
+    return await invoke<SupportBundle>("build_support_bundle");
+  } catch (err) {
+    logger.error("Error building support bundle");
+    throw err;
+  }
+};
 
 export const getSettings = async (): Promise<Settings> => {
   try {

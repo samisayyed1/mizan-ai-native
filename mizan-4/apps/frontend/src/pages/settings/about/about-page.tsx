@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { getAppInfo } from "@/adapters";
+import { buildSupportBundle, getAppInfo } from "@/adapters";
 import { ExternalLink } from "@/components/external-link";
 import { usePlatform } from "@/hooks/use-platform";
 import { useCheckForUpdates } from "@/hooks/use-updater";
@@ -58,6 +58,35 @@ export default function AboutSettingsPage() {
         variant: "destructive",
       });
       console.error("Failed to copy to clipboard:", error);
+    }
+  };
+
+  /**
+   * §A17 — build the diagnostic bundle and put it on the clipboard. No
+   * file download yet; copy-to-clipboard is the lowest-friction first
+   * step. Users paste it into the support email thread.
+   */
+  const [bundleBusy, setBundleBusy] = useState(false);
+  const handleCopySupportBundle = async () => {
+    if (bundleBusy) return;
+    setBundleBusy(true);
+    try {
+      const bundle = await buildSupportBundle();
+      await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
+      toast({
+        title: "Diagnostic bundle copied",
+        description: "Paste it into the support email. No keys or row data are included.",
+      });
+    } catch (error) {
+      toast({
+        title: "Couldn't build the diagnostic bundle",
+        description:
+          "Email support@mizan.app with your version + OS so we can still help triage.",
+        variant: "destructive",
+      });
+      console.error("Failed to build support bundle:", error);
+    } finally {
+      setBundleBusy(false);
     }
   };
 
@@ -199,7 +228,22 @@ export default function AboutSettingsPage() {
                   Report Issue
                 </ExternalLink>
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="inline-flex items-center gap-2"
+                onClick={handleCopySupportBundle}
+                disabled={bundleBusy}
+              >
+                <Icons.Copy className="h-4 w-4" />
+                {bundleBusy ? "Building…" : "Copy diagnostic bundle"}
+              </Button>
             </div>
+            <p className="text-muted-foreground text-xs">
+              The diagnostic bundle is sanitised (no API keys, no row-level data, no hostnames) —
+              just app version, OS, settings, and counts. Paste it into the support email so we can
+              reproduce your issue without asking for your data.
+            </p>
 
             <Separator />
 

@@ -97,6 +97,40 @@ export const getAppInfo = async (): Promise<AppInfo> => {
   }
 };
 
+/**
+ * §A17 — fetch a sanitised diagnostic bundle. Web build has no Tauri
+ * services so this is a synthetic stub that mirrors the Tauri shape;
+ * support reports from the web build won't have account counts but will
+ * still carry app version + OS hint, which is enough to triage.
+ */
+export const buildSupportBundle = async (): Promise<import("../types").SupportBundle> => {
+  const app = await getAppInfo();
+  return {
+    generatedAt: new Date().toISOString(),
+    schemaVersion: 1,
+    app,
+    osFamily: typeof navigator !== "undefined" ? navigator.platform || "web" : "web",
+    osArch: "web",
+    settings: {
+      baseCurrency: "?",
+      timezone: typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "?",
+      onboardingCompleted: false,
+      instrumentMode: null,
+      privacyMode: null,
+    },
+    counts: {
+      accounts: -1,
+      activeAccounts: -1,
+      activities: -1,
+      alternativeAssets: -1,
+      holdings: -1,
+      goals: -1,
+      exchangeRates: -1,
+    },
+    fxRates: [],
+  };
+};
+
 // ============================================================================
 // Updater Commands
 // ============================================================================

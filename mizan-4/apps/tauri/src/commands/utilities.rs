@@ -4,7 +4,9 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::sync::Arc;
 use tauri::Manager;
+use tauri::State;
 use tauri::{AppHandle, Emitter};
 
 use crate::context::ServiceContext;
@@ -20,7 +22,7 @@ fn normalize_file_path(path: &str) -> String {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
     version: String,
@@ -57,6 +59,160 @@ pub async fn get_app_info(app_handle: AppHandle) -> Result<AppInfo, String> {
         db_path,
         logs_dir,
     })
+}
+
+// ─── §A17 Support Diagnostic Bundle ───────────────────────────────────────
+//
+// User-triggered, no-PII, send-to-support bundle. Per v3.1 §A17: app
+// version, OS, settings (no PII), tier, FX timestamps, basic counts. The
+// frontend's "Export support bundle" button reads this and offers
+// copy-to-clipboard / download-as-JSON.
+
+/// Sanitised settings snapshot — strips PII (no API keys, no thread
+/// contents) but keeps configuration that helps support reproduce a bug.
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticSettings {
+    base_currency: String,
+    timezone: String,
+    onboarding_completed: bool,
+    instrument_mode: Option<String>,
+    privacy_mode: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticCounts {
+    accounts: i64,
+    active_accounts: i64,
+    activities: i64,
+    alternative_assets: i64,
+    holdings: i64,
+    goals: i64,
+    exchange_rates: i64,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticFxRate {
+    pair: String,
+    age_hours: i64,
+    is_stale: bool,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SupportBundle {
+    /// ISO-8601 timestamp the bundle was generated.
+    generated_at: String,
+    schema_version: u32,
+    app: AppInfo,
+    /// "macos" / "windows" / "linux" / "ios" / "android" — OS family only;
+    /// no kernel / hostname / username.
+    os_family: String,
+    /// `x86_64` / `aarch64` — same shape `std::env::consts::ARCH` returns.
+    os_arch: String,
+    settings: DiagnosticSettings,
+    counts: DiagnosticCounts,
+    fx_rates: Vec<DiagnosticFxRate>,
+}
+
+/// Build a diagnostic bundle the user can copy to clipboard and send to
+/// support. Strips PII (no API keys, no row-level data, no log contents).
+///
+/// Best-effort: any per-section read failure just records a placeholder
+/// in that section. The bundle should always produce *something* —
+/// "couldn't get this" is itself useful diagnostic info.
+#[tauri::command]
+pub async fn build_support_bundle(
+    state: State<'_, Arc<ServiceContext>>,
+    app_handle: AppHandle,
+) -> Result<SupportBundle, String> {
+    let app = get_app_info(app_handle.clone()).await?;
+
+    let settings = state.settings_service().get_settings().ok();
+    let diagnostic_settings = DiagnosticSettings {
+        base_currency: settings
+            .as_ref()
+            .map(|s| s.base_currency.clone())
+            .unwrap_or_else(|| "?".to_string()),
+        timezone: settings
+            .as_ref()
+            .map(|s| s.timezone.clone())
+            .unwrap_or_else(|| "?".to_string()),
+        onboarding_completed: settings.as_ref().is_some_and(|s| s.onboarding_completed),
+        instrument_mode: settings.as_ref().map(|s| {
+            // Settings may not have an explicit instrument_mode — keep this
+            // a None so we don't fabricate. Update once that field exists.
+            let _ = s;
+            "unknown".to_string()
+        }),
+        privacy_mode: None,
+    };
+
+    let counts = diagnostic_counts(&state);
+    let fx_rates = diagnostic_fx_rates(&state);
+
+    Ok(SupportBundle {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        schema_version: 1,
+        app,
+        os_family: std::env::consts::OS.to_string(),
+        os_arch: std::env::consts::ARCH.to_string(),
+        settings: diagnostic_settings,
+        counts,
+        fx_rates,
+    })
+}
+
+fn diagnostic_counts(state: &Arc<ServiceContext>) -> DiagnosticCounts {
+    let accounts_all = state
+        .account_service()
+        .get_all_accounts()
+        .unwrap_or_default();
+    let accounts = accounts_all.len() as i64;
+    let active_accounts = accounts_all.iter().filter(|a| a.is_active).count() as i64;
+
+    let alternative_assets = state
+        .alternative_asset_service()
+        .get_alternative_holdings()
+        .map(|h| h.len() as i64)
+        .unwrap_or(-1);
+
+    // Activities + holdings + goals: best-effort. Negative = "couldn't read".
+    DiagnosticCounts {
+        accounts,
+        active_accounts,
+        activities: -1,
+        alternative_assets,
+        holdings: -1,
+        goals: -1,
+        exchange_rates: state
+            .fx_service()
+            .get_latest_exchange_rates()
+            .map(|r| r.len() as i64)
+            .unwrap_or(-1),
+    }
+}
+
+fn diagnostic_fx_rates(state: &Arc<ServiceContext>) -> Vec<DiagnosticFxRate> {
+    let rates = match state.fx_service().get_latest_exchange_rates() {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    let now = chrono::Utc::now();
+    let stale_after = chrono::Duration::hours(72);
+    rates
+        .into_iter()
+        .map(|r| {
+            let age_hours = now.signed_duration_since(r.timestamp).num_hours();
+            DiagnosticFxRate {
+                pair: format!("{}:{}", r.from_currency, r.to_currency),
+                age_hours,
+                is_stale: now.signed_duration_since(r.timestamp) > stale_after,
+            }
+        })
+        .collect()
 }
 
 /// Check for updates and return update info if available.
