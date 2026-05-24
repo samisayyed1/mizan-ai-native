@@ -32,6 +32,8 @@ use rig::agent::{HookAction, StreamingPromptHook, ToolCallHookAction};
 use rig::completion::CompletionModel;
 use rig::message::Message;
 
+use crate::safety::AiSafetyRuntime;
+
 /// Maximum distinct identical `(tool_name, args_json)` calls we'll execute.
 /// Beyond this count the hook returns a "stop calling this" skip. Two is
 /// enough: first call executes, second re-request serves as a tolerance for
@@ -72,6 +74,13 @@ struct HookState {
 #[derive(Default, Clone)]
 pub struct MizanStreamHook {
     state: Arc<Mutex<HookState>>,
+    /// §A6 audit emitter. When set, every tool-call attempt + outcome is
+    /// recorded to the structured audit log. None disables audit (used by
+    /// tests where the runtime isn't wired).
+    safety: Option<Arc<AiSafetyRuntime>>,
+    /// Per-stream thread + turn id used as the audit row key.
+    audit_thread_id: Arc<Mutex<String>>,
+    audit_turn_index: Arc<Mutex<u32>>,
 }
 
 impl MizanStreamHook {
@@ -79,8 +88,40 @@ impl MizanStreamHook {
         Self::default()
     }
 
+    /// Attach a §A6 safety runtime so every tool-call attempt + result is
+    /// audited. The runtime's per-turn cap is INFORMATIONAL here — the
+    /// stream hook's own `MAX_TOTAL_TOOL_CALLS` is what stops the run.
+    /// Both fire on excess; the runtime's cap exceeding is logged as
+    /// `CapExceeded` in the audit trail.
+    pub fn with_safety(mut self, safety: Arc<AiSafetyRuntime>) -> Self {
+        self.safety = Some(safety);
+        self
+    }
+
+    /// Set the thread id + turn index used to key audit rows.
+    pub fn with_audit_keys(self, thread_id: impl Into<String>, turn_index: u32) -> Self {
+        if let Ok(mut tid) = self.audit_thread_id.lock() {
+            *tid = thread_id.into();
+        }
+        if let Ok(mut ti) = self.audit_turn_index.lock() {
+            *ti = turn_index;
+        }
+        self
+    }
+
     fn key(tool_name: &str, args: &str) -> String {
         format!("{}::{}", tool_name, args)
+    }
+
+    /// Snapshot of the current audit keys. Cheap clones.
+    fn audit_keys(&self) -> (String, u32) {
+        let tid = self
+            .audit_thread_id
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default();
+        let ti = self.audit_turn_index.lock().map(|t| *t).unwrap_or(0);
+        (tid, ti)
     }
 }
 
@@ -102,15 +143,36 @@ impl<M: CompletionModel> StreamingPromptHook<M> for MizanStreamHook {
             };
 
             state.total_tool_calls += 1;
-            if state.total_tool_calls > MAX_TOTAL_TOOL_CALLS {
+            let total_so_far = state.total_tool_calls;
+            if total_so_far > MAX_TOTAL_TOOL_CALLS {
+                // §A6 audit — emit a CapExceeded row before terminating
+                // the run so the audit trail captures the wall-hit.
+                if let Some(ref safety) = self.safety {
+                    let (tid, ti) = self.audit_keys();
+                    let _ = safety.register(&tid, ti, &tool_name).err().map(|entry| {
+                        safety.emit(&entry);
+                    });
+                }
                 warn!(
                     "Tool-call cap tripped: {} total calls this turn — terminating",
-                    state.total_tool_calls
+                    total_so_far
                 );
                 return ToolCallHookAction::terminate(
                     "The model exceeded the tool-call limit for a single turn. \
                      Ending the run; ask the user to rephrase or switch to a more capable model.",
                 );
+            }
+
+            // §A6 audit — register + emit for every dispatched tool call.
+            // The runtime's own per-turn counter parallels the stream
+            // hook's counter; they may diverge if the runtime has a
+            // tighter cap (DEFAULT 8 vs stream MAX 20), in which case
+            // the runtime's `CapExceeded` row is still useful diagnostic.
+            if let Some(ref safety) = self.safety {
+                let (tid, ti) = self.audit_keys();
+                match safety.register(&tid, ti, &tool_name) {
+                    Ok(entry) | Err(entry) => safety.emit(&entry),
+                }
             }
 
             let count = state.tool_call_counts.entry(key.clone()).or_insert(0);

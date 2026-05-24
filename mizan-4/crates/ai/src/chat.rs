@@ -1923,7 +1923,16 @@ async fn stream_agent_response<M: CompletionModel + 'static, E: AiEnvironment + 
     // Attach a per-run hook that deduplicates repeated tool calls, caps the
     // total tool-call count, and aborts stuck text-token loops. Cheap to clone
     // (state is behind an Arc<Mutex<_>>).
-    let hook = crate::stream_hook::MizanStreamHook::new();
+    //
+    // §A6 wiring: every dispatched tool call also emits to the audit log via
+    // AiSafetyRuntime. A fresh runtime per stream is fine — the hook lives
+    // for one turn, the runtime's per-thread counter is just for the
+    // CapExceeded discriminator. When ServiceContext eventually owns a
+    // shared runtime, swap to `env.safety_runtime()` here.
+    let safety_runtime = std::sync::Arc::new(crate::safety::AiSafetyRuntime::new());
+    let hook = crate::stream_hook::MizanStreamHook::new()
+        .with_safety(safety_runtime)
+        .with_audit_keys(&thread_id, 0);
 
     // Start multi-turn streaming (up to 6 tool rounds). The hook provides the
     // finer-grained guards inside those turns.
