@@ -1309,6 +1309,13 @@ pub mod test_env {
             self.secret_store.set_secret(key, value).unwrap();
             self
         }
+
+        /// Replace the mock account service with one populated by `accounts`.
+        /// Lets write-tool tests (create_account, update_account, …) drive
+        /// the resolver against a real account list.
+        pub fn set_accounts(&mut self, accounts: Vec<Account>) {
+            self.account_service = Arc::new(MockAccountService { accounts });
+        }
     }
 
     #[async_trait]

@@ -9,7 +9,7 @@
 
 use async_trait::async_trait;
 use chrono::{Duration, NaiveDate, TimeZone, Utc};
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -1265,7 +1265,12 @@ where
                     });
                 }
                 Err(err) => {
-                    debug!(
+                    // Previously logged at debug! and was invisible in
+                    // release builds — so when the entire provider chain
+                    // returned nothing for the dashboard ticker, no one
+                    // knew why. Warn so the user-facing health check has
+                    // something to act on and so release logs surface it.
+                    warn!(
                         "resolve_symbol_quote: provider lookup failed for symbol='{}' mic={:?}: {}",
                         attempt_symbol, exchange_mic, err
                     );

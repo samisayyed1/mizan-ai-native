@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { getAppInfo } from "@/adapters";
+import { exportUserDataJson, getAppInfo } from "@/adapters";
 import { ExternalLink } from "@/components/external-link";
 import { usePlatform } from "@/hooks/use-platform";
 import { useCheckForUpdates } from "@/hooks/use-updater";
@@ -58,6 +58,41 @@ export default function AboutSettingsPage() {
         variant: "destructive",
       });
       console.error("Failed to copy to clipboard:", error);
+    }
+  };
+
+  // §A20 — GDPR-style user data export. Triggers a JSON-file download
+  // straight from the local store; never round-trips through any server.
+  const [exportBusy, setExportBusy] = useState(false);
+  const handleExportData = async () => {
+    if (exportBusy) return;
+    setExportBusy(true);
+    try {
+      const json = await exportUserDataJson();
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      a.href = url;
+      a.download = `mizan-export-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Export downloaded",
+        description: "Your full local data is saved as a JSON file.",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not export data.";
+      toast({
+        title: "Export failed",
+        description: message,
+        variant: "destructive",
+      });
+      console.error("Failed to export user data:", error);
+    } finally {
+      setExportBusy(false);
     }
   };
 
@@ -199,7 +234,25 @@ export default function AboutSettingsPage() {
                   Report Issue
                 </ExternalLink>
               </Button>
+              {!isMobile && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="inline-flex items-center gap-2"
+                  onClick={handleExportData}
+                  disabled={exportBusy}
+                >
+                  <Icons.Download className="h-4 w-4" />
+                  {exportBusy ? "Exporting…" : "Export my data"}
+                </Button>
+              )}
             </div>
+            {!isMobile && (
+              <p className="text-muted-foreground text-xs">
+                The export contains all your accounts, activities, goals, holdings, and settings as
+                a single JSON file. It never leaves your machine.
+              </p>
+            )}
 
             <Separator />
 

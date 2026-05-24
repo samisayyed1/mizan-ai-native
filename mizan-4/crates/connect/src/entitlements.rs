@@ -49,6 +49,9 @@ pub struct Entitlements {
     pub csv_imports_monthly: i32,
     /// Advanced/deep reports (income, rental, payoff, health score).
     pub advanced_reports: bool,
+    /// Zakat & purification assessment engine. Gold-only (per Feroz 25 May 2026:
+    /// "Zakat moves to Gold — it's more complex than the Silver tier should bear.")
+    pub zakat_engine: bool,
     /// Advisor/enterprise client dashboards & white-label.
     pub advisor_mode: bool,
 }
@@ -72,6 +75,7 @@ impl Default for Entitlements {
             market_refresh_daily_limit: 0,
             csv_imports_monthly: UNLIMITED,
             advanced_reports: false,
+            zakat_engine: false,
             advisor_mode: false,
         }
     }
@@ -113,6 +117,7 @@ pub fn entitlements_for_plan(plan: Option<&str>, status: Option<&str>) -> Entitl
             market_refresh_daily_limit: 0,
             csv_imports_monthly: UNLIMITED,
             advanced_reports: false,
+            zakat_engine: false,
             advisor_mode: false,
         },
 
@@ -131,6 +136,7 @@ pub fn entitlements_for_plan(plan: Option<&str>, status: Option<&str>) -> Entitl
             market_refresh_daily_limit: UNLIMITED,
             csv_imports_monthly: UNLIMITED,
             advanced_reports: true,
+            zakat_engine: true,
             advisor_mode: matches!(plan, Some("enterprise") | Some("advisor")),
         },
 
@@ -150,6 +156,7 @@ pub fn entitlements_for_plan(plan: Option<&str>, status: Option<&str>) -> Entitl
             market_refresh_daily_limit: UNLIMITED,
             csv_imports_monthly: UNLIMITED,
             advanced_reports: true,
+            zakat_engine: true,
             advisor_mode: false,
         },
     }

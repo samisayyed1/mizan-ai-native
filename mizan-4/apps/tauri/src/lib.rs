@@ -176,12 +176,25 @@ mod desktop {
             scheduler::run_startup_fx_refresh(&fx_handle, &fx_context).await;
         });
 
-        // Start periodic market data sync (6h interval, 2min initial delay)
+        // Eager startup market data sync (no delay) — fills the local
+        // quote cache immediately so the ticker conveyor and headline
+        // holding values render with live prices on first paint.
+        // Without this the user sees blank cells for ~2 minutes on every
+        // cold launch.
+        let startup_quote_handle = handle.clone();
+        let startup_quote_context = Arc::clone(&context);
+        tauri::async_runtime::spawn(async move {
+            scheduler::run_startup_quote_sync(&startup_quote_handle, &startup_quote_context).await;
+        });
+
+        // Periodic market data sync continues every 6h. Initial delay is
+        // kept short (15 s) so it doesn't double-fire with the startup
+        // sync above on machines where the startup sync resolves fast.
         let periodic_quote_service = Arc::clone(&context.quote_service);
         tauri::async_runtime::spawn(async move {
             mizan_core::quotes::scheduler::run_periodic_sync(
                 periodic_quote_service,
-                std::time::Duration::from_secs(120),
+                std::time::Duration::from_secs(15),
                 std::time::Duration::from_secs(6 * 3600),
             )
             .await;
@@ -446,6 +459,7 @@ pub fn run() {
             commands::activity::delete_import_template,
             commands::activity::check_existing_duplicates,
             commands::activity::parse_csv,
+            commands::activity::parse_csv_text,
             commands::activity::analyze_csv_import,
             // Settings commands
             commands::settings::get_settings,
@@ -500,6 +514,7 @@ pub fn run() {
             commands::limits::calculate_deposits_for_contribution_limit,
             // Utility commands
             commands::utilities::get_app_info,
+            commands::utilities::export_user_data_json,
             commands::utilities::check_for_updates,
             commands::utilities::install_app_update,
             commands::utilities::backup_database,
