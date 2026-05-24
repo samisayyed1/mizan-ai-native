@@ -117,6 +117,12 @@ pub struct ActivityService {
     quote_service: Arc<dyn QuoteServiceTrait>,
     import_run_repository: Option<Arc<dyn ImportRunRepositoryTrait>>,
     event_sink: Arc<dyn DomainEventSink>,
+    /// §A1/§A2 — optional hash-chained truth ledger. When set, every
+    /// successful `create_activity` appends an `ActivityRecorded` entry
+    /// so holdings/balances/performance can replay from the chain in
+    /// follow-on PRs. Optional because tests + legacy constructors
+    /// don't need to thread one through.
+    truth_ledger: Option<Arc<dyn crate::truth_engine::TruthLedger>>,
 }
 
 #[derive(Clone, Copy)]
@@ -329,6 +335,7 @@ impl ActivityService {
             quote_service,
             import_run_repository: None,
             event_sink: Arc::new(NoOpDomainEventSink),
+            truth_ledger: None,
         }
     }
 
@@ -349,7 +356,19 @@ impl ActivityService {
             quote_service,
             import_run_repository: Some(import_run_repository),
             event_sink: Arc::new(NoOpDomainEventSink),
+            truth_ledger: None,
         }
+    }
+
+    /// §A1/§A2 — wire a truth ledger so successful activity writes append
+    /// to the immutable hash chain. Idempotent + optional: when unset,
+    /// activity writes proceed unchanged.
+    pub fn with_truth_ledger(
+        mut self,
+        truth_ledger: Arc<dyn crate::truth_engine::TruthLedger>,
+    ) -> Self {
+        self.truth_ledger = Some(truth_ledger);
+        self
     }
 
     fn parse_activity_timestamp_utc(activity_date: &str) -> Option<DateTime<Utc>> {
@@ -2905,6 +2924,61 @@ impl ActivityServiceTrait for ActivityService {
             .create_activity(prepared)
             .await
             .map_err(Self::map_duplicate_idempotency_violation)?;
+
+        // §A1/§A2 — append to immutable truth ledger. Best-effort: ledger
+        // failures must not roll back the activity write (the ledger is
+        // an audit overlay; the activity row remains source-of-truth
+        // until the holdings-replay migration lands).
+        if let Some(ref ledger) = self.truth_ledger {
+            let mut metadata: std::collections::BTreeMap<String, serde_json::Value> =
+                std::collections::BTreeMap::new();
+            metadata.insert(
+                "activityType".to_string(),
+                serde_json::Value::String(created.activity_type.clone()),
+            );
+            if let Some(q) = created.quantity {
+                metadata.insert(
+                    "quantity".to_string(),
+                    serde_json::Value::String(q.to_string()),
+                );
+            }
+            if let Some(p) = created.unit_price {
+                metadata.insert(
+                    "unitPrice".to_string(),
+                    serde_json::Value::String(p.to_string()),
+                );
+            }
+            if let Some(f) = created.fee {
+                metadata.insert(
+                    "fee".to_string(),
+                    serde_json::Value::String(f.to_string()),
+                );
+            }
+            if let Some(ref subtype) = created.subtype {
+                metadata.insert(
+                    "subtype".to_string(),
+                    serde_json::Value::String(subtype.clone()),
+                );
+            }
+            let amount = created.amount;
+            let append_input = crate::truth_engine::AppendInput {
+                id: format!("activity:{}", created.id),
+                kind: Some(crate::truth_engine::LedgerEntryKind::ActivityRecorded),
+                account_id: Some(created.account_id.clone()),
+                asset_id: created.asset_id.clone(),
+                amount,
+                currency: Some(created.currency.clone()),
+                metadata,
+                recorded_at: Some(created.activity_date),
+            };
+            if let Err(e) = ledger.append(append_input).await {
+                log::warn!(
+                    "Truth ledger append failed for activity {}: {} — activity persists but audit chain is incomplete",
+                    created.id,
+                    e
+                );
+            }
+        }
 
         // Emit domain event after successful creation
         let account_ids = vec![created.account_id.clone()];

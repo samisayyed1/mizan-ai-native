@@ -187,6 +187,27 @@ mod desktop {
             scheduler::run_startup_quote_sync(&startup_quote_handle, &startup_quote_context).await;
         });
 
+        // §A12 — daily Net Worth Snapshot. Fires once at boot so the
+        // dashboard history line + §A22 delta both have a row to read.
+        // Snapshot service is in-memory today; SQLite-backed swap is a
+        // single field change in registry.rs.
+        let nw_snapshot_context = Arc::clone(&context);
+        let nw_snapshot_handle = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            // Let the startup quote sync land first so the snapshot
+            // reflects fresh prices, not stale cache.
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            scheduler::run_startup_net_worth_snapshot(&nw_snapshot_context).await;
+
+            // §A22 — daily Investor Brief depends on the §A12 snapshot
+            // being written first. Fire it once the snapshot above has
+            // had a chance to complete.
+            scheduler::run_startup_daily_brief(&nw_snapshot_context).await;
+
+            // Ensure the handle is captured so the closure is Send.
+            let _ = &nw_snapshot_handle;
+        });
+
         // Periodic market data sync continues every 6h. Initial delay is
         // kept short (15 s) so it doesn't double-fire with the startup
         // sync above on machines where the startup sync resolves fast.

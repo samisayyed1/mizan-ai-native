@@ -181,6 +181,11 @@ pub async fn initialize_context(
         import_run_repository.clone(),
     ));
 
+    // §v3.1 foundation services — built here (instead of later) so the
+    // truth_ledger can be threaded into ActivityService below.
+    let (ai_safety, sync_ledger, net_worth_snapshot_service, daily_brief_service, truth_ledger) =
+        crate::context::registry::build_v31_foundation_defaults();
+
     let activity_service = Arc::new(
         ActivityService::with_import_run_repository(
             activity_repository.clone(),
@@ -190,7 +195,8 @@ pub async fn initialize_context(
             quote_service.clone(),
             core_import_run_repository,
         )
-        .with_event_sink(domain_event_sink.clone()),
+        .with_event_sink(domain_event_sink.clone())
+        .with_truth_ledger(Arc::clone(&truth_ledger)),
     );
     let goal_service = Arc::new(GoalService::new(goal_repo.clone(), account_service.clone()));
     let limits_service = Arc::new(ContributionLimitService::new_with_timezone(
@@ -362,11 +368,6 @@ pub async fn initialize_context(
     {
         warn!("Failed to prune local sync outbox: {}", err);
     }
-
-    // §v3.1 foundation services — wired here so every command + scheduler
-    // shares the same instance. Switch to SQLite-backed impls per-PR.
-    let (ai_safety, sync_ledger, net_worth_snapshot_service, daily_brief_service, truth_ledger) =
-        crate::context::registry::build_v31_foundation_defaults();
 
     Ok(ContextInitResult {
         context: ServiceContext {

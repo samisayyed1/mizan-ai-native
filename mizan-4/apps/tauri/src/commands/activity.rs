@@ -395,12 +395,57 @@ pub async fn import_activities(
         "CSV import with AI column mapping is included with a Mizan subscription.",
     )?;
 
+    // §A4 — open a sync ledger entry around the import so the user has a
+    // grep-able trail of every CSV they imported, with row counts +
+    // structured error if it failed.
+    use mizan_core::sync_ledger::{
+        SyncRunEntry, SyncRunMode, SyncRunProvider, SyncRunSummary,
+    };
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let started = SyncRunEntry::started(
+        run_id.clone(),
+        SyncRunProvider::CsvImport,
+        SyncRunMode::OneOff,
+    );
+    if let Err(e) = state.sync_ledger().append(started).await {
+        debug!("Sync ledger append (start) failed: {}", e);
+    }
+
     // Domain events handle recalculation and asset enrichment automatically
-    let result = state
-        .activity_service()
-        .import_activities(activities)
-        .await
-        .map_err(|e| e.to_string())?;
+    let result = match state.activity_service().import_activities(activities).await {
+        Ok(r) => {
+            // §A4 — close with success counters from the ImportActivitiesSummary.
+            let finished = SyncRunEntry::started(
+                run_id.clone(),
+                SyncRunProvider::CsvImport,
+                SyncRunMode::OneOff,
+            )
+            .finish(SyncRunSummary {
+                fetched: r.summary.total,
+                inserted: r.summary.imported,
+                skipped: r.summary.skipped,
+                ..Default::default()
+            });
+            if let Err(e) = state.sync_ledger().append(finished).await {
+                debug!("Sync ledger append (finish) failed: {}", e);
+            }
+            r
+        }
+        Err(e) => {
+            let err_msg = e.to_string();
+            // §A4 — close with failure + raw error JSON.
+            let failed = SyncRunEntry::started(
+                run_id,
+                SyncRunProvider::CsvImport,
+                SyncRunMode::OneOff,
+            )
+            .fail(format!("{{\"raw\":\"{}\"}}", err_msg.replace('"', "'")));
+            if let Err(emit_err) = state.sync_ledger().append(failed).await {
+                debug!("Sync ledger append (fail) failed: {}", emit_err);
+            }
+            return Err(err_msg);
+        }
+    };
 
     // Fire-and-forget usage report to the cloud ledger (B5).
     state.connect_service().report_usage("csv_intel", 1).await;

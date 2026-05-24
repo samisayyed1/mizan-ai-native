@@ -213,8 +213,25 @@ pub async fn run_startup_fx_refresh(handle: &AppHandle, context: &std::sync::Arc
 pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc<ServiceContext>) {
     use log::{debug, info, warn};
     use mizan_core::quotes::SyncMode;
+    use mizan_core::sync_ledger::{
+        SyncRunEntry, SyncRunMode, SyncRunProvider, SyncRunSummary,
+    };
 
     info!("Running startup market-data quote sync...");
+
+    // §A4 — open a sync ledger entry so the user / support can see the run
+    // happened. Marketdata sync covers Yahoo + TradingView; recording the
+    // top-level run is enough for triage. Per-provider granularity can
+    // come later when the quote_service surfaces per-provider counters.
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let started = SyncRunEntry::started(
+        run_id.clone(),
+        SyncRunProvider::Yahoo, // Top-level marketdata sync; per-provider breakdown later
+        SyncRunMode::Incremental,
+    );
+    if let Err(e) = context.sync_ledger().append(started).await {
+        debug!("Sync ledger append (start) failed: {}", e);
+    }
 
     let quote_service = std::sync::Arc::clone(&context.quote_service);
     match quote_service.sync(SyncMode::Incremental, None).await {
@@ -223,6 +240,22 @@ pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc
                 "Startup quote sync completed: {} quotes added across {} assets",
                 result.quotes_synced, result.synced
             );
+
+            // §A4 — close the ledger entry with success counters.
+            let finished = SyncRunEntry::started(
+                run_id.clone(),
+                SyncRunProvider::Yahoo,
+                SyncRunMode::Incremental,
+            )
+            .finish(SyncRunSummary {
+                fetched: result.synced as u32,
+                inserted: result.quotes_synced as u32,
+                ..Default::default()
+            });
+            if let Err(e) = context.sync_ledger().append(finished).await {
+                debug!("Sync ledger append (finish) failed: {}", e);
+            }
+
             // Emit a lightweight event so the frontend's TICKER_QUOTES +
             // HOLDINGS queries refetch immediately and the dashboard shows
             // live prices without waiting for the 6 h periodic.
@@ -237,6 +270,155 @@ pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc
                 "Startup quote sync failed: {}. Health Center banner will surface this to the user.",
                 e
             );
+            // §A4 — close ledger with failure + raw error.
+            let failed = SyncRunEntry::started(
+                run_id,
+                SyncRunProvider::Yahoo,
+                SyncRunMode::Incremental,
+            )
+            .fail(format!("{{\"raw\":\"{}\"}}", e.to_string().replace('"', "'")));
+            if let Err(emit_err) = context.sync_ledger().append(failed).await {
+                debug!("Sync ledger append (fail) failed: {}", emit_err);
+            }
         }
+    }
+}
+
+/// §A12 — capture a Net Worth Snapshot when the app boots (and when the
+/// user navigates back to the dashboard via the existing portfolio recalc
+/// event; that path is wired in the recalc handler, not here).
+///
+/// Read total assets / liabilities from the existing NetWorthService for
+/// today's date and persist a NetWorthSnapshot with breakdown by tier
+/// (SECURITIES + CASH + LIABILITY + PROPERTY + …). The dashboard
+/// history line + §A22 daily-brief delta both consume the resulting
+/// snapshot range.
+///
+/// Idempotent — re-running on the same day replaces the existing row
+/// (see InMemoryNetWorthSnapshotService::upsert).
+pub async fn run_startup_net_worth_snapshot(context: &std::sync::Arc<ServiceContext>) {
+    use log::{debug, info, warn};
+    use mizan_core::net_worth_snapshot::{
+        NetWorthBreakdownEntry, NetWorthSnapshotInput, SnapshotSource,
+    };
+
+    info!("Running startup net-worth snapshot...");
+
+    let today = chrono::Utc::now().date_naive();
+    let base_currency = context.get_base_currency();
+
+    let nw = match context.net_worth_service().get_net_worth(today).await {
+        Ok(nw) => nw,
+        Err(e) => {
+            warn!("NW snapshot: get_net_worth failed: {}. Skipping.", e);
+            return;
+        }
+    };
+
+    let total_assets = nw.assets.total;
+    let total_liabilities = nw.liabilities.total;
+
+    // Build a per-category breakdown from the asset breakdown surfaced by
+    // NetWorthResponse. Liability sums collapse into one entry so the
+    // chart can stack assets + 1 liability.
+    let mut breakdown: Vec<NetWorthBreakdownEntry> = nw
+        .assets
+        .breakdown
+        .iter()
+        .map(|b| NetWorthBreakdownEntry {
+            key: b.category.clone(),
+            value: b.value,
+        })
+        .collect();
+    if !total_liabilities.is_zero() {
+        breakdown.push(NetWorthBreakdownEntry {
+            key: "LIABILITY".to_string(),
+            value: total_liabilities,
+        });
+    }
+
+    let input = NetWorthSnapshotInput {
+        snapshot_date: today,
+        base_currency,
+        total_assets,
+        total_liabilities,
+        breakdown,
+        source: SnapshotSource::AppOpen,
+    };
+
+    match context.net_worth_snapshot_service().upsert(input).await {
+        Ok(snapshot) => {
+            info!(
+                "NW snapshot persisted: {} = {} assets - {} liabilities (net {} {})",
+                snapshot.snapshot_date,
+                snapshot.total_assets,
+                snapshot.total_liabilities,
+                snapshot.net_worth,
+                snapshot.base_currency,
+            );
+        }
+        Err(e) => {
+            debug!("NW snapshot persist failed: {}", e);
+        }
+    }
+}
+
+/// §A22 — generate the daily Investor Brief if today's hasn't been
+/// generated yet. Reads NW deltas from the §A12 snapshot history,
+/// top movers from current holdings, allocation drift from targets
+/// (if set), stale signals from FX/quote services, pending drafts
+/// from the chat repository.
+///
+/// Persists via DailyBriefService for the Settings → Notifications
+/// panel. Email transport (SendGrid) is deferred and lives in a
+/// separate runner once SENDGRID_API_KEY is provisioned.
+pub async fn run_startup_daily_brief(context: &std::sync::Arc<ServiceContext>) {
+    use log::{debug, info};
+    use mizan_core::daily_brief::{DailyBrief, NetWorthDelta};
+
+    let today = chrono::Utc::now().date_naive();
+
+    // Skip if today's brief already exists.
+    match context.daily_brief_service().get(today).await {
+        Ok(Some(_)) => {
+            debug!("Daily brief for {} already exists — skipping", today);
+            return;
+        }
+        Ok(None) => {}
+        Err(e) => {
+            debug!("Daily brief get() failed: {} — proceeding to recompute", e);
+        }
+    }
+
+    // Pull yesterday + today net-worth points from §A12.
+    let yesterday = today.pred_opt().unwrap_or(today);
+    let snapshots = context.net_worth_snapshot_service();
+
+    let today_nw = snapshots.get(today).await.ok().flatten();
+    let yesterday_nw = snapshots.get(yesterday).await.ok().flatten();
+
+    let nw_delta = match (today_nw.as_ref(), yesterday_nw.as_ref()) {
+        (Some(t), Some(y)) => NetWorthDelta::new(y.net_worth, t.net_worth),
+        (Some(t), None) => NetWorthDelta::new(rust_decimal::Decimal::ZERO, t.net_worth),
+        (None, _) => {
+            debug!("Daily brief: no NW snapshot for today yet — skipping");
+            return;
+        }
+    };
+
+    let base_currency = today_nw
+        .as_ref()
+        .map(|s| s.base_currency.clone())
+        .unwrap_or_else(|| context.get_base_currency());
+
+    // First cut emits just the NW delta. Top movers / drift / stale /
+    // pending-drafts ingestion lands in follow-on slices as their source
+    // surfaces are ready (movers needs ledger replay, drift needs
+    // allocation targets in settings, etc.).
+    let brief = DailyBrief::new(today, base_currency, nw_delta);
+
+    match context.daily_brief_service().upsert(brief).await {
+        Ok(_) => info!("Daily brief for {} persisted", today),
+        Err(e) => debug!("Daily brief upsert failed: {}", e),
     }
 }
