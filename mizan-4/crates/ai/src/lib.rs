@@ -56,6 +56,7 @@
 // futures already on the heap).
 #![allow(clippy::result_large_err)]
 
+pub mod agent;
 pub mod chat;
 pub mod env;
 pub mod error;
