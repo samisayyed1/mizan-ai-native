@@ -20,6 +20,7 @@ import { ToolFallback } from "./tool-fallback";
 import { TooltipIconButton } from "./tooltip-icon-button";
 
 import { cn } from "@/lib/utils";
+import { useAccounts } from "@/hooks/use-accounts";
 import { Reasoning, ReasoningGroup } from "./reasoning";
 import type { AgentInnerEvent } from "../types";
 import { isAgentMode, setAgentMode } from "../api";
@@ -104,26 +105,30 @@ const ThreadWelcome: FC = () => {
 };
 
 const ThreadSuggestions: FC = () => {
+  // Adapt the chip set to what the user actually has. Suggesting
+  // "how is my portfolio performing" to someone with zero accounts is
+  // a dead end — they'll get "I don't see any data" back from the
+  // model. Swap to onboarding-flavoured prompts for the empty case.
+  const { accounts, isLoading } = useAccounts();
+  const hasData = !isLoading && (accounts?.length ?? 0) > 0;
+
+  const suggestions = hasData
+    ? [
+        { icon: "TrendingUp" as const, text: "How is my portfolio performing this year?" },
+        { icon: "BarChart" as const, text: "What are my top performing holdings?" },
+        { icon: "FileText" as const, text: "Show my dividend income summary" },
+        { icon: "PieChart" as const, text: "Analyze my asset allocation" },
+      ]
+    : [
+        { icon: "Sparkles" as const, text: "Set up my portfolio from a broker CSV" },
+        { icon: "Target" as const, text: "Help me plan a retirement goal" },
+        { icon: "FileText" as const, text: "What can you do with my portfolio?" },
+        { icon: "ShieldCheck" as const, text: "How does Mizan keep my data private?" },
+      ];
+
   return (
     <div className="aui-thread-welcome-suggestions flex flex-col items-stretch gap-2 pb-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
-      {[
-        {
-          icon: "TrendingUp" as const,
-          text: "How is my portfolio performing this year?",
-        },
-        {
-          icon: "BarChart" as const,
-          text: "What are my top performing holdings?",
-        },
-        {
-          icon: "FileText" as const,
-          text: "Show my dividend income summary",
-        },
-        {
-          icon: "PieChart" as const,
-          text: "Analyze my asset allocation",
-        },
-      ].map((suggestion, index) => {
+      {suggestions.map((suggestion, index) => {
         const Icon = Icons[suggestion.icon];
         return (
           <div
@@ -200,8 +205,8 @@ const AgentModeToggle: FC = () => {
     <TooltipIconButton
       tooltip={
         enabled
-          ? "Agent Mode ON — your next send will run autonomously (Gold tier)"
-          : "Turn on Agent Mode — let the AI plan + execute multi-step goals end-to-end"
+          ? "Agent on — Mizan will plan + execute autonomously"
+          : "Turn on Agent to let Mizan run multi-step goals end-to-end"
       }
       side="top"
       type="button"
