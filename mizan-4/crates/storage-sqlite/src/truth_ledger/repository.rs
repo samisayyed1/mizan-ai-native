@@ -153,7 +153,12 @@ impl TruthLedger for SqliteTruthLedger {
         let amount = input.amount;
         let currency = input.currency.clone();
         let metadata = input.metadata.clone();
-        let recorded_at = input.recorded_at.unwrap_or_else(Utc::now);
+        // Truncate to milli precision BEFORE hashing — the SQLite store
+        // persists millis, so a nanosecond-precision recorded_at in the
+        // domain entry would produce an entry_hash that verify() can
+        // never re-derive (round-trips through the DB drop sub-millis).
+        let raw_ts = input.recorded_at.unwrap_or_else(Utc::now);
+        let recorded_at = millis_to_dt(raw_ts.timestamp_millis());
 
         let entry = self
             .writer
@@ -299,4 +304,135 @@ impl TruthLedger for SqliteTruthLedger {
         .await
         .map_err(|e| Error::Unexpected(format!("spawn_blocking join error: {e}")))?
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::write_actor::spawn_writer;
+    use crate::db::{create_pool, init, run_migrations};
+    use mizan_core::truth_engine::{AppendInput, LedgerEntryKind};
+    use tempfile::tempdir;
+
+    fn build_ledger() -> (Arc<DbPool>, SqliteTruthLedger, tempfile::TempDir) {
+        let dir = tempdir().expect("tempdir");
+        let db_path = init(&dir.path().to_string_lossy()).expect("init db");
+        run_migrations(&db_path).expect("migrations");
+        let pool = create_pool(&db_path).expect("pool");
+        let writer = spawn_writer(pool.as_ref().clone()).expect("writer");
+        let ledger = SqliteTruthLedger::new(Arc::clone(&pool), writer);
+        (pool, ledger, dir)
+    }
+
+    fn input(id: &str, account: &str, amount: i64) -> AppendInput {
+        AppendInput {
+            id: id.to_string(),
+            kind: Some(LedgerEntryKind::ActivityRecorded),
+            account_id: Some(account.to_string()),
+            asset_id: Some("AAPL".to_string()),
+            amount: Some(rust_decimal::Decimal::from(amount)),
+            currency: Some("USD".to_string()),
+            metadata: Default::default(),
+            recorded_at: Some(Utc::now()),
+        }
+    }
+
+    #[tokio::test]
+    async fn appends_chain_and_verifies_within_one_process() {
+        let (_pool, ledger, _dir) = build_ledger();
+        let a = ledger.append(input("a", "acc-1", 100)).await.unwrap();
+        let b = ledger.append(input("b", "acc-1", 200)).await.unwrap();
+        let c = ledger.append(input("c", "acc-2", -50)).await.unwrap();
+
+        assert_eq!(a.sequence, 0);
+        assert_eq!(a.prev_hash, GENESIS_PREV_HASH);
+        assert_eq!(b.sequence, 1);
+        assert_eq!(b.prev_hash, a.entry_hash);
+        assert_eq!(c.sequence, 2);
+        assert_eq!(c.prev_hash, b.entry_hash);
+
+        ledger.verify().await.expect("chain valid");
+    }
+
+    #[tokio::test]
+    async fn chain_survives_a_simulated_restart() {
+        let dir = tempdir().expect("tempdir");
+        let db_path = init(&dir.path().to_string_lossy()).expect("init db");
+        run_migrations(&db_path).expect("migrations");
+
+        // First "process".
+        {
+            let pool = create_pool(&db_path).expect("pool");
+            let writer = spawn_writer(pool.as_ref().clone()).expect("writer");
+            let ledger = SqliteTruthLedger::new(pool, writer);
+            ledger.append(input("a", "acc-1", 100)).await.unwrap();
+            ledger.append(input("b", "acc-1", 200)).await.unwrap();
+        }
+
+        // Second "process" — fresh pool + writer pointing at the same DB.
+        let pool = create_pool(&db_path).expect("pool 2");
+        let writer = spawn_writer(pool.as_ref().clone()).expect("writer 2");
+        let ledger = SqliteTruthLedger::new(Arc::clone(&pool), writer);
+
+        // Continuing the chain across the restart must use the persisted
+        // tip's entry_hash — otherwise prev_hash on this new row would
+        // be GENESIS_PREV_HASH and verify would fail.
+        let c = ledger.append(input("c", "acc-2", -50)).await.unwrap();
+        assert_eq!(c.sequence, 2, "sequence continues across restart");
+
+        ledger.verify().await.expect("chain valid post-restart");
+    }
+
+    #[tokio::test]
+    async fn rejects_duplicate_id() {
+        let (_pool, ledger, _dir) = build_ledger();
+        ledger.append(input("only-once", "acc-1", 1)).await.unwrap();
+        let err = ledger.append(input("only-once", "acc-1", 2)).await;
+        assert!(err.is_err(), "second append with same id must reject");
+    }
+
+    #[tokio::test]
+    async fn verify_detects_tampered_entry_hash() {
+        use diesel::prelude::*;
+        let (pool, ledger, _dir) = build_ledger();
+        ledger.append(input("x", "acc-1", 1)).await.unwrap();
+        ledger.append(input("y", "acc-1", 2)).await.unwrap();
+
+        // Tamper with the stored entry_hash directly — bypass the
+        // service entirely so verify() detects the inconsistency.
+        let mut conn = crate::db::get_connection(&pool).unwrap();
+        diesel::update(
+            ledger_dsl::truth_ledger_entries
+                .filter(ledger_dsl::id.eq("x".to_string())),
+        )
+        .set(ledger_dsl::entry_hash.eq("f".repeat(64)))
+        .execute(&mut conn)
+        .unwrap();
+
+        let err = ledger.verify().await.unwrap_err();
+        assert!(
+            matches!(
+                err,
+                LedgerIntegrityError::TamperedEntry(ref id) if id == "x"
+            ) || matches!(
+                err,
+                LedgerIntegrityError::BrokenChain(ref id) if id == "y"
+            ),
+            "expected Tampered(x) or BrokenChain(y), got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn by_account_filters() {
+        let (_pool, ledger, _dir) = build_ledger();
+        ledger.append(input("a", "acc-1", 1)).await.unwrap();
+        ledger.append(input("b", "acc-2", 2)).await.unwrap();
+        ledger.append(input("c", "acc-1", 3)).await.unwrap();
+
+        let acc1 = ledger.by_account("acc-1").await.unwrap();
+        assert_eq!(acc1.len(), 2);
+        assert_eq!(acc1[0].id, "a");
+        assert_eq!(acc1[1].id, "c");
+    }
+
 }

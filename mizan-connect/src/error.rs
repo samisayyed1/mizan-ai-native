@@ -28,6 +28,12 @@ pub enum ErrorCode {
     TooManyRequests,
     Internal,
     NotImplemented,
+    /// Upstream HTTP-level rejection — Plaid / SnapTrade / Stripe
+    /// returned a 4xx that the desktop client should surface to the
+    /// user (e.g. "broker link is dead, please re-link"). Distinct
+    /// from ServiceUnavailable, which means "we couldn't reach the
+    /// upstream at all."
+    BadGateway,
     ServiceUnavailable,
 }
 
@@ -44,6 +50,7 @@ impl ErrorCode {
             Self::TooManyRequests => "too_many_requests",
             Self::Internal => "internal_error",
             Self::NotImplemented => "not_implemented",
+            Self::BadGateway => "bad_gateway",
             Self::ServiceUnavailable => "service_unavailable",
         }
     }
@@ -60,6 +67,7 @@ impl ErrorCode {
             Self::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Self::NotImplemented => StatusCode::NOT_IMPLEMENTED,
+            Self::BadGateway => StatusCode::BAD_GATEWAY,
             Self::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
@@ -124,6 +132,10 @@ impl AppError {
         Self::new(ErrorCode::NotImplemented, message)
     }
 
+    pub fn bad_gateway(message: impl Into<Cow<'static, str>>) -> Self {
+        Self::new(ErrorCode::BadGateway, message)
+    }
+
     pub fn service_unavailable(message: impl Into<Cow<'static, str>>) -> Self {
         Self::new(ErrorCode::ServiceUnavailable, message)
     }
@@ -161,6 +173,26 @@ impl From<sqlx::Error> for AppError {
 
 impl From<reqwest::Error> for AppError {
     fn from(err: reqwest::Error) -> Self {
+        // Map upstream HTTP status codes through so the desktop client can
+        // distinguish "Plaid said the link is dead" (401/403/410) from
+        // "Plaid is down" (5xx / transport error). The blanket-503 from
+        // earlier hid both behind the same error code, which made the
+        // desktop's retry logic guess wrong (it retried link-dead errors
+        // forever instead of prompting the user to re-link).
+        if let Some(status) = err.status() {
+            let code = status.as_u16();
+            if (400..500).contains(&code) {
+                // Upstream rejected the request — surface as a 502 Bad
+                // Gateway so the desktop knows the failure was the
+                // upstream's authoritative response (not our service
+                // being unreachable). The body carries the upstream
+                // status so the desktop can route appropriately.
+                return AppError::bad_gateway(format!(
+                    "upstream rejected request (status {code})"
+                ))
+                .with_source(err);
+            }
+        }
         AppError::service_unavailable("upstream request failed").with_source(err)
     }
 }

@@ -21,6 +21,29 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load().context("loading configuration from environment")?;
     let _sentry_guard = telemetry::init(&config);
 
+    // Capture panics from background tasks (cron jobs, JWKS refresher,
+    // anything spawned outside the request span) so they don't vanish
+    // silently. The default hook prints to stderr; Sentry's hook
+    // forwards to capture, but without an explicit install both
+    // disappear for spawned tokio tasks that don't `.await` a JoinError
+    // we surface. This explicit hook chains to Sentry (if linked) and
+    // logs at error! so the structured log pipeline sees them.
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let message = info
+            .payload()
+            .downcast_ref::<&str>()
+            .copied()
+            .or_else(|| info.payload().downcast_ref::<String>().map(String::as_str))
+            .unwrap_or("<non-string panic payload>");
+        tracing::error!(panic.location = %location, panic.message = %message, "panic captured");
+        previous_hook(info);
+    }));
+
     tracing::info!(
         host = %config.app_host,
         port = config.app_port,

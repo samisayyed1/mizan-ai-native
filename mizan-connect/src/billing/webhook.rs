@@ -59,12 +59,23 @@ pub async fn receive_webhook(
                 .map_err(|e| AppError::bad_request(format!("subscription payload: {e}")))?;
 
             let Some(user_id) = resolve_user_id(state.db(), &sub).await? else {
+                // Race: `subscription.created` arrived BEFORE the
+                // `checkout.session.completed` row that links the
+                // stripe_customer_id to our user_id (Stripe delivers
+                // these out-of-order on a small percentage of requests).
+                // We MUST NOT commit the stripe_events row here, or the
+                // redelivery once the link exists will be silently
+                // dropped as a duplicate. Roll back + return 5xx so
+                // Stripe retries with exponential backoff (3d window).
                 tracing::warn!(
                     stripe_subscription_id = %sub.id,
-                    "stripe webhook references unknown customer — recording event but skipping subscription upsert",
+                    stripe_customer_id = %sub.customer,
+                    "stripe webhook references unknown customer — rolling back so Stripe retries",
                 );
-                tx.commit().await?;
-                return Ok(StatusCode::OK);
+                tx.rollback().await?;
+                return Err(AppError::internal(
+                    "customer link not yet established; please retry",
+                ));
             };
 
             let tier = resolve_tier(&sub, &billing.prices)

@@ -152,3 +152,130 @@ impl SyncRunLedger for SqliteSyncRunLedger {
         })?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::write_actor::spawn_writer;
+    use crate::db::{create_pool, init, run_migrations};
+    use mizan_core::sync_ledger::{
+        SyncRunEntry, SyncRunMode, SyncRunOutcome, SyncRunProvider, SyncRunSummary,
+    };
+    use tempfile::tempdir;
+
+    fn build() -> (SqliteSyncRunLedger, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let db_path = init(&dir.path().to_string_lossy()).unwrap();
+        run_migrations(&db_path).unwrap();
+        let pool = create_pool(&db_path).unwrap();
+        let writer = spawn_writer(pool.as_ref().clone()).unwrap();
+        (SqliteSyncRunLedger::new(pool, writer), dir)
+    }
+
+    #[tokio::test]
+    async fn close_preserves_started_at() {
+        let (ledger, _dir) = build();
+        let started =
+            SyncRunEntry::started("run-1", SyncRunProvider::Plaid, SyncRunMode::Initial);
+        let original_started_at = started.started_at;
+        ledger.append(started.clone()).await.unwrap();
+
+        // Simulate close-after-work: same run_id, finish() on the held
+        // entry instance (this is the pattern the scheduler uses).
+        let finished = started.finish(SyncRunSummary {
+            inserted: 5,
+            ..Default::default()
+        });
+        ledger.append(finished).await.unwrap();
+
+        let got = ledger.get("run-1").await.unwrap().unwrap();
+        // Storage truncates timestamps to millisecond precision; compare
+        // at that resolution to assert "no drift to a fresh Utc::now()
+        // on close" without depending on sub-milli precision.
+        assert_eq!(
+            got.started_at.timestamp_millis(),
+            original_started_at.timestamp_millis(),
+            "started_at preserved on close (must NOT bump to current time)"
+        );
+        assert!(got.finished_at.is_some());
+        assert_eq!(got.summary.inserted, 5);
+        assert_eq!(got.outcome, SyncRunOutcome::Applied);
+    }
+
+    #[tokio::test]
+    async fn recent_orders_newest_first_across_providers() {
+        let (ledger, _dir) = build();
+        for (id, provider) in [
+            ("r1", SyncRunProvider::Yahoo),
+            ("r2", SyncRunProvider::MarketData),
+            ("r3", SyncRunProvider::CsvImport),
+        ] {
+            ledger
+                .append(
+                    SyncRunEntry::started(id, provider, SyncRunMode::Incremental).finish(
+                        SyncRunSummary {
+                            inserted: 1,
+                            ..Default::default()
+                        },
+                    ),
+                )
+                .await
+                .unwrap();
+            // tiny stagger so started_at differs deterministically
+            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+        }
+        let recent = ledger.recent(3).await.unwrap();
+        assert_eq!(recent[0].run_id, "r3");
+        assert_eq!(recent[2].run_id, "r1");
+    }
+
+    #[tokio::test]
+    async fn recent_by_provider_only_returns_matching_rows() {
+        let (ledger, _dir) = build();
+        ledger
+            .append(SyncRunEntry::started(
+                "a",
+                SyncRunProvider::MarketData,
+                SyncRunMode::Incremental,
+            ))
+            .await
+            .unwrap();
+        ledger
+            .append(SyncRunEntry::started(
+                "b",
+                SyncRunProvider::Yahoo,
+                SyncRunMode::Incremental,
+            ))
+            .await
+            .unwrap();
+        ledger
+            .append(SyncRunEntry::started(
+                "c",
+                SyncRunProvider::MarketData,
+                SyncRunMode::Backfill,
+            ))
+            .await
+            .unwrap();
+
+        let only_md = ledger
+            .recent_by_provider(SyncRunProvider::MarketData, 10)
+            .await
+            .unwrap();
+        assert_eq!(only_md.len(), 2);
+        assert!(only_md
+            .iter()
+            .all(|e| e.provider == SyncRunProvider::MarketData));
+    }
+
+    #[tokio::test]
+    async fn failure_outcome_round_trips_with_error_envelope() {
+        let (ledger, _dir) = build();
+        let entry = SyncRunEntry::started("r-fail", SyncRunProvider::Plaid, SyncRunMode::Initial)
+            .fail(r#"{"__mizan_error":true,"code":"PLAID_AUTH_EXPIRED"}"#);
+        ledger.append(entry).await.unwrap();
+
+        let got = ledger.get("r-fail").await.unwrap().unwrap();
+        assert_eq!(got.outcome, SyncRunOutcome::Failed);
+        assert!(got.error.unwrap().contains("PLAID_AUTH_EXPIRED"));
+    }
+}

@@ -139,9 +139,11 @@ impl JwksCache {
         Ok(())
     }
 
-    /// Locate a decoding key by `kid`. If `kid` is absent on the token, the
-    /// first cached key is returned. If the cache is empty, a lazy refresh
-    /// is attempted.
+    /// Locate a decoding key by `kid`. **Refuses** tokens that arrive
+    /// without a `kid` header — Supabase always emits one, and falling
+    /// back to "the first cached key" would let a token forger pick any
+    /// key in the cache without colliding on `kid`. If the cache is
+    /// empty, a lazy refresh is attempted.
     pub async fn find_key(&self, kid: Option<&str>) -> Result<DecodingKeyMatch, AppError> {
         if self.is_empty() {
             // Lazy fetch.
@@ -150,11 +152,12 @@ impl JwksCache {
             }
         }
 
-        let state = self.inner.state.read();
-        let entry = match kid {
-            Some(want) => state.keys.iter().find(|k| k.kid.as_deref() == Some(want)),
-            None => state.keys.first(),
+        let Some(want) = kid else {
+            return Err(AppError::unauthorized("token missing kid header"));
         };
+
+        let state = self.inner.state.read();
+        let entry = state.keys.iter().find(|k| k.kid.as_deref() == Some(want));
 
         match entry {
             Some(e) => Ok(DecodingKeyMatch {

@@ -55,6 +55,13 @@ impl FromRequestParts<AppState> for AuthenticatedUser {
             "authenticated request"
         );
 
+        // Populate the http_request span's user_id field so every log
+        // line emitted during this request (including the on_response
+        // access-log line) carries user correlation. The field is
+        // pre-declared in server.rs's make_span_with so this record()
+        // call attaches without a layered span.
+        tracing::Span::current().record("user_id", tracing::field::display(&user.id));
+
         Ok(Self(user))
     }
 }

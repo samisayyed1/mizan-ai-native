@@ -163,3 +163,123 @@ impl NetWorthSnapshotService for SqliteNetWorthSnapshotService {
         .map_err(|e| Error::Unexpected(format!("spawn_blocking join error: {e}")))?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::write_actor::spawn_writer;
+    use crate::db::{create_pool, init, run_migrations};
+    use rust_decimal_macros::dec;
+    use tempfile::tempdir;
+
+    fn build() -> (SqliteNetWorthSnapshotService, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let db_path = init(&dir.path().to_string_lossy()).unwrap();
+        run_migrations(&db_path).unwrap();
+        let pool = create_pool(&db_path).unwrap();
+        let writer = spawn_writer(pool.as_ref().clone()).unwrap();
+        (
+            SqliteNetWorthSnapshotService::new(pool, writer),
+            dir,
+        )
+    }
+
+    fn sample(date: NaiveDate, assets: i64, liab: i64) -> NetWorthSnapshotInput {
+        NetWorthSnapshotInput {
+            snapshot_date: date,
+            base_currency: "USD".to_string(),
+            total_assets: Decimal::from(assets),
+            total_liabilities: Decimal::from(liab),
+            breakdown: vec![
+                NetWorthBreakdownEntry {
+                    key: "SECURITIES".to_string(),
+                    value: Decimal::from(assets),
+                },
+                NetWorthBreakdownEntry {
+                    key: "LIABILITY".to_string(),
+                    value: Decimal::from(liab),
+                },
+            ],
+            source: SnapshotSource::AppOpen,
+        }
+    }
+
+    #[tokio::test]
+    async fn upsert_replaces_same_day_row() {
+        let (svc, _dir) = build();
+        let d = NaiveDate::from_ymd_opt(2026, 5, 25).unwrap();
+
+        svc.upsert(sample(d, 100_000, 20_000)).await.unwrap();
+        let after_first = svc.range(d, d).await.unwrap();
+        assert_eq!(after_first.len(), 1);
+        assert_eq!(after_first[0].net_worth, dec!(80_000));
+
+        // Re-upsert same date with different totals — must replace, not append.
+        svc.upsert(sample(d, 110_000, 20_000)).await.unwrap();
+        let after_second = svc.range(d, d).await.unwrap();
+        assert_eq!(after_second.len(), 1, "same-date upsert must replace");
+        assert_eq!(after_second[0].net_worth, dec!(90_000));
+    }
+
+    #[tokio::test]
+    async fn range_returns_sorted_window_inclusive() {
+        let (svc, _dir) = build();
+        for day in [10, 12, 14, 16] {
+            let d = NaiveDate::from_ymd_opt(2026, 5, day).unwrap();
+            svc.upsert(sample(d, day as i64 * 1_000, 0)).await.unwrap();
+        }
+        let got = svc
+            .range(
+                NaiveDate::from_ymd_opt(2026, 5, 11).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(got.len(), 2);
+        assert!(got[0].snapshot_date < got[1].snapshot_date);
+    }
+
+    #[tokio::test]
+    async fn latest_returns_most_recent_row() {
+        let (svc, _dir) = build();
+        for day in [10, 11, 12] {
+            let d = NaiveDate::from_ymd_opt(2026, 5, day).unwrap();
+            svc.upsert(sample(d, 1_000, 0)).await.unwrap();
+        }
+        let latest = svc.latest().await.unwrap().unwrap();
+        use chrono::Datelike;
+        assert_eq!(latest.snapshot_date.day(), 12);
+    }
+
+    #[tokio::test]
+    async fn breakdown_round_trips_through_json_blob() {
+        let (svc, _dir) = build();
+        let d = NaiveDate::from_ymd_opt(2026, 5, 25).unwrap();
+        let input = NetWorthSnapshotInput {
+            snapshot_date: d,
+            base_currency: "USD".to_string(),
+            total_assets: dec!(50_000),
+            total_liabilities: dec!(10_000),
+            breakdown: vec![
+                NetWorthBreakdownEntry {
+                    key: "SECURITIES".into(),
+                    value: dec!(30_000),
+                },
+                NetWorthBreakdownEntry {
+                    key: "CASH".into(),
+                    value: dec!(20_000),
+                },
+                NetWorthBreakdownEntry {
+                    key: "LIABILITY".into(),
+                    value: dec!(10_000),
+                },
+            ],
+            source: SnapshotSource::AppOpen,
+        };
+        svc.upsert(input).await.unwrap();
+        let got = svc.get(d).await.unwrap().unwrap();
+        assert_eq!(got.breakdown.len(), 3);
+        assert_eq!(got.breakdown[0].key, "SECURITIES");
+        assert_eq!(got.breakdown[0].value, dec!(30_000));
+    }
+}

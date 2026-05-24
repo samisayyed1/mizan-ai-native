@@ -36,20 +36,42 @@ pub fn build_app(state: AppState) -> Router {
         hsts,
     } = security_headers::layers(state.config().app_env);
 
-    let trace_layer = TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
-        let request_id = req
-            .headers()
-            .get(crate::middleware::request_id::HEADER_NAME)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        tracing::info_span!(
-            "http_request",
-            method = %req.method(),
-            uri = %req.uri(),
-            version = ?req.version(),
-            request_id = %request_id,
-        )
-    });
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(|req: &axum::http::Request<_>| {
+            let request_id = req
+                .headers()
+                .get(crate::middleware::request_id::HEADER_NAME)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            // user_id is initialised to "" and populated later by the
+            // AuthenticatedUser extractor via tracing::Span::current()
+            // .record("user_id", ...) — declaring the field here means
+            // it shows up in structured logs even for anonymous routes
+            // (as an empty string) without a second span layer.
+            tracing::info_span!(
+                "http_request",
+                method = %req.method(),
+                uri = %req.uri(),
+                version = ?req.version(),
+                request_id = %request_id,
+                user_id = tracing::field::Empty,
+                status = tracing::field::Empty,
+                latency_ms = tracing::field::Empty,
+            )
+        })
+        .on_response(
+            |res: &axum::http::Response<_>,
+             latency: std::time::Duration,
+             span: &tracing::Span| {
+                span.record("status", res.status().as_u16());
+                span.record("latency_ms", latency.as_millis() as u64);
+                tracing::info!(
+                    status = res.status().as_u16(),
+                    latency_ms = latency.as_millis() as u64,
+                    "request completed"
+                );
+            },
+        );
 
     // Legacy versioned mount. Kept live for tests and any internal callers.
     let v1 = Router::new()
@@ -134,7 +156,7 @@ fn build_rate_limiter_config(
     config: &Config,
 ) -> Arc<
     tower_governor::governor::GovernorConfig<
-        tower_governor::key_extractor::PeerIpKeyExtractor,
+        tower_governor::key_extractor::SmartIpKeyExtractor,
         governor::middleware::NoOpMiddleware,
     >,
 > {
@@ -142,12 +164,19 @@ fn build_rate_limiter_config(
     let per_second = (per_minute / 60).max(1);
     let burst = (per_minute / 4).max(1);
 
+    // SmartIpKeyExtractor reads X-Forwarded-For / Forwarded / X-Real-IP
+    // before falling back to peer IP. Behind Fly's edge proxy the peer
+    // IP is ALWAYS the proxy itself, so PeerIpKeyExtractor would
+    // collapse the entire fleet into a single bucket. Fly sets
+    // X-Forwarded-For, which the smart extractor honours.
+    //
     // `finish()` only returns `None` for impossible values (zero burst /
     // zero period). Both are clamped to ≥ 1 above, so the unwrap is safe.
     #[allow(clippy::expect_used)]
     let governor_conf = GovernorConfigBuilder::default()
         .per_second(u64::from(per_second))
         .burst_size(burst)
+        .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
         .finish()
         .expect("rate limiter config is valid (per_second and burst clamped >= 1)");
     Arc::new(governor_conf)
