@@ -13,7 +13,8 @@ import {
   ToggleGroupItem,
 } from "@mizan/ui";
 import { Input } from "@mizan/ui/components/ui/input";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { SettingsHeader } from "../settings-header";
 import { AccountEditModal } from "./components/account-edit-modal";
 import { AccountItem } from "./components/account-item";
@@ -44,6 +45,23 @@ const SettingsAccountsPage = () => {
     setSelectedAccount(null);
     setVisibleModal(true);
   };
+
+  // If the user arrived via the AddAssetDialog's "Add manually" link
+  // (`/settings/accounts?addAccount=1`), auto-open the add modal so the
+  // user lands directly in the form they asked for — not on an empty
+  // list page they then have to scan for the right button. We clear
+  // the param after consuming it so reloads/back-nav don't trigger it
+  // a second time.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("addAccount") === "1") {
+      setSelectedAccount(null);
+      setVisibleModal(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("addAccount");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { deleteAccountMutation, updateAccountMutation } = useAccountMutations({});
 
