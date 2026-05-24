@@ -171,7 +171,7 @@ export {
 } from "./addons";
 
 // AI Streaming (Tauri Channel-based implementation)
-export { streamAiChat } from "./ai-streaming";
+export { streamAiChat, streamAgentChat, type AgentRunRequest } from "./ai-streaming";
 
 // Event Listeners (Tauri listen() implementation)
 export {

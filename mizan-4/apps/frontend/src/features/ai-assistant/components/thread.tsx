@@ -10,6 +10,7 @@ import {
 
 import type { FC, ReactNode } from "react";
 
+import { useEffect, useState } from "react";
 import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { AgentProgressCard } from "./agent-progress-card";
@@ -21,6 +22,7 @@ import { TooltipIconButton } from "./tooltip-icon-button";
 import { cn } from "@/lib/utils";
 import { Reasoning, ReasoningGroup } from "./reasoning";
 import type { AgentInnerEvent } from "../types";
+import { isAgentMode, setAgentMode } from "../api";
 
 export interface ThreadProps {
   composerActions?: ReactNode;
@@ -172,11 +174,59 @@ interface ComposerActionProps {
   composerActions?: ReactNode;
 }
 
+/**
+ * Toggle for "Agent Mode" — switches the next send between the
+ * legacy single-turn chat path and the autonomous Plan→Execute→
+ * Verify→Undo runtime in `stream_agent_chat`. State lives in the
+ * module-level `agentModeEnabled` flag in api/stream.ts so the
+ * runtime's send handler can read it without prop drilling.
+ *
+ * Visual:  [ Agent ◯ ] (off) → [ Agent ● ] (on, accent-coloured)
+ *
+ * When ON: an inline hint replaces the placeholder ("Describe your
+ * goal — the agent will plan + execute autonomously.") and the
+ * send button keeps the same icon (no separate "run agent" button —
+ * the toggle is the modifier).
+ */
+const AgentModeToggle: FC = () => {
+  const [enabled, setEnabled] = useState<boolean>(() => isAgentMode());
+
+  // Mirror local state to the module flag so the runtime sees it.
+  useEffect(() => {
+    setAgentMode(enabled);
+  }, [enabled]);
+
+  return (
+    <TooltipIconButton
+      tooltip={
+        enabled
+          ? "Agent Mode ON — your next send will run autonomously (Gold tier)"
+          : "Turn on Agent Mode — let the AI plan + execute multi-step goals end-to-end"
+      }
+      side="top"
+      type="button"
+      onClick={() => setEnabled((v) => !v)}
+      variant={enabled ? "default" : "ghost"}
+      size="sm"
+      className={cn(
+        "aui-composer-agent-toggle h-7 gap-1 rounded-full px-2.5 text-xs font-medium",
+        enabled && "bg-amber-400 text-amber-950 hover:bg-amber-500"
+      )}
+      aria-pressed={enabled}
+      aria-label={enabled ? "Disable Agent Mode" : "Enable Agent Mode"}
+    >
+      <Icons.Sparkles className="size-3.5" />
+      Agent
+    </TooltipIconButton>
+  );
+};
+
 const ComposerAction: FC<ComposerActionProps> = ({ composerActions }) => {
   return (
     <div className="aui-composer-action-wrapper relative mx-1 mb-2 mt-2 flex items-center justify-between">
       <div className="flex items-center gap-1">
         <ComposerAddAttachment />
+        <AgentModeToggle />
         {composerActions}
       </div>
 
