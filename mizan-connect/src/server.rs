@@ -36,6 +36,22 @@ pub fn build_app(state: AppState) -> Router {
         hsts,
     } = security_headers::layers(state.config().app_env);
 
+    // Wire the SENSITIVE_HEADERS allowlist into tower_http's redaction
+    // layer so the TraceLayer below (and any other middleware that
+    // serialises headers, e.g. on_request/on_response handlers) emits
+    // them as `Sensitive` and never logs their values. Without this
+    // the const was just documentation.
+    let sensitive_header_names: Vec<axum::http::HeaderName> = crate::telemetry::SENSITIVE_HEADERS
+        .iter()
+        .filter_map(|name| axum::http::HeaderName::from_lowercase(name.as_bytes()).ok())
+        .collect();
+    let redact_request_headers = tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer::new(
+        sensitive_header_names.clone(),
+    );
+    let redact_response_headers = tower_http::sensitive_headers::SetSensitiveResponseHeadersLayer::new(
+        sensitive_header_names,
+    );
+
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &axum::http::Request<_>| {
             let request_id = req
@@ -73,11 +89,23 @@ pub fn build_app(state: AppState) -> Router {
             },
         );
 
+    // Per-user AI throttle layer. Cloned `state` for the inner router
+    // mount (the v1 + api_v1 mounts each get an independent layer
+    // application — both target the SAME UserRateLimiter inside the
+    // shared AppState, so buckets are coherent across mount points).
+    let v1_ai_chat = crate::billing::ai_chat_router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_per_user_limit,
+        ))
+        .with_state(state.clone());
+
     // Legacy versioned mount. Kept live for tests and any internal callers.
     let v1 = Router::new()
         .merge(crate::users::router())
         .merge(crate::teams::router())
         .merge(crate::billing::router())
+        .merge(v1_ai_chat)
         .with_state(state.clone());
 
     // Production mount. The desktop client (samisayyed1/mizan-4) calls
@@ -91,6 +119,19 @@ pub fn build_app(state: AppState) -> Router {
     //   - /api/v1/billing/*                     (Chunk 4 — Stripe checkout/portal)
     //   - /api/v1/usage                         (Chunk 4 — usage ledger)
     //   - /api/v1/stripe/webhook                (Chunk 4 — public, signature-verified)
+    // /ai/chat is split out so we can attach a per-user throttle middleware
+    // ONLY to AI endpoints (not to /billing/* or /usage etc.). The global
+    // governor at the outer layer covers anonymous flood protection; this
+    // layer stops a SINGLE authenticated client from burning their AI
+    // credits / our upstream OpenAI quota by hammering /ai/chat from one
+    // terminal even when their IP bucket has headroom.
+    let ai_chat = crate::billing::ai_chat_router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_per_user_limit,
+        ))
+        .with_state(state.clone());
+
     let api_v1 = Router::new()
         .merge(crate::users::router())
         .route(
@@ -101,14 +142,34 @@ pub fn build_app(state: AppState) -> Router {
         .merge(crate::billing::plans_router())
         .merge(crate::billing::router())
         .merge(crate::plaid::router())
+        .merge(ai_chat)
         .with_state(state.clone());
 
-    Router::new()
+    // Build the rate-limited router (every public + authed route) and
+    // mount the Stripe webhook OUTSIDE that layer — Stripe redrives
+    // arrive in bursts and rate-limiting them would force Stripe into
+    // exponential backoff against our own infrastructure. The webhook
+    // is signature-authed (HMAC), so rate-limiting is the wrong tool.
+    let rate_limited = Router::new()
         .merge(crate::health::router())
         .nest("/v1", v1)
         .nest("/api/v1", api_v1)
-        .with_state(state)
-        // The order matters: outermost layer is added last.
+        .with_state(state.clone())
+        .layer(governor);
+
+    let webhook = Router::new()
+        .nest("/v1", crate::billing::webhook_router())
+        .nest("/api/v1", crate::billing::webhook_router())
+        .with_state(state);
+
+    Router::new()
+        .merge(rate_limited)
+        .merge(webhook)
+        // The order matters: outermost layer is added last. Header
+        // redaction wraps the trace layer so request/response header
+        // serialisation never logs Authorization / Stripe signatures /
+        // cookies. The const SENSITIVE_HEADERS is the single source of
+        // truth — adding a header there propagates here automatically.
         .layer(nosniff)
         .layer(frame)
         .layer(referrer)
@@ -116,11 +177,12 @@ pub fn build_app(state: AppState) -> Router {
         .layer(cross_domain)
         .layer(option_layer(hsts))
         .layer(cors)
-        .layer(governor)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .layer(timeout::layer())
         .layer(RequestIdLayer)
+        .layer(redact_response_headers)
         .layer(trace_layer)
+        .layer(redact_request_headers)
         .layer(sentry_tower::NewSentryLayer::<axum::http::Request<_>>::new_from_top())
         .layer(sentry_tower::SentryHttpLayer::with_transaction())
 }

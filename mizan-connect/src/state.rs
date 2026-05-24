@@ -7,6 +7,7 @@ use sqlx::PgPool;
 use crate::auth::jwks::JwksCache;
 use crate::billing::BillingContext;
 use crate::config::Config;
+use crate::middleware::user_rate_limit::UserRateLimiter;
 use crate::plaid::types::PlaidContext;
 
 /// Application state cloned into every handler.
@@ -25,6 +26,10 @@ struct Inner {
     /// Optional — present only when Stripe + billing env vars are configured.
     /// Handlers fall back to `not_implemented` when this is `None`.
     billing: Option<BillingContext>,
+    /// Per-authenticated-user throttle, used by `/ai/chat` (and any
+    /// future expensive endpoint that should not be hammerable by a
+    /// single client even when the global IP bucket has headroom).
+    user_rate_limiter: UserRateLimiter,
 }
 
 impl AppState {
@@ -35,6 +40,13 @@ impl AppState {
         plaid: Option<PlaidContext>,
         billing: Option<BillingContext>,
     ) -> Self {
+        // 60/min per user with a burst of 20 by default — generous
+        // enough for a conversational AI session but firm enough to
+        // stop a single client from churning OpenAI quota.
+        let user_rate_limiter = UserRateLimiter::new(
+            config.user_rate_limit_per_minute.unwrap_or(60),
+            config.user_rate_limit_burst.unwrap_or(20),
+        );
         Self {
             inner: Arc::new(Inner {
                 config,
@@ -42,6 +54,7 @@ impl AppState {
                 jwks,
                 plaid,
                 billing,
+                user_rate_limiter,
             }),
         }
     }
@@ -66,5 +79,11 @@ impl AppState {
     /// billing endpoint to a clean `not_implemented` response.
     pub fn billing(&self) -> Option<&BillingContext> {
         self.inner.billing.as_ref()
+    }
+
+    /// Per-authenticated-user rate limiter for expensive endpoints
+    /// (notably `/ai/chat`). Cloning is cheap — buckets are behind Arc.
+    pub fn user_rate_limiter(&self) -> &UserRateLimiter {
+        &self.inner.user_rate_limiter
     }
 }

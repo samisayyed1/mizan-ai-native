@@ -127,6 +127,11 @@ pub struct Config {
 
     pub cors_allowed_origins: Vec<String>,
     pub rate_limit_per_minute: u32,
+    /// Per-authenticated-user request cap. `None` falls back to a
+    /// sensible default (60/min, burst 20) — see `AppState::new`.
+    pub user_rate_limit_per_minute: Option<u32>,
+    /// Burst capacity for the per-user limiter. `None` → default.
+    pub user_rate_limit_burst: Option<u32>,
 
     pub sentry: SentryConfig,
 
@@ -214,6 +219,8 @@ struct RawConfig {
 
     mizan_cors_allowed_origins: Option<String>,
     rate_limit_per_minute: Option<u32>,
+    user_rate_limit_per_minute: Option<u32>,
+    user_rate_limit_burst: Option<u32>,
 
     sentry_dsn: Option<String>,
     sentry_environment: Option<String>,
@@ -331,6 +338,8 @@ impl Config {
             supabase_service_role_key: service_role_key,
             cors_allowed_origins,
             rate_limit_per_minute: raw.rate_limit_per_minute.unwrap_or(100).max(1),
+            user_rate_limit_per_minute: raw.user_rate_limit_per_minute,
+            user_rate_limit_burst: raw.user_rate_limit_burst,
             sentry,
             test_jwt_secret,
             plaid,

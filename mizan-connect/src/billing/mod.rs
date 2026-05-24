@@ -85,8 +85,10 @@ impl BillingContext {
     }
 }
 
-/// `/v1/billing/*` + `/usage` + `/ai/chat` + Stripe webhook router. The webhook
-/// route is signature-verified rather than JWT-authed.
+/// `/v1/billing/*` + `/usage` + `/ai/chat` router. **Does not** include
+/// the Stripe webhook — that route is mounted via [`webhook_router`] so
+/// the outer server can exempt it from the per-IP rate limiter (legitimate
+/// Stripe redrive bursts must not be 429'd).
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
@@ -95,18 +97,34 @@ pub fn router() -> Router<AppState> {
         )
         .route("/billing/portal", post(handlers::create_portal_session))
         .route("/usage", post(handlers::record_usage))
-        .route("/ai/chat", post(ai_proxy::chat))
-        // OpenAI-compatible alias: lets the desktop's `mizan` provider use a
-        // stock rig-core OpenAI client by setting only the base URL (the
-        // client appends `/chat/completions`). Same handler, same SSE
-        // contract.
-        .route("/chat/completions", post(ai_proxy::chat))
         // Monthly AI Wealth Report (M3.6). GET = list, POST = enqueue on-demand.
         .route(
             "/reports/monthly",
             get(reports::list_monthly_reports).post(reports::request_monthly_report),
         )
-        .route("/stripe/webhook", post(webhook::receive_webhook))
+}
+
+/// AI-chat routes split out so server.rs can attach the per-user
+/// throttle middleware (`enforce_per_user_limit`) to ONLY these routes.
+/// Same handler, same SSE contract as before — just isolated for the
+/// layer composition.
+pub fn ai_chat_router() -> Router<AppState> {
+    Router::new()
+        .route("/ai/chat", post(ai_proxy::chat))
+        // OpenAI-compatible alias: lets the desktop's `mizan` provider
+        // use a stock rig-core OpenAI client by setting only the base
+        // URL (it appends `/chat/completions`).
+        .route("/chat/completions", post(ai_proxy::chat))
+}
+
+
+/// Stripe webhook router. Mounted separately from [`router`] so the
+/// outer server can avoid layering the per-IP rate limiter onto it —
+/// Stripe redelivers in bursts (multiple events per event-id retry)
+/// and rate-limiting them would force Stripe into exponential backoff
+/// against our own infrastructure. Auth here is HMAC signature.
+pub fn webhook_router() -> Router<AppState> {
+    Router::new().route("/stripe/webhook", post(webhook::receive_webhook))
 }
 
 /// Replacement for the Chunk-3 stub at `/api/v1/subscription/plans`.

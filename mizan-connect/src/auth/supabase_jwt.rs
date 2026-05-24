@@ -145,6 +145,8 @@ mod tests {
             supabase_service_role_key: None,
             cors_allowed_origins: vec![],
             rate_limit_per_minute: 100,
+            user_rate_limit_per_minute: None,
+            user_rate_limit_burst: None,
             sentry: crate::config::SentryConfig {
                 dsn: None,
                 environment: "test".into(),
