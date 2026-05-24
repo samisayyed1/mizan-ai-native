@@ -3481,7 +3481,22 @@ impl ActivityServiceTrait for ActivityService {
                     duplicates: 0,
                     assets_created: 0,
                     success: false,
-                    error_message: Some("Account is required for all activities.".to_string()),
+                    // §A24 — structured shape so the confirm step renders a
+                    // proper toast (code + next steps) instead of a vague line.
+                    error_message: Some(
+                        crate::MizanError::new(
+                            "CSV_MISSING_ACCOUNT",
+                            "Pick an account before importing.",
+                        )
+                        .why("None of the rows in the CSV were mapped to an account.")
+                        .data_safety(crate::DataSafetyStatus::Untouched)
+                        .next_step(
+                            "Go back to the mapping step and assign every row to an account, \
+                             or pick a default account in the upload step.",
+                        )
+                        .retry(crate::RetryPolicy::Retryable)
+                        .to_command_error(),
+                    ),
                     quote_sync: None,
                 },
             });
@@ -3623,7 +3638,27 @@ impl ActivityServiceTrait for ActivityService {
                     duplicates: 0,
                     assets_created: 0,
                     success: false,
-                    error_message: Some("Validation errors found in activities.".to_string()),
+                    // §A24 — per-row errors are already surfaced in the
+                    // `activities` array; the top-level message points the
+                    // user at the right step + carries the diagnostic code.
+                    error_message: Some(
+                        crate::MizanError::new(
+                            "CSV_VALIDATION_FAILED",
+                            format!(
+                                "{} row{} couldn't be validated.",
+                                skipped,
+                                if skipped == 1 { "" } else { "s" }
+                            ),
+                        )
+                        .why("Each affected row shows the specific problem inline.")
+                        .data_safety(crate::DataSafetyStatus::Untouched)
+                        .next_step(
+                            "Fix the highlighted rows in the review step, or remove them \
+                             before importing.",
+                        )
+                        .retry(crate::RetryPolicy::Retryable)
+                        .to_command_error(),
+                    ),
                     quote_sync: None,
                 },
             });

@@ -8,6 +8,7 @@ import { QueryKeys } from "@/lib/query-keys";
 import type { Account } from "@/lib/types";
 import { useImportContext, reset, setStep } from "../context";
 import { ImportAlert } from "../components/import-alert";
+import { dataSafetyMessage, parseMizanError, retryLabel } from "@/lib/mizan-error";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animation Variants
@@ -130,6 +131,30 @@ export function ContextResultStep() {
   const { success, stats, errorMessage } = importResult;
 
   if (!success) {
+    // §A24 — `errorMessage` may now be a serialised MizanError. The decoder
+    // returns a uniform shape either way, so the alert renders the same UX
+    // for legacy free-form messages and the new structured shape.
+    const err = parseMizanError(
+      errorMessage ?? "An error occurred during import. Please review your data and try again.",
+    );
+    const description = (
+      <div className="space-y-1.5 text-sm">
+        <p>{err.summary}</p>
+        {err.why && <p className="text-muted-foreground">{err.why}</p>}
+        <p className="text-muted-foreground">{dataSafetyMessage(err.dataSafety)}</p>
+        {err.nextSteps.length > 0 && (
+          <ul className="ml-4 list-disc text-muted-foreground">
+            {err.nextSteps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ul>
+        )}
+        {err.code !== "UNKNOWN_ERROR" && (
+          <p className="text-muted-foreground text-xs font-mono pt-1">[{err.code}]</p>
+        )}
+      </div>
+    );
+
     return (
       <motion.div
         className="space-y-6"
@@ -137,19 +162,12 @@ export function ContextResultStep() {
         initial="hidden"
         animate="visible"
       >
-        <ImportAlert
-          variant="destructive"
-          title="Import Failed"
-          description={
-            errorMessage ??
-            "An error occurred during import. Please review your data and try again."
-          }
-        />
+        <ImportAlert variant="destructive" title="Import Failed" description={description} />
 
         <motion.div className="flex justify-center gap-3" variants={itemVariants}>
           <Button variant="outline" onClick={() => dispatch(setStep("confirm"))}>
             <Icons.ArrowLeft className="mr-2 h-4 w-4" />
-            Try Again
+            {retryLabel(err.retry) ?? "Back"}
           </Button>
         </motion.div>
       </motion.div>
