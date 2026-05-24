@@ -309,6 +309,7 @@ impl IntoResponse for AiChatError {
                     AiError::ToolNotFound(_) => StatusCode::BAD_REQUEST,
                     AiError::ToolNotAllowed(_) => StatusCode::FORBIDDEN,
                     AiError::ToolExecutionFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+                    AiError::Structured(_) => StatusCode::BAD_REQUEST,
                     AiError::ThreadNotFound(_) => StatusCode::NOT_FOUND,
                     AiError::InvalidCursor(_) => StatusCode::BAD_REQUEST,
                     AiError::Core(_) => StatusCode::INTERNAL_SERVER_ERROR,
