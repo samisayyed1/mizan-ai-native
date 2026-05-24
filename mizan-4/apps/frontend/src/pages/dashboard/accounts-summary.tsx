@@ -1,6 +1,7 @@
 "use client";
 
 import { calculatePerformanceSummary } from "@/adapters";
+import { useAddAsset } from "@/features/add-asset";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useLatestValuations } from "@/hooks/use-latest-valuations";
 import { QueryKeys } from "@/lib/query-keys";
@@ -269,6 +270,7 @@ export const AccountsSummary = React.memo(
   ({ dateRange, isAllTime }: { dateRange?: DateRange; isAllTime?: boolean }) => {
     const { accountsGrouped, setAccountsGrouped, settings } = useSettingsContext();
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const { open: openAddAsset } = useAddAsset();
 
     const {
       accounts: allAccounts,
@@ -410,16 +412,53 @@ export const AccountsSummary = React.memo(
       }
 
       if (!combinedAccountViews || combinedAccountViews.length === 0) {
+        // First-run zero state. Make this the moment we sell the agent —
+        // big "Set up your portfolio" CTA opens the same in-place dialog
+        // the + button uses. A muted "or do it manually" link sits below
+        // for the user who wants to skip the AI flow.
         return (
-          <div className="border-border/50 bg-success/10 rounded-lg border p-6 text-center md:p-8">
-            <p className="text-sm">No portfolios found.</p>
-            <Link
-              to="/settings/accounts"
-              className="text-muted-foreground hover:text-foreground mt-2 inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
+          <div className="border-border/60 from-background to-muted/30 relative overflow-hidden rounded-2xl border bg-gradient-to-b p-8 text-center md:p-12">
+            {/* Soft sparkle bg — hints at the AI surface without
+                shouting. Sits behind the content via -z-10 so it never
+                catches a click. */}
+            <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center opacity-[0.04]">
+              <Icons.Sparkles className="size-64" />
+            </div>
+
+            <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300">
+              <Icons.Sparkles className="size-6" />
+            </div>
+            <h3 className="text-foreground mt-4 text-lg font-semibold">
+              Let's set up your portfolio
+            </h3>
+            <p className="text-muted-foreground mx-auto mt-2 max-w-md text-sm leading-relaxed">
+              Drop a broker CSV, snap a statement, or just describe what you own.
+              Mizan creates the accounts, parses the rows, and verifies the totals
+              — you watch it happen.
+            </p>
+
+            <Button
+              size="lg"
+              className="mt-6"
+              onClick={() =>
+                openAddAsset({
+                  source: "dashboard",
+                  prompt: "Set up my portfolio from this file.",
+                })
+              }
             >
-              Add your first portfolio
-              <Icons.ChevronRight className="h-3 w-3" />
-            </Link>
+              <Icons.Sparkles className="mr-2 h-4 w-4" />
+              Set up with Mizan
+            </Button>
+
+            <div className="mt-3">
+              <Link
+                to="/settings/accounts"
+                className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+              >
+                or add manually
+              </Link>
+            </div>
           </div>
         );
       }

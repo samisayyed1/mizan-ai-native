@@ -3,6 +3,11 @@ import { Separator } from "@mizan/ui/components/ui/separator";
 import { Skeleton } from "@mizan/ui/components/ui/skeleton";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { Button } from "@mizan/ui/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@mizan/ui/components/ui/collapsible";
 
 import { SettingsHeader } from "../settings-header";
 import {
@@ -68,8 +73,8 @@ export default function AiProvidersPage() {
     return (
       <div className="text-foreground space-y-6">
         <SettingsHeader
-          heading="AI Providers"
-          text="Configure AI providers for portfolio insights."
+          heading="AI settings"
+          text="Mizan handles AI for you. Power users can plug in their own provider below."
         />
         <Separator />
         <div className="overflow-hidden rounded-lg border">
@@ -98,8 +103,8 @@ export default function AiProvidersPage() {
     return (
       <div className="text-foreground space-y-6">
         <SettingsHeader
-          heading="AI Providers"
-          text="Configure AI providers for portfolio insights."
+          heading="AI settings"
+          text="Mizan handles AI for you. Power users can plug in their own provider below."
         />
         <Separator />
         <div className="border-destructive/20 bg-destructive/5 rounded-lg border p-6">
@@ -130,21 +135,20 @@ export default function AiProvidersPage() {
   return (
     <div className="text-foreground space-y-6">
       <SettingsHeader
-        heading="AI Providers"
-        text="Configure AI providers for portfolio insights."
+        heading="AI settings"
+        text="Mizan handles AI for you. Power users can plug in their own provider below."
       />
       <Separator />
+      {/* Mizan AI is the default. Most users never touch anything below this card. */}
       <MizanAiHero />
-      <div>
-        {sortedProviders.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Icons.Sparkles className="text-muted-foreground mb-4 h-12 w-12" />
-            <h3 className="text-lg font-semibold">No AI Providers Available</h3>
-            <p className="text-muted-foreground mt-2 max-w-md text-sm">
-              AI providers will appear here once configured. Check back later or contact support.
-            </p>
-          </div>
-        ) : (
+
+      {/* BYO providers are tucked behind an Advanced disclosure so the
+          page doesn't shout 'API key' at every new user. The disclosure
+          summarises how many of the catalog providers are currently
+          configured so power users see at-a-glance status without
+          expanding. */}
+      {sortedProviders.length > 0 && (
+        <AdvancedProvidersDisclosure providers={sortedProviders}>
           <div className="overflow-hidden rounded-lg border">
             {sortedProviders.map((provider, index, arr) => (
               <ProviderSettingsCardWrapper
@@ -166,9 +170,69 @@ export default function AiProvidersPage() {
               />
             ))}
           </div>
-        )}
-      </div>
+        </AdvancedProvidersDisclosure>
+      )}
     </div>
+  );
+}
+
+/**
+ * Collapsible "Advanced — bring your own provider" disclosure that
+ * hides the OpenAI/Anthropic/Ollama/etc. list from default users.
+ * Defaults to closed; auto-opens when ANY of the listed providers is
+ * already configured (so a power user opening Settings sees their
+ * config is still there). Includes a short rationale + a "summary"
+ * chip so the user can see at-a-glance whether anything is set up
+ * without expanding.
+ */
+function AdvancedProvidersDisclosure({
+  providers,
+  children,
+}: {
+  providers: Array<{ id: string; enabled: boolean }>;
+  children: React.ReactNode;
+}) {
+  const configuredCount = providers.filter((p) => p.enabled).length;
+  // Auto-open if the user has already configured something so we don't
+  // hide their existing setup behind an extra click.
+  const [open, setOpen] = useState(configuredCount > 0);
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="border-border hover:bg-muted/40 flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Icons.Settings className="text-muted-foreground h-4 w-4" />
+            <div>
+              <div className="text-foreground text-sm font-medium">
+                Advanced — bring your own provider
+              </div>
+              <div className="text-muted-foreground text-xs">
+                {configuredCount === 0
+                  ? `Connect OpenAI, Anthropic, Ollama, or others (${providers.length} available)`
+                  : `${configuredCount} of ${providers.length} configured`}
+              </div>
+            </div>
+          </div>
+          <Icons.ChevronDown
+            className={`text-muted-foreground h-4 w-4 transition-transform ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3 space-y-3">
+        <p className="text-muted-foreground border-l-2 border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs">
+          You don't need this unless you want to use your own API key, run a
+          local model, or override Mizan's default model selection. If you're
+          unsure, leave Mizan AI selected above.
+        </p>
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

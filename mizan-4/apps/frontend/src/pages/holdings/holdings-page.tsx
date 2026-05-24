@@ -367,37 +367,43 @@ export const HoldingsPage = () => {
       ) : hasNoInvestments ? (
         <div className="flex items-center justify-center py-16">
           <EmptyPlaceholder
-            icon={<Icons.TrendingUp className="text-muted-foreground h-10 w-10" />}
+            icon={<Icons.Sparkles className="h-10 w-10 text-amber-500" />}
             title="No holdings yet"
-            description={
-              canEditHoldings
-                ? "Get started by updating your holdings or importing from a CSV file."
-                : "Get started by adding your first transaction or quickly import your existing holdings from a CSV file."
-            }
+            description="Drop a broker CSV, snap a statement, or just describe what you own — Mizan handles the rest. You can still add things by hand."
           >
             <div className="flex flex-col items-center gap-3 sm:flex-row">
+              {/* Lead CTA: AI dialog. Same in-place dialog the + button
+                  opens, pre-filled with the right intent. */}
+              <Button
+                size="default"
+                onClick={() =>
+                  addAsset.open({
+                    source: "portfolio",
+                    prompt: canEditHoldings
+                      ? "Update my holdings from this snapshot."
+                      : "Add my transactions from this file.",
+                  })
+                }
+              >
+                <Icons.Sparkles className="mr-2 h-4 w-4" />
+                Set up with Mizan
+              </Button>
+              {/* Secondary: manual fallback. Same destinations as before,
+                  just demoted to outline + smaller mental weight. */}
               {canEditHoldings ? (
-                <>
-                  <Button size="default" onClick={() => setIsEditMode(true)}>
-                    <Icons.Pencil className="mr-2 h-4 w-4" />
-                    Update Holdings
-                  </Button>
-                  <Button size="default" variant="outline" onClick={() => navigate("/import")}>
-                    <Icons.Import className="mr-2 h-4 w-4" />
-                    Import from CSV
-                  </Button>
-                </>
+                <Button size="default" variant="outline" onClick={() => setIsEditMode(true)}>
+                  <Icons.Pencil className="mr-2 h-4 w-4" />
+                  Update manually
+                </Button>
               ) : (
-                <>
-                  <Button size="default" onClick={() => navigate("/activities/manage")}>
-                    <Icons.Plus className="mr-2 h-4 w-4" />
-                    Add Transaction
-                  </Button>
-                  <Button size="default" variant="outline" onClick={() => navigate("/import")}>
-                    <Icons.Import className="mr-2 h-4 w-4" />
-                    Import from CSV
-                  </Button>
-                </>
+                <Button
+                  size="default"
+                  variant="outline"
+                  onClick={() => navigate("/activities/manage")}
+                >
+                  <Icons.Plus className="mr-2 h-4 w-4" />
+                  Add manually
+                </Button>
               )}
             </div>
           </EmptyPlaceholder>
