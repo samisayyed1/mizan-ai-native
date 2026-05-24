@@ -8,6 +8,7 @@
 import { AccountsToolUI } from "./accounts-tool-ui";
 import { ActivitiesToolUI } from "./activities-tool-ui";
 import { AllocationToolUI } from "./allocation-tool-ui";
+import { CreateAccountToolUI } from "./create-account-tool-ui";
 import { GoalsToolUI } from "./goals-tool-ui";
 import { HoldingsToolUI } from "./holdings-tool-ui";
 import { ImportCsvToolUI } from "./import-csv-tool-ui";
@@ -22,6 +23,7 @@ import { ValuationToolUI } from "./valuation-tool-ui";
  * Used by MessagePrimitive.Parts in thread.tsx.
  */
 export const toolUIs = {
+  create_account: CreateAccountToolUI,
   get_accounts: AccountsToolUI,
   get_asset_allocation: AllocationToolUI,
   get_goals: GoalsToolUI,
@@ -42,6 +44,7 @@ export {
   AccountsToolUI,
   ActivitiesToolUI,
   AllocationToolUI,
+  CreateAccountToolUI,
   GoalsToolUI,
   HoldingsToolUI,
   ImportCsvToolUI,

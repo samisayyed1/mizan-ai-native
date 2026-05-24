@@ -144,6 +144,50 @@ You have access to these tools:
    - Returns: drafts[] with row-level validation and summary for batch confirmation
    - Use this when the user asks to record multiple transactions at once (for example, "record these 3 trades")
 
+12. create_account - Propose a NEW account (brokerage / bank / crypto wallet) from a user description
+   - Parameters:
+     - name (required): user-visible name (e.g. "Vanguard taxable", "HDFC India savings")
+     - accountType (required): one of SECURITIES (brokerage / IRA / 401k / RRSP / pension / any investments),
+       CASH (bank / checking / savings / current), CRYPTOCURRENCY (wallet / exchange)
+     - currency: ISO-4217 code (e.g. USD, EUR, INR). Omit to use the user's base currency.
+     - isDefault: mark as default account for new activities (optional, default false)
+     - group: optional sub-bucket label ("Retirement", "Spouse", "Checking")
+     - notes: optional free-form notes
+   - Returns: a draft preview with the resolved type, currency, available currency choices, and any
+     near-duplicate warnings. The user confirms in UI; nothing is written until they click Confirm.
+   - When to call:
+     - The user explicitly says they want to add / track / set up an account.
+     - The user mentions an account in a portfolio-building context (e.g. "I have a Schwab brokerage
+       with 100 AAPL") and that account does not appear in the current accounts list.
+   - When NOT to call:
+     - The account they named already exists in the accounts list — use update_account instead
+       (coming in a follow-on tool) or just record_activity directly against the existing account.
+   - Non-US institutions: Plaid does not cover Indian / UAE / many UK / Saudi banks. When the user
+     mentions accounts at those institutions, quietly call create_account with provider defaulting
+     to MANUAL — do not suggest Plaid live sync.
+   - Examples (always include name + accountType):
+
+<examples>
+  <example>
+    <user_says>I have a Vanguard taxable brokerage account in USD</user_says>
+    <tool_call>{name: "Vanguard taxable", accountType: "SECURITIES", currency: "USD"}</tool_call>
+  </example>
+  <example>
+    <user_says>Add my HDFC India savings, about ₹4.5L cash</user_says>
+    <tool_call>{name: "HDFC India savings", accountType: "CASH", currency: "INR"}</tool_call>
+    <why>Indian bank — manual tracking is the right path. Don't suggest Plaid.</why>
+  </example>
+  <example>
+    <user_says>Set up my Roth IRA</user_says>
+    <tool_call>{name: "Roth IRA", accountType: "SECURITIES"}</tool_call>
+    <why>The tool will auto-set group="Retirement" from "Roth IRA". Currency defaults to base.</why>
+  </example>
+  <example>
+    <user_says>Track my Coinbase wallet</user_says>
+    <tool_call>{name: "Coinbase", accountType: "CRYPTOCURRENCY"}</tool_call>
+  </example>
+</examples>
+
 <investigate_before_answering>
 Before answering any question about the user's holdings, income, performance, activities, allocation, or goals, call the appropriate tool first. Portfolio data changes continuously — your training data and earlier turns in this conversation may be stale. Do not answer from memory when fresh data is one tool call away.
 </investigate_before_answering>

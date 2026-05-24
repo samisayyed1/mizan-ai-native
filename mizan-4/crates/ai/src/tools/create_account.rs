@@ -83,15 +83,12 @@ pub struct AccountTypeOption {
     pub label: String,
 }
 
-/// Canonical account types the UI offers. Order matters — first is the default.
+/// Canonical account types (mirrors `apps/frontend/src/lib/constants.ts::AccountType`).
+/// Sub-buckets like "Retirement", "Checking", "Savings" live in the `group` field.
 const ACCOUNT_TYPES: &[(&str, &str)] = &[
-    ("BROKERAGE", "Brokerage / taxable"),
-    ("RETIREMENT", "Retirement (401k, IRA, RRSP, …)"),
-    ("CASH", "Cash"),
-    ("CHECKING", "Checking"),
-    ("SAVINGS", "Savings"),
-    ("CRYPTO", "Crypto wallet / exchange"),
-    ("OTHER", "Other"),
+    ("SECURITIES", "Brokerage / investments"),
+    ("CASH", "Cash / bank account"),
+    ("CRYPTOCURRENCY", "Crypto wallet / exchange"),
 ];
 
 fn account_type_options() -> Vec<AccountTypeOption> {
@@ -104,12 +101,35 @@ fn account_type_options() -> Vec<AccountTypeOption> {
         .collect()
 }
 
+/// Maps the LLM's free-form account type to one of the canonical values.
+/// Common synonyms (brokerage/ira/401k/bank/checking/savings/crypto/btc/eth) all
+/// resolve correctly so the user's natural phrasing works on the first try.
 fn normalize_account_type(raw: &str) -> String {
     let up = raw.trim().to_uppercase();
-    if ACCOUNT_TYPES.iter().any(|(v, _)| *v == up) {
-        up
-    } else {
-        "OTHER".to_string()
+    match up.as_str() {
+        "SECURITIES" | "BROKERAGE" | "TAXABLE" | "INVESTMENT" | "INVESTMENTS"
+        | "RETIREMENT" | "401K" | "IRA" | "ROTH" | "ROTH_IRA" | "RRSP" | "TFSA" | "SIPP"
+        | "PENSION" | "STOCK" | "STOCKS" | "EQUITIES" => "SECURITIES".to_string(),
+
+        "CRYPTOCURRENCY" | "CRYPTO" | "WALLET" | "BTC" | "ETH" => "CRYPTOCURRENCY".to_string(),
+
+        "CASH" | "BANK" | "CHECKING" | "SAVINGS" | "DEPOSIT" | "CURRENT" => "CASH".to_string(),
+
+        _ => "CASH".to_string(),
+    }
+}
+
+/// When the LLM mentioned a sub-bucket (retirement / checking / savings), we
+/// capture that in `group` so the user can see "SECURITIES → Retirement" in
+/// the UI without needing a separate accountType field.
+fn infer_group_hint(raw: &str) -> Option<String> {
+    let up = raw.trim().to_uppercase();
+    match up.as_str() {
+        "RETIREMENT" | "401K" | "IRA" | "ROTH" | "ROTH_IRA" | "RRSP" | "TFSA" | "SIPP"
+        | "PENSION" => Some("Retirement".to_string()),
+        "CHECKING" | "CURRENT" => Some("Checking".to_string()),
+        "SAVINGS" | "DEPOSIT" => Some("Savings".to_string()),
+        _ => None,
     }
 }
 
@@ -160,6 +180,8 @@ impl<E: AiEnvironment> CreateAccountTool<E> {
 
         let account_type = normalize_account_type(&args.account_type);
         let name = args.name.trim().to_string();
+        // If user said "retirement" but didn't separately set a group, capture it.
+        let group_hint = args.group.clone().or_else(|| infer_group_hint(&args.account_type));
 
         let mut missing_fields: Vec<String> = Vec::new();
         if name.is_empty() {
@@ -211,7 +233,7 @@ impl<E: AiEnvironment> CreateAccountTool<E> {
                 account_type,
                 currency: currency.clone(),
                 is_default: args.is_default,
-                group: args.group.map(|g| g.trim().to_string()).filter(|g| !g.is_empty()),
+                group: group_hint.map(|g| g.trim().to_string()).filter(|g| !g.is_empty()),
                 notes: args.notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
                 provider: "MANUAL".to_string(),
             },
@@ -251,8 +273,8 @@ impl<E: AiEnvironment + 'static> Tool for CreateAccountTool<E> {
                     },
                     "accountType": {
                         "type": "string",
-                        "description": "One of BROKERAGE, RETIREMENT, CASH, CHECKING, SAVINGS, CRYPTO, OTHER.",
-                        "enum": ["BROKERAGE", "RETIREMENT", "CASH", "CHECKING", "SAVINGS", "CRYPTO", "OTHER"]
+                        "description": "Canonical type. SECURITIES for any brokerage / IRA / 401k / RRSP / pension / investment account. CASH for any bank / checking / savings / current. CRYPTOCURRENCY for any wallet / exchange. If the user says 'retirement', use SECURITIES (and the tool will set group='Retirement' automatically).",
+                        "enum": ["SECURITIES", "CASH", "CRYPTOCURRENCY"]
                     },
                     "currency": {
                         "type": "string",
@@ -291,7 +313,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn defaults_currency_to_base() {
+    async fn defaults_currency_to_base_and_normalises_brokerage() {
         let out = tool()
             .build_output(CreateAccountArgs {
                 name: "Vanguard".into(),
@@ -302,13 +324,41 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.draft.currency, "USD");
-        assert_eq!(out.draft.account_type, "BROKERAGE");
+        assert_eq!(out.draft.account_type, "SECURITIES");
         assert_eq!(out.draft.provider, "MANUAL");
         assert!(out.validation.is_valid);
     }
 
     #[tokio::test]
-    async fn normalises_unknown_type_to_other() {
+    async fn retirement_resolves_to_securities_with_group_hint() {
+        let out = tool()
+            .build_output(CreateAccountArgs {
+                name: "Vanguard IRA".into(),
+                account_type: "retirement".into(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(out.draft.account_type, "SECURITIES");
+        assert_eq!(out.draft.group.as_deref(), Some("Retirement"));
+    }
+
+    #[tokio::test]
+    async fn checking_resolves_to_cash_with_group_hint() {
+        let out = tool()
+            .build_output(CreateAccountArgs {
+                name: "Chase Checking".into(),
+                account_type: "checking".into(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(out.draft.account_type, "CASH");
+        assert_eq!(out.draft.group.as_deref(), Some("Checking"));
+    }
+
+    #[tokio::test]
+    async fn unknown_type_falls_back_to_cash() {
         let out = tool()
             .build_output(CreateAccountArgs {
                 name: "Acme".into(),
@@ -317,7 +367,7 @@ mod tests {
             })
             .await
             .unwrap();
-        assert_eq!(out.draft.account_type, "OTHER");
+        assert_eq!(out.draft.account_type, "CASH");
     }
 
     #[tokio::test]
