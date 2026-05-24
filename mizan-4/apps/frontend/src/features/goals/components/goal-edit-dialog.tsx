@@ -21,6 +21,7 @@ const GOAL_TYPE_LABELS: Record<Goal["goalType"], string> = {
   home: "Home Purchase",
   car: "Car Purchase",
   wedding: "Wedding",
+  emergency_fund: "Emergency Fund",
   custom_save_up: "Savings Goal",
 };
 

@@ -20,6 +20,7 @@ pub mod allocation;
 pub mod cash_balances;
 pub mod constants;
 pub mod create_account;
+pub mod create_goal;
 pub mod update_account;
 pub mod csv_intel;
 pub mod goals;
@@ -41,6 +42,7 @@ pub use activities::SearchActivitiesTool;
 pub use allocation::GetAssetAllocationTool;
 pub use cash_balances::GetCashBalancesTool;
 pub use create_account::CreateAccountTool;
+pub use create_goal::CreateGoalTool;
 pub use update_account::UpdateAccountTool;
 pub use goals::GetGoalsTool;
 pub use health::GetHealthStatusTool;
@@ -73,6 +75,7 @@ pub struct ToolSet<E: AiEnvironment> {
     pub health_status: GetHealthStatusTool<E>,
     pub create_account: CreateAccountTool<E>,
     pub update_account: UpdateAccountTool<E>,
+    pub create_goal: CreateGoalTool<E>,
 }
 
 impl<E: AiEnvironment> ToolSet<E> {
@@ -93,7 +96,8 @@ impl<E: AiEnvironment> ToolSet<E> {
             import_csv: ImportCsvTool::new(env.clone(), base_currency),
             health_status: GetHealthStatusTool::new(env.clone()),
             create_account: CreateAccountTool::new(env.clone()),
-            update_account: UpdateAccountTool::new(env),
+            update_account: UpdateAccountTool::new(env.clone()),
+            create_goal: CreateGoalTool::new(env),
         }
     }
 }
