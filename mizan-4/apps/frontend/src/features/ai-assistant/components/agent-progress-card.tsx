@@ -30,7 +30,7 @@
 
 import { useMemo, useReducer } from "react";
 import { Icons } from "@mizan/ui/components/ui/icons";
-import { cn } from "@mizan/ui/lib/utils";
+import { cn } from "@/lib/utils";
 import { Button } from "@mizan/ui/components/ui/button";
 import type { AgentInnerEvent, AgentPlanStep } from "../types";
 

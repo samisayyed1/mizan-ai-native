@@ -10,7 +10,7 @@ import {
 } from "@mizan/ui/components/ui/command";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@mizan/ui/components/ui/popover";
-import { cn } from "@mizan/ui/lib/utils";
+import { cn } from "@/lib/utils";
 import type { ImportTemplateData } from "@/lib/types";
 
 interface TemplatePickerProps {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { cn } from "@mizan/ui/lib/utils";
+import { cn } from "@/lib/utils";
 import { Button } from "@mizan/ui/components/ui/button";
 import {
   Command,

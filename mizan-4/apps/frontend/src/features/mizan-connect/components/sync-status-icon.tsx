@@ -1,5 +1,5 @@
 import { Icons } from "@mizan/ui/components/ui/icons";
-import { cn } from "@mizan/ui/lib/utils";
+import { cn } from "@/lib/utils";
 import type { AggregatedSyncStatus } from "../types";
 
 interface SyncStatusIconProps {

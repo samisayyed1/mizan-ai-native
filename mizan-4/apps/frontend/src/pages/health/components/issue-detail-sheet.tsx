@@ -10,7 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@mizan/ui";
-import { cn } from "@mizan/ui/lib/utils";
+import { cn } from "@/lib/utils";
 import { Link } from "react-router-dom";
 
 interface IssueDetailSheetProps {

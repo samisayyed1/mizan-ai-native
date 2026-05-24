@@ -41,7 +41,7 @@ import { Button } from "@mizan/ui/components/ui/button";
 import { Dialog, DialogContent } from "@mizan/ui/components/ui/dialog";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { Textarea } from "@mizan/ui/components/ui/textarea";
-import { cn } from "@mizan/ui/lib/utils";
+import { cn } from "@/lib/utils";
 
 import { streamAgentChat, type AgentRunRequest } from "@/adapters";
 import {

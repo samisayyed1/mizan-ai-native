@@ -17,7 +17,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@mizan/ui";
-import { cn } from "@mizan/ui/lib/utils";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { IssueDetailSheet } from "./components/issue-detail-sheet";
 
