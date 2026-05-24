@@ -33,6 +33,7 @@ pub mod income;
 pub mod performance;
 pub mod record_activities;
 pub mod record_activity;
+pub mod update_liability;
 pub mod valuation;
 
 // Re-export constants
@@ -56,6 +57,7 @@ pub use income::GetIncomeTool;
 pub use performance::GetPerformanceTool;
 pub use record_activities::RecordActivitiesTool;
 pub use record_activity::RecordActivityTool;
+pub use update_liability::UpdateLiabilityTool;
 pub use valuation::GetValuationHistoryTool;
 
 use std::sync::Arc;
@@ -82,6 +84,7 @@ pub struct ToolSet<E: AiEnvironment> {
     pub create_goal: CreateGoalTool<E>,
     pub create_liability: CreateLiabilityTool<E>,
     pub add_alternative_asset: AddAlternativeAssetTool<E>,
+    pub update_liability: UpdateLiabilityTool<E>,
 }
 
 impl<E: AiEnvironment> ToolSet<E> {
@@ -105,7 +108,8 @@ impl<E: AiEnvironment> ToolSet<E> {
             update_account: UpdateAccountTool::new(env.clone()),
             create_goal: CreateGoalTool::new(env.clone()),
             create_liability: CreateLiabilityTool::new(env.clone()),
-            add_alternative_asset: AddAlternativeAssetTool::new(env),
+            add_alternative_asset: AddAlternativeAssetTool::new(env.clone()),
+            update_liability: UpdateLiabilityTool::new(env),
         }
     }
 }

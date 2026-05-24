@@ -1,6 +1,13 @@
 import { useBalancePrivacy } from "@/hooks/use-balance-privacy";
 import type { AlternativeAssetHolding } from "@/lib/types";
 import { ALTERNATIVE_ASSET_KIND_DISPLAY_NAMES } from "@/lib/types";
+
+function isExampleHolding(h: AlternativeAssetHolding): boolean {
+  if (h.metadata && (h.metadata as Record<string, unknown>).example === true) {
+    return true;
+  }
+  return h.name.startsWith("Example — ");
+}
 import { AmountDisplay, GainPercent, Separator } from "@mizan/ui";
 import { Card } from "@mizan/ui/components/ui/card";
 import { Icons } from "@mizan/ui/components/ui/icons";
@@ -60,8 +67,17 @@ export function AlternativeHoldingsListMobile({
                   <AssetKindIcon kind={holding.kind} size={20} />
                 </div>
                 <div className="flex-1 overflow-hidden">
-                  <p className="truncate font-semibold">{holding.name}</p>
-                  <p className="text-muted-foreground truncate text-sm">{kindDisplay}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="truncate font-semibold">{holding.name}</p>
+                    {isExampleHolding(holding) && (
+                      <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                        Example
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-muted-foreground truncate text-sm">
+                    {isExampleHolding(holding) ? "Tap to make this real" : kindDisplay}
+                  </p>
                 </div>
               </div>
               <div className="ml-2 text-right">
