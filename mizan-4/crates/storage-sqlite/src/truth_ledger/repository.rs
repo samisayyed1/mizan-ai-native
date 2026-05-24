@@ -229,8 +229,8 @@ impl TruthLedger for SqliteTruthLedger {
                 .map_err(|e| LedgerIntegrityError::TamperedEntry(format!("load failed: {e}")))?;
 
             let mut expected_prev = GENESIS_PREV_HASH.to_string();
-            let mut expected_seq: u64 = 0;
-            for row in rows.iter() {
+            for (idx, row) in rows.iter().enumerate() {
+                let expected_seq = idx as u64;
                 let entry = db_to_domain(row).map_err(LedgerIntegrityError::TamperedEntry)?;
                 if entry.sequence != expected_seq {
                     return Err(LedgerIntegrityError::OutOfOrder(entry.id.clone()));
@@ -245,7 +245,6 @@ impl TruthLedger for SqliteTruthLedger {
                     return Err(LedgerIntegrityError::TamperedEntry(entry.id.clone()));
                 }
                 expected_prev = entry.entry_hash.clone();
-                expected_seq += 1;
             }
             Ok(())
         })

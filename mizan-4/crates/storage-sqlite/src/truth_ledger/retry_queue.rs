@@ -61,7 +61,7 @@ impl From<AppendInputWire> for AppendInput {
                 .amount
                 .as_deref()
                 .and_then(|s| std::str::FromStr::from_str(s).ok())
-                .or_else(|| {
+                .or({
                     // Be tolerant of a Decimal that round-trips through
                     // json! into a number (shouldn't happen, but defensive)
                     None::<Decimal>

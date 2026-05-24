@@ -47,12 +47,16 @@ pub struct UserRateLimiter {
 
 impl UserRateLimiter {
     /// Build a limiter allowing `tokens_per_minute` tokens with a
-    /// burst of `burst`. Both must be ≥ 1.
+    /// burst of `burst`. Inputs are clamped to ≥ 1 by saturating to
+    /// `NonZeroU32::MIN` when zero is passed — no panics on bad input.
     pub fn new(tokens_per_minute: u32, burst: u32) -> Self {
-        let tokens_per_minute = tokens_per_minute.max(1);
-        let burst = NonZeroU32::new(burst.max(1)).expect("burst clamped to >= 1");
-        let quota = Quota::per_minute(NonZeroU32::new(tokens_per_minute).unwrap())
-            .allow_burst(burst);
+        // `NonZeroU32::new` returns Option; `.unwrap_or(MIN)` saturates
+        // the zero case to 1 instead of panicking. Both inputs are
+        // user-configurable so a misconfigured env var must not crash
+        // the boot sequence.
+        let tokens_nz = NonZeroU32::new(tokens_per_minute).unwrap_or(NonZeroU32::MIN);
+        let burst_nz = NonZeroU32::new(burst).unwrap_or(NonZeroU32::MIN);
+        let quota = Quota::per_minute(tokens_nz).allow_burst(burst_nz);
         Self {
             inner: Arc::new(RateLimiter::keyed(quota)),
             last_seen: Arc::new(DashMap::new()),

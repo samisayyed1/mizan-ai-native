@@ -119,6 +119,12 @@ impl LedgerEntry {
     /// Construct + hash a fresh entry. `sequence` and `prev_hash` come
     /// from the ledger (the service injects them at `append` time);
     /// callers shouldn't try to compute these themselves.
+    ///
+    /// 10 args is intentional — each one is a stable column on the
+    /// ledger row, and grouping into a sub-struct would just shift
+    /// the verbosity to the call site. The public façade
+    /// `assemble_via_service` has the same shape.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn assemble(
         id: String,
         sequence: u64,

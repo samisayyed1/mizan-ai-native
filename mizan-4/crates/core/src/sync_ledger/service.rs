@@ -4,7 +4,7 @@
 //! the migration lands. Until then, the in-memory impl is enough for
 //! tests + the foundation PRs.
 
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 use async_trait::async_trait;
 
@@ -114,12 +114,6 @@ impl SyncRunLedger for InMemorySyncRunLedger {
         let entries = self.entries.read().expect("ledger poisoned");
         Ok(entries.iter().find(|e| e.run_id == run_id).cloned())
     }
-}
-
-/// Convenience: an Arc-wrapped in-memory ledger you can clone and pass
-/// to multiple consumers.
-pub fn shared_in_memory() -> Arc<dyn SyncRunLedger> {
-    Arc::new(InMemorySyncRunLedger::new())
 }
 
 #[cfg(test)]

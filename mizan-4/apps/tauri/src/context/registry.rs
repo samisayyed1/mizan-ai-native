@@ -75,7 +75,13 @@ pub struct ServiceContext {
     //
     // §A6 — emits per tool-call audit rows. Owned by ServiceContext so
     // every chat stream attaches the same runtime + every Tauri command
-    // can call `state.ai_safety()` to register tool-call attempts.
+    // can call `state.ai_safety()` to register tool-call attempts. The
+    // chat dispatcher already wires this up via `stream_hook`; surface
+    // is dead-code-allowed because no Tauri command directly consumes
+    // it yet (the chat path uses the runtime through a different
+    // injection). Kept public for the upcoming `state.ai_safety()`
+    // call sites surfaced in support-bundle endpoints.
+    #[allow(dead_code)]
     pub ai_safety: Arc<AiSafetyRuntime>,
     /// §A4 — append-only ledger of every sync attempt (Plaid / SnapTrade /
     /// Yahoo / TradingView / CSV import / AI tools / FX refresh / Manual).
@@ -225,6 +231,9 @@ impl ServiceContext {
     }
 
     // ─── v3.1 foundation accessors ────────────────────────────────────────
+    // ai_safety accessor is `pub(crate)` + allow(dead_code) — used by
+    // upcoming support-bundle endpoints surfacing the audit trail.
+    #[allow(dead_code)]
     pub fn ai_safety(&self) -> Arc<AiSafetyRuntime> {
         Arc::clone(&self.ai_safety)
     }
@@ -252,14 +261,7 @@ impl ServiceContext {
 pub fn build_v31_foundation_defaults(
     pool: Arc<DbPool>,
     writer: WriteHandle,
-) -> (
-    Arc<AiSafetyRuntime>,
-    Arc<dyn SyncRunLedger>,
-    Arc<dyn NetWorthSnapshotService>,
-    Arc<dyn DailyBriefService>,
-    Arc<dyn TruthLedger>,
-    Arc<SqliteTruthLedgerRetryQueue>,
-) {
+) -> V31Foundations {
     let sync_ledger: Arc<dyn SyncRunLedger> = Arc::new(SqliteSyncRunLedger::new(
         Arc::clone(&pool),
         writer.clone(),
@@ -274,12 +276,25 @@ pub fn build_v31_foundation_defaults(
         writer.clone(),
     ));
     let retry_queue = Arc::new(SqliteTruthLedgerRetryQueue::new(pool, writer));
-    (
-        Arc::new(AiSafetyRuntime::new()),
+    V31Foundations {
+        ai_safety: Arc::new(AiSafetyRuntime::new()),
         sync_ledger,
         nw_snapshot,
         daily_brief,
         truth_ledger,
         retry_queue,
-    )
+    }
+}
+
+/// All five §v3.1 foundation services + the truth-ledger retry queue.
+/// Returned as a struct (rather than a six-tuple) so callers can
+/// destructure by name + so adding a seventh foundation later doesn't
+/// silently shift every existing tuple index at the call site.
+pub struct V31Foundations {
+    pub ai_safety: Arc<AiSafetyRuntime>,
+    pub sync_ledger: Arc<dyn SyncRunLedger>,
+    pub nw_snapshot: Arc<dyn NetWorthSnapshotService>,
+    pub daily_brief: Arc<dyn DailyBriefService>,
+    pub truth_ledger: Arc<dyn TruthLedger>,
+    pub retry_queue: Arc<SqliteTruthLedgerRetryQueue>,
 }

@@ -18,10 +18,10 @@ import type { BrokerConnection } from "../types";
 const POLL_INTERVAL_MS = 5_000;
 const POLL_DURATION_MS = 5 * 60_000;
 
-type PlaidHandler = {
+interface PlaidHandler {
   open: () => void;
   destroy: () => void;
-};
+}
 
 type PlaidCreate = (config: {
   token: string;

@@ -9,9 +9,10 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 use super::model::{
-    canonical_payload, derive_entry_hash, LedgerEntry, LedgerEntryKind, LedgerIntegrityError,
-    GENESIS_PREV_HASH,
+    derive_entry_hash, LedgerEntry, LedgerEntryKind, LedgerIntegrityError, GENESIS_PREV_HASH,
 };
+#[cfg(test)]
+use super::model::canonical_payload;
 use crate::Result;
 
 /// Builder-style input for appending — the service computes sequence,
@@ -145,9 +146,9 @@ impl TruthLedger for InMemoryTruthLedger {
         let entries = self.entries.read().expect("ledger poisoned");
 
         let mut expected_prev = GENESIS_PREV_HASH.to_string();
-        let mut expected_seq: u64 = 0;
 
-        for entry in entries.iter() {
+        for (expected_seq_usize, entry) in entries.iter().enumerate() {
+            let expected_seq = expected_seq_usize as u64;
             if entry.sequence != expected_seq {
                 return Err(LedgerIntegrityError::OutOfOrder(entry.id.clone()));
             }
@@ -161,7 +162,6 @@ impl TruthLedger for InMemoryTruthLedger {
                 return Err(LedgerIntegrityError::TamperedEntry(entry.id.clone()));
             }
             expected_prev = entry.entry_hash.clone();
-            expected_seq += 1;
         }
         Ok(())
     }

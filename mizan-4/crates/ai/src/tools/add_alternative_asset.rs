@@ -206,16 +206,14 @@ impl<E: AiEnvironment> AddAlternativeAssetTool<E> {
         // Per-kind metadata sanity checks (warnings only — UI lets user edit).
         let mut metadata = args.metadata.unwrap_or_default();
         match kind.as_str() {
-            "property" => {
-                if !metadata.contains_key("sub_type") {
+            "property"
+                if !metadata.contains_key("sub_type") => {
                     metadata.insert("sub_type".to_string(), "residence".to_string());
                 }
-            }
-            "vehicle" => {
-                if !metadata.contains_key("sub_type") {
+            "vehicle"
+                if !metadata.contains_key("sub_type") => {
                     metadata.insert("sub_type".to_string(), "car".to_string());
                 }
-            }
             "precious" => {
                 if !metadata.contains_key("metal_type") {
                     warnings.push(

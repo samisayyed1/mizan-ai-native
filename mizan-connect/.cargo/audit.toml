@@ -1,0 +1,23 @@
+# cargo-audit configuration — Mizan Connect.
+#
+# Documents which RustSec advisories we explicitly accept and why, so a
+# future contributor (or auditor) can see the rationale without re-deriving
+# it from the dependency tree. Anything NOT listed here that cargo-audit
+# flags is a real failure that must be fixed.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071 — Marvin timing side-channel in rsa@0.9.x.
+    # Reachable via `sqlx-mysql` in our compile graph, but Mizan Connect
+    # connects exclusively to Postgres (sqlx features = ["postgres", ...]),
+    # so the MySQL handshake code that uses `rsa` is dead at runtime. No
+    # upstream fix is available (the algorithm-level mitigation is still
+    # being researched). Re-evaluate when sqlx-postgres no longer pulls
+    # sqlx-mysql through sqlx-macros-core's all-backends compile.
+    "RUSTSEC-2023-0071",
+    # RUSTSEC-2025-0111 — tokio-tar PAX header smuggling.
+    # Pulled in via `testcontainers` which is a [dev-dependencies]-only
+    # crate; not compiled into the production binary. No fix available
+    # upstream — testcontainers itself would need to migrate off tokio-tar.
+    "RUSTSEC-2025-0111",
+]

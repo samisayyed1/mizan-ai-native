@@ -65,16 +65,16 @@ uuid = { version = "1", features = ["v4", "serde"] }
 jsonwebtoken = "9"
 
 # Validation
-validator = { version = "0.18", features = ["derive"] }
+validator = { version = "0.20", features = ["derive"] }
 
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt", "registry"] }
 
 # Sentry (optional, controlled by env)
-sentry = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls", "tower"] }
-sentry-tower = { version = "0.34", features = ["http"] }
-sentry-tracing = "0.34"
+sentry = { version = "0.42", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls", "tower"] }
+sentry-tower = { version = "0.42", features = ["http"] }
+sentry-tracing = "0.42"
 
 # Config / env
 figment = { version = "0.10", features = ["env", "toml"] }

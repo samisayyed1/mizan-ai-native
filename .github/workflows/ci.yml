@@ -130,3 +130,35 @@ jobs:
           tags: mizan-connect:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Apple-grade: surface every new RustSec advisory in both projects on
+  # every PR. Known-accepted advisories are recorded in each project's
+  # `.cargo/audit.toml` so a future contributor can see the rationale
+  # without re-deriving it. Anything not in those files that audit flags
+  # is a real failure that must be fixed (or explicitly added with a
+  # documented reason).
+  cargo-audit:
+    name: cargo audit (mizan-4 + mizan-connect)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: Audit mizan-4
+        working-directory: mizan-4
+        # mizan-4's audit-config is committed in `.cargo/audit.toml`
+        # (or per-call --ignore). Currently we have zero accepted
+        # advisories — every flagged advisory is a real failure.
+        run: cargo audit --deny warnings --deny unmaintained
+      - name: Audit mizan-connect
+        working-directory: mizan-connect
+        # Known-accepted: see mizan-connect/.cargo/audit.toml. The
+        # ignore list is passed explicitly so the CI is reproducible
+        # even on cargo-audit versions that don't read the per-project
+        # config file (older versions only honour ~/.cargo/audit.toml).
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2025-0111 \
+            --deny warnings

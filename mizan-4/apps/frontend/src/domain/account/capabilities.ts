@@ -1,6 +1,6 @@
 export type MizanAccountTier = "free" | "silver" | "gold";
 
-export type AccountCapabilities = {
+export interface AccountCapabilities {
   tier: MizanAccountTier;
   aiAssistant: true;
   encryptedLocalStorage: true;
@@ -29,7 +29,7 @@ export type AccountCapabilities = {
   cashDragDetection: boolean;
   weeklyAiReports: boolean;
   proactiveAlerts: boolean;
-};
+}
 
 export type AccountCapability = Exclude<keyof AccountCapabilities, "tier">;
 

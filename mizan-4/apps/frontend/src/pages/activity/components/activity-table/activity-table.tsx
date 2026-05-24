@@ -336,7 +336,7 @@ export const ActivityTable = ({
         ),
         cell: ({ row }) => {
           const activityType = String(row.getValue("activityType"));
-          const fee = row.getValue("fee") as string | number | null | undefined;
+          const fee = row.getValue("fee");
           const currencyVal = row.getValue("currency");
           const currency =
             typeof currencyVal === "string" && currencyVal

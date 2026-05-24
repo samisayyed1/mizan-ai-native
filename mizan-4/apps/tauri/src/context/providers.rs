@@ -184,14 +184,14 @@ pub async fn initialize_context(
     // §v3.1 foundation services — built here (instead of later) so the
     // truth_ledger can be threaded into ActivityService below. SQLite-
     // backed so every audit/snapshot/brief/ledger row survives restarts.
-    let (
+    let crate::context::registry::V31Foundations {
         ai_safety,
         sync_ledger,
-        net_worth_snapshot_service,
-        daily_brief_service,
+        nw_snapshot: net_worth_snapshot_service,
+        daily_brief: daily_brief_service,
         truth_ledger,
-        truth_ledger_retry_queue,
-    ) = crate::context::registry::build_v31_foundation_defaults(pool.clone(), writer.clone());
+        retry_queue: truth_ledger_retry_queue,
+    } = crate::context::registry::build_v31_foundation_defaults(pool.clone(), writer.clone());
 
     let truth_ledger_retry_queue_trait:
         Arc<dyn mizan_core::truth_engine::TruthLedgerRetryQueue> =

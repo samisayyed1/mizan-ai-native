@@ -126,6 +126,12 @@ fn is_iso_date(s: &str) -> bool {
 }
 
 pub struct UpdateLiabilityTool<E: AiEnvironment> {
+    // Kept for type signature parity with the other AI tools (they all
+    // hold `env: Arc<E>` so the tool registry can store them uniformly).
+    // This tool only emits drafts so the env is unused by `build_output`;
+    // the field remains for future read paths (e.g. validating asset_id
+    // exists before drafting).
+    #[allow(dead_code)]
     env: Arc<E>,
 }
 

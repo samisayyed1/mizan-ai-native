@@ -94,6 +94,8 @@ impl TestApp {
             supabase_service_role_key: None,
             cors_allowed_origins: vec!["http://localhost:1420".into()],
             rate_limit_per_minute: 600,
+            user_rate_limit_per_minute: None,
+            user_rate_limit_burst: None,
             sentry: SentryConfig {
                 dsn: None,
                 environment: "test".into(),

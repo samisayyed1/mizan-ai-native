@@ -184,7 +184,7 @@ pub fn build_app(state: AppState) -> Router {
         .layer(trace_layer)
         .layer(redact_request_headers)
         .layer(sentry_tower::NewSentryLayer::<axum::http::Request<_>>::new_from_top())
-        .layer(sentry_tower::SentryHttpLayer::with_transaction())
+        .layer(sentry_tower::SentryHttpLayer::new().enable_transaction())
 }
 
 fn build_cors(config: &Config) -> CorsLayer {

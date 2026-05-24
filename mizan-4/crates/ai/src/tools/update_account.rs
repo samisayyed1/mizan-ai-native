@@ -156,7 +156,7 @@ fn resolve_account(
 
     // 1. Exact id.
     if let Some(a) = accounts.iter().find(|a| a.id == r) {
-        return ResolutionResult::Single(a.clone());
+        return ResolutionResult::Single(Box::new(a.clone()));
     }
 
     // 2. Exact name (case-insensitive).
@@ -167,7 +167,7 @@ fn resolve_account(
         .cloned()
         .collect();
     if name_matches.len() == 1 {
-        return ResolutionResult::Single(name_matches.into_iter().next().unwrap());
+        return ResolutionResult::Single(Box::new(name_matches.into_iter().next().unwrap()));
     }
     if name_matches.len() > 1 {
         return ResolutionResult::Ambiguous(name_matches);
@@ -181,13 +181,17 @@ fn resolve_account(
         .collect();
     match substring_matches.len() {
         0 => ResolutionResult::NotFound,
-        1 => ResolutionResult::Single(substring_matches.into_iter().next().unwrap()),
+        1 => ResolutionResult::Single(Box::new(substring_matches.into_iter().next().unwrap())),
         _ => ResolutionResult::Ambiguous(substring_matches),
     }
 }
 
+// Single + Ambiguous carry a heavyweight Account (~500 bytes) while
+// NotFound + Missing are zero-payload. Box'ing the Single variant
+// equalises the enum size so it fits in the standard 64-byte enum
+// budget without sacrificing pattern-match clarity at the call site.
 enum ResolutionResult {
-    Single(mizan_core::accounts::Account),
+    Single(Box<mizan_core::accounts::Account>),
     Ambiguous(Vec<mizan_core::accounts::Account>),
     NotFound,
     Missing,
@@ -514,7 +518,7 @@ mod tests {
             .unwrap();
         assert!(out.validation.resolved);
         assert!(out.draft.is_default);
-        assert_eq!(out.current.is_default, false);
+        assert!(!out.current.is_default);
     }
 
     #[tokio::test]
