@@ -17,7 +17,6 @@
 //! through [`detect_recipe`]. Free-form goals that don't match any
 //! recipe fall back to the generic chat dispatcher.
 
-use crate::agent::{PlanStep, VerifyExpectation};
 use crate::agent_planner::ToolDescriptor;
 
 /// One recipe. The chat dispatcher reads `.system_prompt_addendum`,
@@ -370,19 +369,6 @@ pub fn build_recipe_addendum(recipe: &AgentRecipe) -> String {
 mod tests {
     use super::*;
 
-    /// Suppress unused-import warning while exercising the helper
-    /// to make sure it's pub-visible from outside the module.
-    #[allow(dead_code)]
-    fn _exercise_step_unused() -> Option<PlanStep> {
-        None
-    }
-
-    /// Used inside the example assertions to ensure VerifyExpectation
-    /// remains a public re-export.
-    #[allow(dead_code)]
-    fn _exercise_verify_unused() -> Option<VerifyExpectation> {
-        None
-    }
 
     #[test]
     fn detects_portfolio_from_csv_when_keyword_and_attachment_present() {
