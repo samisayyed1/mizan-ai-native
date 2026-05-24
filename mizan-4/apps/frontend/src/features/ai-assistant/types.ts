@@ -296,6 +296,93 @@ interface ThreadTitleUpdatedEvent extends AiStreamEventBase {
   title: string;
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Agent events
+// ──────────────────────────────────────────────────────────────────
+// The agent runtime (crates/ai/src/agent.rs) emits its own taxonomy
+// of progress events. They ride the same SSE channel as the chat
+// events but render into a dedicated AgentProgressCard component
+// instead of the chat-message renderer.
+//
+// Match the snake_case Rust serde tag verbatim.
+
+export type AgentInnerEvent =
+  | {
+      type: "plan_ready";
+      runId: string;
+      plan: AgentPlanStep[];
+      estimatedSteps: number;
+    }
+  | {
+      type: "step_start";
+      runId: string;
+      stepIndex: number;
+      totalSteps: number;
+      stepId: string;
+      summary: string;
+    }
+  | {
+      type: "step_progress";
+      runId: string;
+      stepIndex: number;
+      progress: number; // 0..1
+      message: string;
+    }
+  | {
+      type: "step_done";
+      runId: string;
+      stepIndex: number;
+      stepId: string;
+      ledgerEntries: string[];
+    }
+  | {
+      type: "step_failed";
+      runId: string;
+      stepIndex: number;
+      stepId: string;
+      error: string;
+      retrying: boolean;
+    }
+  | {
+      type: "re_planning";
+      runId: string;
+      reason: string;
+    }
+  | {
+      type: "verified";
+      runId: string;
+      discrepancies: string[];
+    }
+  | {
+      type: "run_complete";
+      runId: string;
+      undoBatchId: string;
+      summary: string;
+      toolCalls: number;
+      wallClockMs: number;
+    }
+  | {
+      type: "run_aborted";
+      runId: string;
+      reason: string;
+      partialLedgerEntries: string[];
+    };
+
+export interface AgentPlanStep {
+  id: string;
+  tool: string;
+  args: unknown;
+  dependsOn: string[];
+  summary: string;
+  verify: unknown | null;
+}
+
+interface AgentEnvelopeEvent extends AiStreamEventBase {
+  type: "agent";
+  /** The actual agent runtime event the UI renders. */
+  event: AgentInnerEvent;
+}
+
 /**
  * Token usage statistics.
  */
@@ -317,7 +404,8 @@ export type AiStreamEvent =
   | ToolResultEvent
   | ErrorEvent
   | DoneEvent
-  | ThreadTitleUpdatedEvent;
+  | ThreadTitleUpdatedEvent
+  | AgentEnvelopeEvent;
 
 // ============================================================================
 // UI State Types
