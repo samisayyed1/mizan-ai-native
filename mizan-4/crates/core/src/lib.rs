@@ -16,6 +16,7 @@ pub mod fx;
 pub mod goals;
 pub mod health;
 pub mod limits;
+pub mod net_worth_snapshot;
 pub mod news;
 #[cfg(test)]
 pub mod perf_budget;
