@@ -66,6 +66,11 @@ pub struct ServiceContext {
     pub connect_service: Arc<ConnectService>,
     pub ai_provider_service: Arc<dyn AiProviderServiceTrait>,
     pub ai_chat_service: Arc<ChatService<TauriAiEnvironment>>,
+    /// Same AiEnvironment the chat service holds. Surfaced separately
+    /// so commands outside the chat dispatcher (notably the agent
+    /// runtime in `stream_agent_chat`) can build their own ToolSet
+    /// against the same env without going through the chat service.
+    pub ai_environment: Arc<TauriAiEnvironment>,
     pub device_enroll_service: Arc<DeviceEnrollService>,
     pub device_sync_runtime: Arc<DeviceSyncRuntimeState>,
     pub health_service: Arc<health::HealthService>,
@@ -216,6 +221,10 @@ impl ServiceContext {
 
     pub fn ai_chat_service(&self) -> Arc<ChatService<TauriAiEnvironment>> {
         Arc::clone(&self.ai_chat_service)
+    }
+
+    pub fn ai_env(&self) -> Arc<TauriAiEnvironment> {
+        Arc::clone(&self.ai_environment)
     }
 
     pub fn device_enroll_service(&self) -> Arc<DeviceEnrollService> {

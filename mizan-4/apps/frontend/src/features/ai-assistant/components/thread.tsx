@@ -12,6 +12,7 @@ import type { FC, ReactNode } from "react";
 
 import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
+import { AgentProgressCard } from "./agent-progress-card";
 import { ComposerAddAttachment, ComposerAttachments, UserMessageAttachments } from "./attachment";
 import { MarkdownText } from "./markdown-text";
 import { ToolFallback } from "./tool-fallback";
@@ -19,6 +20,7 @@ import { TooltipIconButton } from "./tooltip-icon-button";
 
 import { cn } from "@/lib/utils";
 import { Reasoning, ReasoningGroup } from "./reasoning";
+import type { AgentInnerEvent } from "../types";
 
 export interface ThreadProps {
   composerActions?: ReactNode;
@@ -257,6 +259,42 @@ const TypingIndicator: FC<TypingIndicatorProps> = ({ position }) => {
   );
 };
 
+/**
+ * Pulls every "agent" part out of the current assistant message and
+ * renders one <AgentProgressCard /> per run_id. assistant-ui's
+ * MessagePrimitive.Parts doesn't know how to render custom part
+ * types, so we render agent parts ourselves above the standard
+ * Parts primitive. The agent part itself is opaque to the chat
+ * library — it just sits in the message.content.parts array
+ * alongside text/reasoning/toolCall parts.
+ */
+const AgentParts: FC = () => {
+  const agentParts = useAssistantState(({ message }) => {
+    const parts = message?.content as
+      | readonly { type: string; runId?: string; events?: AgentInnerEvent[] }[]
+      | undefined;
+    if (!parts || !Array.isArray(parts)) return [];
+    return parts.filter(
+      (p): p is { type: "agent"; runId: string; events: AgentInnerEvent[] } =>
+        p?.type === "agent" && typeof p.runId === "string" && Array.isArray(p.events)
+    );
+  });
+
+  if (!agentParts || agentParts.length === 0) return null;
+
+  return (
+    <>
+      {agentParts.map((part) => (
+        <AgentProgressCard
+          key={part.runId}
+          events={part.events}
+          title="Agent run"
+        />
+      ))}
+    </>
+  );
+};
+
 const AssistantMessage: FC = () => {
   return (
     <MessagePrimitive.Root
@@ -265,6 +303,7 @@ const AssistantMessage: FC = () => {
     >
       <div className="aui-assistant-message-content text-foreground wrap-break-word mx-2 text-sm leading-6">
         <TypingIndicator position="initial" />
+        <AgentParts />
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,

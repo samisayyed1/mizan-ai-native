@@ -357,6 +357,7 @@ pub async fn initialize_context(
         health_service.clone(),
         Some(connect_service.clone()),
     ));
+    let ai_environment_for_agent = ai_environment.clone();
     let ai_chat_service = Arc::new(ChatService::new(ai_environment, ChatConfig::default()));
 
     // Device enroll service for E2EE sync
@@ -412,6 +413,7 @@ pub async fn initialize_context(
             connect_service,
             ai_provider_service,
             ai_chat_service,
+            ai_environment: ai_environment_for_agent,
             device_enroll_service,
             device_sync_runtime,
             health_service,
