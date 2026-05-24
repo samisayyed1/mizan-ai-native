@@ -302,11 +302,11 @@
       "name": "Mizan AI",
       "type": "cloud",
       "icon": "Sparkles",
-      "description": "Managed AI — included with a Mizan subscription. No API key required; auth uses your Mizan Connect session.",
+      "description": "Managed AI — sign in with Google, no API key required. Free tier includes 50 messages per day.",
       "envKey": "",
       "defaultConfig": {
-        "enabled": false,
-        "priority": 50
+        "enabled": true,
+        "priority": 1
       },
       "connectionFields": [],
       "models": {

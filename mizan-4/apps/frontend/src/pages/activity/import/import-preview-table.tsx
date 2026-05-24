@@ -456,7 +456,7 @@ function getColumns(accounts: Account[], baseCurrency: string): ColumnDef<Activi
       ),
       cell: ({ row }) => {
         const activityType = row.getValue("activityType");
-        const unitPrice = row.getValue("unitPrice");
+        const unitPrice = row.getValue("unitPrice") as string | number | null | undefined;
         const currencyValue = row.getValue("currency");
         const accountCurrency = accountCurrencyLookup.get(row.original.accountId);
         const currency =
@@ -491,7 +491,7 @@ function getColumns(accounts: Account[], baseCurrency: string): ColumnDef<Activi
       ),
       cell: ({ row }) => {
         const activityType = row.getValue("activityType");
-        const amount = row.getValue("amount");
+        const amount = row.getValue("amount") as string | number | null | undefined;
         const currencyValue = row.getValue("currency");
         const accountCurrency = accountCurrencyLookup.get(row.original.accountId);
         const currency =
@@ -528,7 +528,7 @@ function getColumns(accounts: Account[], baseCurrency: string): ColumnDef<Activi
       ),
       cell: ({ row }) => {
         const activityType = row.getValue("activityType");
-        const fee = row.getValue("fee");
+        const fee = row.getValue("fee") as string | number | null | undefined;
         const currencyValue = row.getValue("currency");
         const accountCurrency = accountCurrencyLookup.get(row.original.accountId);
         const currency =

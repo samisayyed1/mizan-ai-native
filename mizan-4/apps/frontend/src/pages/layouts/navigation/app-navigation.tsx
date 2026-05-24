@@ -50,6 +50,13 @@ const staticNavigation: NavigationProps = {
       label: "Portfolio",
     },
     {
+      icon: <Icons.Target className="size-6" />,
+      title: "Goals",
+      href: "/goals",
+      keywords: ["goals", "retirement", "fire", "planning", "savings"],
+      label: "Goals",
+    },
+    {
       icon: <Icons.Plus className="size-6" />,
       title: "Add",
       // `/add` is a sentinel — the renderer triggers `action` instead of

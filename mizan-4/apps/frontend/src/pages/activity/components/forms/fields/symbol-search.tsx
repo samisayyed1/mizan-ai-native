@@ -197,11 +197,11 @@ export function SymbolSearch<TFieldValues extends FieldValues = FieldValues>({
           // - provisional (inferred) currency exists and user hasn't changed it
           // - no currency was known at selection time (e.g., OpenFIGI bonds)
           if (needsCurrencyConfirmation && confirmedCurrency) {
-            const current = getValues(currencyName);
+            const current = getValues(currencyName!);
             const shouldUpdate = provisionalCurrency ? current === provisionalCurrency : true;
             if (shouldUpdate) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              setValue(currencyName, confirmedCurrency as any, {
+              setValue(currencyName!, confirmedCurrency as any, {
                 shouldDirty: true,
                 shouldValidate: true,
               });
