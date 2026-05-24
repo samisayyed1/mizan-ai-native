@@ -1,133 +1,105 @@
-## Product Direction (READ FIRST)
+# mizan-4 — Desktop sub-product
 
-The product is in the middle of a structural overhaul driven by the
-**May 17, 2026 meeting with Uncle Feroz Siddiqui**. Binding decisions,
-the full transcript, and the Sunday-deadline backlog live in:
+This file scopes to `mizan-ai-native/mizan-4/`. Root operating manual,
+binding spec, AI safety contract, and tier model live in the monorepo
+root (`@../CLAUDE.md` and `@../MIZAN_AI_NATIVE_PLAN.md`). Read those first.
 
-- `.claude/product-notes/feroz-meeting-2026-05-17.md`
+## What this sub-product is
 
-Before making any change to dashboards, portfolios, asset classes,
-holdings, net worth, goals, or liabilities — re-read that file.
-Highlights so future me doesn't forget:
+Tauri 2 desktop app — macOS + Windows. React + Vite frontend, Rust
+workspace backend, local SQLite (SQLCipher in v3 §10), conversational
+AI as the front door, manual entry first-class for non-supported regions.
 
-- "Accounts" is being renamed to **Portfolio** everywhere.
-- The main dashboard no longer shows holdings — it shows portfolios,
-  goals, net worth, and a consolidated graph.
-- New hierarchy: `Dashboard → Portfolio → Asset Class → Holdings`.
-- Portfolios are multi-currency containers; users pick currency per
-  portfolio.
-- **Bank Accounts is now an asset class** (each bank = a holding;
-  multi-currency per bank is fine).
-- **Vehicles are excluded** from net worth (depreciating).
-- **Liabilities** section is required: type / current balance / balance
-  date / origination date / duration / optional %. EMI is the monthly
-  payment, NOT the liability.
-- A **primary / master dashboard currency** lives in Settings.
-- Custom goals exist; goals can link to portfolios.
-- **Dummy data for every asset class is due before the next Sunday
-  review meeting.**
+## Module map
 
-## Project Overview
+- `apps/frontend/` — React app (pages, components, commands, hooks).
+- `apps/tauri/` — Tauri shell + IPC commands.
+- `apps/server/` — Axum HTTP server (web mode; behind feature flag).
+- `crates/core/` — domain (accounts, assets, liabilities, holdings,
+  activities, goals, net worth, quotes, health, onboarding).
+- `crates/ai/` — rig-core providers, system prompt, tools, intent.
+- `crates/storage-sqlite/` — Diesel schema + migrations.
+- `crates/market-data/` — Yahoo, TradingView, Alpha Vantage, Finnhub,
+  MarketData.app providers + fallback chain.
+- `crates/connect/` — Mizan Connect adapter (token, entitlements,
+  AI proxy, broker sync, device sync).
+- `crates/device-sync/` — E2EE sync engine.
+- `packages/` — shared TS packages (ui, addon-sdk, addon-dev-tools).
 
-Mizan - Desktop investment tracker with local-first data. React + Vite
-frontend, Tauri/Rust backend, SQLite storage.
+## Critical files (v3 §16)
 
-Key directories:
+Re-use these, don't recreate:
 
-- `apps/frontend/` — React app (pages, components, commands, hooks)
-- `apps/tauri/` — Tauri desktop/mobile app (IPC commands)
-- `apps/server/` — Axum HTTP server (web mode)
-- `crates/` — Rust crates (core logic, storage, market-data, connect,
-  device-sync)
-- `packages/` — Shared TS packages (addon-sdk, ui, addon-dev-tools)
-- `addons/` — Distributable addon plugins
+- **AI runtime**:
+  - `crates/ai/src/system_prompt.txt`
+  - `crates/ai/src/tools/` (one Rust file per write tool)
+  - `crates/ai/src/intent/` (FinancialIntentPlan + DraftActionGraph)
+  - `apps/frontend/src/features/ai-assistant/components/tool-uis/` (one
+    React confirm card per tool)
+  - `apps/frontend/src/features/ai-assistant/hooks/use-chat-runtime.ts`
+- **Capabilities / tier gates**:
+  - `apps/frontend/src/domain/account/capabilities.ts`
+  - `crates/connect/src/entitlements.rs`
+- **Core services** (Phase B tools wrap these):
+  - `crates/core/src/accounts/accounts_service.rs`
+  - `crates/core/src/assets/alternative_assets_service.rs`
+  - `crates/core/src/goals/goals_service.rs`
+  - `crates/core/src/activities/activities_service.rs`
+- **Onboarding + example seed**:
+  - `apps/frontend/src/pages/onboarding/`
+  - `crates/core/src/onboarding/seed_examples.rs` (new in Phase C)
+- **Quotes + health**:
+  - `crates/core/src/quotes/sync.rs`
+  - `crates/core/src/health/checks/`
+  - `apps/frontend/src/components/ticker-conveyor/`
 
-## Quick Commands
+## Feroz invariants (v3 §8)
 
-- Dev desktop: `pnpm tauri dev`
-- Dev web: `pnpm run dev:web`
-- Tests: `pnpm test` | `cargo test`
-- Type check: `pnpm type-check`
-- Lint: `pnpm lint`
+Binding for any dashboard/portfolio/asset-class/holding/liability/net-
+worth/goals/onboarding change. Pointer + full list in root CLAUDE.md and
+v3 §8. Use the `feroz-invariants-check` skill after each such change.
 
-## Plan Mode
+## What's already built (v3 §10)
 
-- Make the plan extremely concise. Sacrifice grammar for the sake of concision.
-- At the end of each plan, give me a list of unresolved questions to answer, if
-  any.
+- M1 + M1.5 entitlements (`gated()` IPC + Stripe + AI guardrail)
+- M2 nav (5 tabs), unified Add-Asset wizard, 3-question onboarding
+- M3.1 SSE streaming AI proxy via Mizan Connect
+- M3.4 financial news mesh + daily-limit gate
+- M3.5 SnapTrade broker sync + per-broker tiles
+- M3.6 monthly AI wealth report cron
+- M3.7 Zakat math module (moves to Gold tier)
+- M4.1 + M4.2 PDF reports + portfolio health math
+- M5.1 + M5.2 teams cloud DB + advisor dashboard
 
----
+The May-24 repair branch fixes (CSV string-IPC, NumberFlow bypass,
+eager startup quote sync) are on `samisayyed1/mizan-4` (deprecated) and
+must be ported into this monorepo as Phase 0.
 
-## Behavioral Guidelines
+## Quick commands
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial
-tasks, use judgment.
-
-### 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-### 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes,
-simplify.
-
-### 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-### 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+```bash
+pnpm tauri dev                                    # dev shell
+pnpm tauri build --target aarch64-apple-darwin    # release DMG → ../artifacts/
+cargo check --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+pnpm --filter frontend type-check
+pnpm --filter frontend lint:quiet
+pnpm --filter frontend test -- --run
+pnpm --filter frontend build
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it
-work") require constant clarification.
+`.claude/settings.json` (root) wires a `PostToolUse` hook that runs
+`rustfmt` after Rust edits and `prettier --write` after TS/TSX edits.
 
----
+## What changed from the pre-pivot plan
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer
-rewrites due to overcomplication, and clarifying questions come before
-implementation rather than after mistakes.
+- "Accounts" → **Portfolio** rename (Feroz May-17).
+- Tier collapse: Free/Basic/Pro/Enterprise → **Free/Silver/Gold**.
+- Zakat moves to Gold (was Pro).
+- AI is the front door, not the Add-Asset wizard.
+- 3 example liabilities seed on first launch (Phase C).
+- Mobile dropped from MVP — macOS + Windows only.
+
+If older docs in this folder reference M3/M4/M5 milestones, those are
+historical context. v3 is the binding plan.

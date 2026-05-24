@@ -652,6 +652,7 @@ export type GoalType =
   | 'education'
   | 'wedding'
   | 'home'
+  | 'emergency_fund'
   | 'car'
   | 'custom_save_up';
 export type GoalLifecycle = 'active' | 'achieved' | 'archived';

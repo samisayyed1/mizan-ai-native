@@ -26,6 +26,19 @@ import { useBalancePrivacy } from "@/hooks/use-balance-privacy";
 import type { AlternativeAssetHolding } from "@/lib/types";
 import { ALTERNATIVE_ASSET_KIND_DISPLAY_NAMES } from "@/lib/types";
 
+/**
+ * Pre-seeded liabilities the user can edit into their real numbers.
+ * Carries `metadata.example === true` from the onboarding seed; the
+ * "Example — " name prefix is the secondary signal so we still match
+ * legacy seeded rows that may lack the flag.
+ */
+function isExampleHolding(h: AlternativeAssetHolding): boolean {
+  if (h.metadata && (h.metadata as Record<string, unknown>).example === true) {
+    return true;
+  }
+  return h.name.startsWith("Example — ");
+}
+
 interface AlternativeHoldingsTableProps {
   holdings: AlternativeAssetHolding[];
   isLoading: boolean;
@@ -101,8 +114,20 @@ export function AlternativeHoldingsTable({
                 <AssetKindIcon kind={holding.kind} size={20} />
               </div>
               <div className="flex flex-col">
-                <span className="text-sm font-medium">{holding.name}</span>
-                <span className="text-muted-foreground text-xs">{kindDisplay}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium">{holding.name}</span>
+                  {isExampleHolding(holding) && (
+                    <span
+                      className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300"
+                      title="Pre-seeded example. Edit it to make it your own."
+                    >
+                      Example
+                    </span>
+                  )}
+                </div>
+                <span className="text-muted-foreground text-xs">
+                  {isExampleHolding(holding) ? "Tap to edit and make this real" : kindDisplay}
+                </span>
               </div>
             </div>
           );

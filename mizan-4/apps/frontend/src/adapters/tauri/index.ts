@@ -138,6 +138,7 @@ export {
   backupDatabaseToPathEncrypted,
   restoreDatabase,
   getAppInfo,
+  exportUserDataJson,
   checkForUpdates,
   installUpdate,
   getPlatform,

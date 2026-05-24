@@ -55,6 +55,10 @@ pub async fn update_settings(
     let service = state.settings_service();
     let previous_base_currency = state.get_base_currency();
     let previous_timezone = state.get_timezone();
+    let previous_onboarding_completed = service
+        .get_settings()
+        .map(|s| s.onboarding_completed)
+        .unwrap_or(false);
 
     // Update settings in the database (this applies all changes in settings_update)
     service
@@ -64,6 +68,21 @@ pub async fn update_settings(
     let updated_settings = service
         .get_settings()
         .map_err(|e| format!("Failed to load updated settings after change: {}", e))?;
+
+    // First time onboarding flips to true → seed Example liabilities (Feroz 25 May 2026).
+    // The seed function is idempotent; the previous-state check is the extra belt-and-braces.
+    if !previous_onboarding_completed && updated_settings.onboarding_completed {
+        let alt_asset_service = state.alternative_asset_service();
+        let base_currency = updated_settings.base_currency.clone();
+        // Detached so a Plaid/connect hiccup never blocks the onboarding-finish click.
+        tauri::async_runtime::spawn(async move {
+            match mizan_core::onboarding::seed_example_liabilities(&alt_asset_service, &base_currency).await {
+                Ok(0) => debug!("Example liabilities skipped — user already has at least one."),
+                Ok(n) => debug!("Seeded {} example liabilit{}", n, if n == 1 { "y" } else { "ies" }),
+                Err(e) => log::warn!("Example liability seed failed: {}", e),
+            }
+        });
+    }
 
     let base_currency_changed = updated_settings.base_currency != previous_base_currency;
     let timezone_changed = updated_settings.timezone != previous_timezone;

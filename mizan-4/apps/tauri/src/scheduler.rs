@@ -192,3 +192,51 @@ pub async fn run_startup_fx_refresh(handle: &AppHandle, context: &std::sync::Arc
             .build(),
     );
 }
+
+/// Eagerly sync market data on app startup (no delay).
+///
+/// **Why this exists**: the periodic market-data sync waits 120 s before its
+/// first attempt and then runs every 6 h. For a freshly launched app (or any
+/// scenario where the local quote cache is empty/stale), the user stares at a
+/// blank ticker conveyor and cost-basis-only holdings for two full minutes
+/// before any live quote arrives. That looked broken (because it is broken,
+/// UX-wise).
+///
+/// This function fires once at boot in a detached task, runs an
+/// `Incremental` sync covering every asset in the DB, and emits a
+/// `quotes:startup-sync-complete` event so the frontend can invalidate
+/// `TICKER_QUOTES` + holdings queries and re-render with live prices.
+///
+/// Failure is intentionally silent in logs (warn-level) — the existing
+/// Health Center / dashboard banner surfaces it to the user. Cost-basis
+/// fallback remains in place so dashboards never render $0.
+pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc<ServiceContext>) {
+    use log::{debug, info, warn};
+    use mizan_core::quotes::SyncMode;
+
+    info!("Running startup market-data quote sync...");
+
+    let quote_service = std::sync::Arc::clone(&context.quote_service);
+    match quote_service.sync(SyncMode::Incremental, None).await {
+        Ok(result) => {
+            info!(
+                "Startup quote sync completed: {} quotes added across {} assets",
+                result.quotes_synced, result.synced
+            );
+            // Emit a lightweight event so the frontend's TICKER_QUOTES +
+            // HOLDINGS queries refetch immediately and the dashboard shows
+            // live prices without waiting for the 6 h periodic.
+            if let Err(e) =
+                tauri::Emitter::emit(handle, "quotes:startup-sync-complete", &result.quotes_synced)
+            {
+                debug!("Failed to emit quotes:startup-sync-complete event: {}", e);
+            }
+        }
+        Err(e) => {
+            warn!(
+                "Startup quote sync failed: {}. Health Center banner will surface this to the user.",
+                e
+            );
+        }
+    }
+}

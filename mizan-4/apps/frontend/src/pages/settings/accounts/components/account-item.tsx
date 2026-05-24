@@ -45,6 +45,11 @@ export function AccountItem({
 }: AccountItemProps) {
   // Check if account is synced from broker (has provider_account_id set)
   const isSynced = !!account.providerAccountId;
+  // A "manual" account is one the user is self-tracking — no live broker / bank
+  // provider attached. Surface this explicitly (parity with the "Live" sync
+  // affordance) so Indian / UAE / Saudi / other-non-Plaid-country users see
+  // their accounts are first-class, not a fallback.
+  const isManual = !isSynced;
   const typeConfig = accountTypeConfig[account.accountType] ?? {
     icon: Icons.Wallet,
     bgClass: "bg-muted",
@@ -79,7 +84,39 @@ export function AccountItem({
             >
               {account.name}
             </Link>
-            {isSynced && <Icons.CloudSync2 className="text-muted-foreground h-3.5 w-3.5" />}
+            {isSynced && (
+              <TooltipProvider>
+                <Tooltip delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <span className="text-success inline-flex cursor-help items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0 text-[10px] font-medium uppercase tracking-wide">
+                      <Icons.CloudSync2 className="h-3 w-3" />
+                      Live
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Synced from your broker / bank provider.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {isManual && (
+              <TooltipProvider>
+                <Tooltip delayDuration={300}>
+                  <TooltipTrigger asChild>
+                    <span className="text-muted-foreground inline-flex cursor-help items-center gap-1 rounded-full bg-slate-500/10 px-1.5 py-0 text-[10px] font-medium uppercase tracking-wide">
+                      <Icons.Pencil className="h-3 w-3" />
+                      Manual
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">
+                      You're tracking this account by hand. Update the balance any time from the row
+                      menu or by asking the assistant.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
           <div className="text-muted-foreground flex items-center gap-1.5 text-sm">
             <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wide">

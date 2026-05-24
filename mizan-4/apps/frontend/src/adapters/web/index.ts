@@ -375,6 +375,7 @@ export {
   backupDatabaseToPath,
   backupDatabaseToPathEncrypted,
   checkForUpdates,
+  exportUserDataJson,
   getAppInfo,
   getPlatform,
   getSettings,
