@@ -367,10 +367,23 @@ fn build_plaid_config(raw: &RawConfig, app_env: AppEnv) -> Result<Option<PlaidCo
     .flatten()
     .any(|s| !s.trim().is_empty());
 
-    let required = app_env.is_production() || any_configured;
+    // Plaid is required when:
+    //   - PLAID_ENV is explicitly set to `production`, OR
+    //   - any Plaid var is set (operator opted in — finish the wiring).
+    // Otherwise the app boots without Plaid and /sync/plaid/* returns 503.
+    // This lets us ship to Fly in sandbox-only or pre-Plaid postures without
+    // forcing real credentials at boot.
+    let plaid_env_is_production = raw
+        .plaid_env
+        .as_deref()
+        .map(str::trim)
+        .map(|s| s.eq_ignore_ascii_case("production"))
+        .unwrap_or(false);
+    let required = plaid_env_is_production || any_configured;
     if !required {
         return Ok(None);
     }
+    let _ = app_env;
 
     let environment = parse_required::<PlaidEnv>(
         "PLAID_ENV",
