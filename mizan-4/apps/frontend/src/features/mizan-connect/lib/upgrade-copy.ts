@@ -50,7 +50,12 @@ const COPY: Record<GatedFeature, UpgradeCopy> = {
   },
   advanced_reports: {
     title: "Unlock deep reports",
-    body: "Gold unlocks weekly AI wealth summaries, portfolio health, drift, cash drag, liability, and zakat monitoring.",
+    body: "Gold unlocks weekly AI wealth summaries, portfolio health, drift, cash drag, and liability monitoring.",
+    suggestedTier: "gold",
+  },
+  zakat_engine: {
+    title: "Compute your Zakat",
+    body: "Gold unlocks the Zakat & purification engine — full portfolio assessment with deductions for short-term debts, gold/silver nisab handling, and the full audit trail.",
     suggestedTier: "gold",
   },
 };

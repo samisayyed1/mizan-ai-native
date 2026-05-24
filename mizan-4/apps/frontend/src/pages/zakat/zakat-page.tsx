@@ -17,7 +17,7 @@ import { useSettingsContext } from "@/lib/settings-provider";
  *
  * Wraps the pure-math service shipped in `crates/core/src/portfolio/zakat/`.
  * The Tauri command applies the Gold gate; on Silver the mutation rejects
- * with a GatedError("advanced_reports"), the central UpgradeGate raises a
+ * with a GatedError("zakat_engine"), the central UpgradeGate raises a
  * modal, and this page never has to think about the cap.
  *
  * Disclaimer: the Rust service emits the "not religious guidance, confirm
@@ -36,8 +36,8 @@ export default function ZakatPage() {
   });
   const report = mutation.data;
   const handleCompute = () => {
-    if (!entitlements.advancedReports) {
-      requestUpgrade("advanced_reports");
+    if (!entitlements.zakatEngine) {
+      requestUpgrade("zakat_engine");
       return;
     }
     if (!nisab.trim()) return;

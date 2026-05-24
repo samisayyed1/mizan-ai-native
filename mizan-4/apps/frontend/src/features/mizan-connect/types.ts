@@ -162,6 +162,7 @@ export interface Entitlements {
   marketRefreshDailyLimit: number;
   csvImportsMonthly: number;
   advancedReports: boolean;
+  zakatEngine: boolean;
   advisorMode: boolean;
 }
 
@@ -179,7 +180,8 @@ export type GatedFeature =
   | "max_holdings"
   | "max_asset_classes"
   | "csv_imports"
-  | "advanced_reports";
+  | "advanced_reports"
+  | "zakat_engine";
 
 /** Structured "upgrade required" error decoded from a command rejection. */
 export interface GatedError {
