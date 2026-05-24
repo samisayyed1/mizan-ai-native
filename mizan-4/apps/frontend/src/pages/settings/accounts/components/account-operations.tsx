@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "@mizan/ui/components/ui/button";
 import {
@@ -36,8 +37,30 @@ export function AccountOperations({
   onArchive,
   onHide,
 }: AccountOperationsProps) {
+  const navigate = useNavigate();
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const [showArchiveAlert, setShowArchiveAlert] = useState(false);
+
+  // Manual accounts (no live provider sync) get a fast path to record a
+  // balance-adjusting activity. Routes into the existing activity form
+  // pre-filled with the account + a sensible default activity type so
+  // the user only fills in the amount.
+  const isManual = !account.providerAccountId;
+  const defaultUpdateActivityType =
+    account.accountType === "CASH"
+      ? "DEPOSIT"
+      : account.accountType === "CRYPTOCURRENCY"
+        ? "BUY"
+        : "CREDIT";
+
+  const handleUpdateBalance = () => {
+    const params = new URLSearchParams({
+      account: account.id,
+      type: defaultUpdateActivityType,
+      "redirect-to": `/accounts/${account.id}`,
+    });
+    navigate(`/activities/manage?${params.toString()}`);
+  };
 
   const handleDelete = () => {
     onDelete(account);
@@ -61,6 +84,15 @@ export function AccountOperations({
           <span className="sr-only">Open</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {isManual && (
+            <>
+              <DropdownMenuItem onClick={handleUpdateBalance}>
+                <Icons.RefreshCw className="mr-2 h-3.5 w-3.5" />
+                Update balance
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem onClick={() => onEdit(account)}>Edit</DropdownMenuItem>
           <DropdownMenuItem onClick={() => onHide(account, account.isActive)}>
             {account.isActive ? "Hide" : "Show"}
