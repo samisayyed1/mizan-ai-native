@@ -4,6 +4,20 @@ import type { AppInfo, PlatformInfo } from "../types";
 
 import { invoke, logger, tauriInvoke } from "./core";
 
+/**
+ * §A20 — export the full local store as a JSON string the user can save
+ * to disk. NOT sanitised (this is the user's own data). Distinct from
+ * `buildSupportBundle` which is sanitised for support triage.
+ */
+export const exportUserDataJson = async (): Promise<string> => {
+  try {
+    return await invoke<string>("export_user_data_json");
+  } catch (err) {
+    logger.error("Error exporting user data");
+    throw err;
+  }
+};
+
 export const getSettings = async (): Promise<Settings> => {
   try {
     return await invoke<Settings>("get_settings");

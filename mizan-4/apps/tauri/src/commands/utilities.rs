@@ -4,7 +4,9 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::sync::Arc;
 use tauri::Manager;
+use tauri::State;
 use tauri::{AppHandle, Emitter};
 
 use crate::context::ServiceContext;
@@ -57,6 +59,112 @@ pub async fn get_app_info(app_handle: AppHandle) -> Result<AppInfo, String> {
         db_path,
         logs_dir,
     })
+}
+
+// ─── §A20 GDPR-style user data export ───────────────────────────────
+//
+// Distinct from §A17 support bundle: that one is sanitised (no PII) for
+// triage. THIS export is the user's complete data, served to them as
+// a single JSON file they can keep, migrate, archive, or share with a
+// scholar. No scrubbing. No third-party transit. Direct from local
+// SQLite to the user's filesystem.
+//
+// Format is intentionally hand-readable JSON (no Mizan-specific wrappers
+// beyond the export envelope) so a third-party tool can consume it
+// without knowing the Mizan schema.
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct UserDataExport {
+    /// Format identifier the user can keep when archiving.
+    format: &'static str,
+    /// Bumped when the export schema breaks compatibility.
+    schema_version: u32,
+    generated_at: String,
+    /// Mizan version that wrote this export.
+    app_version: String,
+    accounts: serde_json::Value,
+    activities: serde_json::Value,
+    goals: serde_json::Value,
+    alternative_holdings: serde_json::Value,
+    settings: serde_json::Value,
+    fx_rates: serde_json::Value,
+}
+
+/// Export the full local store as a JSON blob the user can save, archive,
+/// migrate, or share. NO PII scrubbing — this is the user's own data,
+/// served to them. Distinct from `build_support_bundle` (sanitised).
+///
+/// Best-effort: any per-section read failure embeds `null` in that slot
+/// so the export still produces *something*. Failures are logged.
+#[tauri::command]
+pub async fn export_user_data_json(
+    state: State<'_, Arc<ServiceContext>>,
+    app_handle: AppHandle,
+) -> Result<String, String> {
+    use serde_json::json;
+
+    let app_version = app_handle.package_info().version.to_string();
+
+    // Each accessor is best-effort: an Err lands `null` for that slice.
+    let accounts = match state.account_service().get_all_accounts() {
+        Ok(v) => serde_json::to_value(v).unwrap_or(json!(null)),
+        Err(e) => {
+            log::warn!("Export: accounts read failed: {}", e);
+            json!(null)
+        }
+    };
+    let activities = match state.activity_service().get_activities() {
+        Ok(v) => serde_json::to_value(v).unwrap_or(json!(null)),
+        Err(e) => {
+            log::warn!("Export: activities read failed: {}", e);
+            json!(null)
+        }
+    };
+    let goals = match state.goal_service().get_goals() {
+        Ok(v) => serde_json::to_value(v).unwrap_or(json!(null)),
+        Err(e) => {
+            log::warn!("Export: goals read failed: {}", e);
+            json!(null)
+        }
+    };
+    let alternative_holdings = match state.alternative_asset_service().get_alternative_holdings() {
+        Ok(v) => serde_json::to_value(v).unwrap_or(json!(null)),
+        Err(e) => {
+            log::warn!("Export: alt holdings read failed: {}", e);
+            json!(null)
+        }
+    };
+    let settings = match state.settings_service().get_settings() {
+        Ok(v) => serde_json::to_value(v).unwrap_or(json!(null)),
+        Err(e) => {
+            log::warn!("Export: settings read failed: {}", e);
+            json!(null)
+        }
+    };
+    let fx_rates = match state.fx_service().get_latest_exchange_rates() {
+        Ok(v) => serde_json::to_value(v).unwrap_or(json!(null)),
+        Err(e) => {
+            log::warn!("Export: fx rates read failed: {}", e);
+            json!(null)
+        }
+    };
+
+    let export = UserDataExport {
+        format: "mizan.user-data-export",
+        schema_version: 1,
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        app_version,
+        accounts,
+        activities,
+        goals,
+        alternative_holdings,
+        settings,
+        fx_rates,
+    };
+
+    serde_json::to_string_pretty(&export)
+        .map_err(|e| format!("Failed to serialise export: {}", e))
 }
 
 /// Check for updates and return update info if available.
