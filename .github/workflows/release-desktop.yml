@@ -1,0 +1,141 @@
+name: Release Desktop
+
+# Build + publish Mizan desktop installers.
+#
+# Trigger: push a tag like `v1.0.0`.
+# Output: 4 installers attached to a GitHub Release named after the tag:
+#   - macOS Apple Silicon  → Mizan_<ver>_aarch64.dmg
+#   - macOS Intel          → Mizan_<ver>_x64.dmg
+#   - Windows x64          → Mizan_<ver>_x64_en-US.msi
+#   - Linux x64            → Mizan_<ver>_amd64.AppImage
+#
+# Signing is conditional: when the Apple / Windows signing secrets are
+# present in repo settings, tauri-action signs + notarizes automatically.
+# Without them, builds ship unsigned and end-users see a one-time warning.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-aarch64
+            os: macos-14
+            target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+          - name: macos-x86_64
+            os: macos-13
+            target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: "--target x86_64-pc-windows-msvc"
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: "--target x86_64-unknown-linux-gnu"
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        working-directory: mizan-4
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: mizan-4/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mizan-4
+          key: release-${{ matrix.target }}
+
+      - name: Install Linux build dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        env:
+          CONNECT_AUTH_URL: ${{ vars.CONNECT_AUTH_URL }}
+          CONNECT_AUTH_PUBLISHABLE_KEY: ${{ vars.CONNECT_AUTH_PUBLISHABLE_KEY }}
+          CONNECT_API_URL: ${{ vars.CONNECT_API_URL }}
+          CONNECT_OAUTH_CALLBACK_URL: ${{ vars.CONNECT_OAUTH_CALLBACK_URL }}
+        run: pnpm run build:tauri
+
+      - name: Build and publish Tauri bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONNECT_AUTH_URL: ${{ vars.CONNECT_AUTH_URL }}
+          CONNECT_AUTH_PUBLISHABLE_KEY: ${{ vars.CONNECT_AUTH_PUBLISHABLE_KEY }}
+          CONNECT_API_URL: ${{ vars.CONNECT_API_URL }}
+          CONNECT_OAUTH_CALLBACK_URL: ${{ vars.CONNECT_OAUTH_CALLBACK_URL }}
+          # Apple signing + notarization (no-op if secrets unset).
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows Authenticode signing (no-op if secrets unset).
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        with:
+          projectPath: mizan-4
+          tagName: ${{ github.ref_name }}
+          releaseName: "Mizan ${{ github.ref_name }}"
+          releaseBody: |
+            See the assets below to download Mizan for your platform.
+
+            - **macOS Apple Silicon** — `*_aarch64.dmg`
+            - **macOS Intel** — `*_x64.dmg`
+            - **Windows x64** — `*_x64_en-US.msi`
+            - **Linux x64** — `*_amd64.AppImage`
+
+            ### Installation notes
+
+            If the build is unsigned (Apple / Windows signing secrets not configured), end users see a one-time OS warning:
+            - **macOS:** Right-click the app in Applications and choose **Open**.
+            - **Windows:** SmartScreen → **More info → Run anyway**.
+            - **Linux:** `chmod +x Mizan_*.AppImage && ./Mizan_*.AppImage`
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

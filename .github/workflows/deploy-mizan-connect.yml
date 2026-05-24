@@ -1,0 +1,42 @@
+name: Deploy mizan-connect to Fly
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mizan-connect/**'
+      - '.github/workflows/deploy-mizan-connect.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mizan-connect
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: fly deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy
+        working-directory: mizan-connect
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only --wait-timeout 600
+      - name: Wait for health
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          for i in {1..30}; do
+            if curl -fsS https://mizan-connect.fly.dev/health > /dev/null; then
+              echo "Health check OK"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Health check failed after 150s"
+          flyctl logs --app mizan-connect | tail -50
+          exit 1
