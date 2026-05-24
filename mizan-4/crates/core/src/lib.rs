@@ -28,6 +28,7 @@ pub mod settings;
 pub mod sync;
 pub mod sync_ledger;
 pub mod taxonomies;
+pub mod truth_engine;
 pub mod utils;
 
 // Re-export common types from asset and portfolio modules
