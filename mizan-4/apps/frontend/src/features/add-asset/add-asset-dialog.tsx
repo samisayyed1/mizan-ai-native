@@ -75,6 +75,11 @@ export function AddAssetDialog({
     NonNullable<AgentRunRequest["attachments"]>
   >([]);
   const [errorText, setErrorText] = useState<string | null>(null);
+  /** When set, the error block renders a "Sign in" CTA instead of just
+   *  the raw error message. Triggered when the agent runtime reports
+   *  no Mizan Connect session — the user needs to authenticate before
+   *  Mizan AI can run. */
+  const [errorKind, setErrorKind] = useState<"sign_in" | "generic">("generic");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -183,7 +188,22 @@ export function AddAssetDialog({
           // expects.
           ingest((ev as AiStreamEvent & { event: never }).event);
         } else if (ev.type === "error") {
-          setErrorText(ev.message);
+          // Detect "no Mizan Connect session" — the most common error
+          // on a fresh install before sign-in. Surface a Sign-in CTA
+          // instead of the raw "missing_api_key" code, which means
+          // nothing to a user.
+          const isSignIn =
+            ev.code === "missing_api_key" ||
+            ev.code === "unauthorized" ||
+            /no token|not authenticated|sign in|connect not configured/i.test(
+              ev.message ?? "",
+            );
+          setErrorText(
+            isSignIn
+              ? "You need to sign in with Mizan to use the AI agent. Free tier includes 50 messages a day."
+              : ev.message,
+          );
+          setErrorKind(isSignIn ? "sign_in" : "generic");
           setMode("error");
           return;
         } else if (ev.type === "done") {
@@ -195,6 +215,7 @@ export function AddAssetDialog({
       setMode("done");
     } catch (err) {
       setErrorText(err instanceof Error ? err.message : String(err));
+      setErrorKind("generic");
       setMode("error");
     }
   }, [prompt, attachments, ingest, reset]);
@@ -373,8 +394,42 @@ export function AddAssetDialog({
 
         {/* Inline error block — separate from progress card so even an
             "early" error (e.g. tier-locked, no recipe matched) surfaces
-            cleanly without the card half-rendering. */}
-        {mode === "error" && errorText && (
+            cleanly without the card half-rendering. The "sign_in"
+            variant swaps the destructive treatment for a friendlier
+            amber prompt + a direct CTA to the Mizan Connect login. */}
+        {mode === "error" && errorText && errorKind === "sign_in" && (
+          <div className="mt-4 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+            <div className="flex items-start gap-2">
+              <Icons.Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />
+              <div className="flex-1">
+                <div className="text-foreground font-medium">Sign in to use Mizan AI</div>
+                <div className="text-muted-foreground mt-0.5 text-xs">{errorText}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      onOpenChange(false);
+                      navigate("/settings/connect");
+                    }}
+                  >
+                    Sign in
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setMode("ai");
+                      setErrorText(null);
+                    }}
+                  >
+                    Back
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {mode === "error" && errorText && errorKind === "generic" && (
           <div className="border-destructive/30 bg-destructive/10 text-destructive mt-4 rounded-md border p-3 text-sm">
             <div className="flex items-start gap-2">
               <Icons.AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
