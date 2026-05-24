@@ -1,10 +1,16 @@
-use mizan_ai::{AiProviderServiceTrait, ChatService};
+use mizan_ai::{safety::AiSafetyRuntime, AiProviderServiceTrait, ChatService};
 use mizan_connect::BrokerSyncServiceTrait;
 use mizan_core::{
     self, accounts, activities,
     assets::{self, AlternativeAssetServiceTrait},
+    daily_brief::{DailyBriefService, InMemoryDailyBriefService},
     events::DomainEventSink,
-    fx, goals, health, limits, news, portfolio, quotes, settings, taxonomies,
+    fx, goals, health, limits,
+    net_worth_snapshot::{InMemoryNetWorthSnapshotService, NetWorthSnapshotService},
+    news, portfolio, quotes, settings,
+    sync_ledger::{InMemorySyncRunLedger, SyncRunLedger},
+    taxonomies,
+    truth_engine::{InMemoryTruthLedger, TruthLedger},
 };
 use mizan_device_sync::{engine::DeviceSyncRuntimeState, DeviceEnrollService};
 use mizan_storage_sqlite::{portfolio::snapshot::SnapshotRepository, sync::AppSyncRepository};
@@ -56,6 +62,25 @@ pub struct ServiceContext {
     pub device_sync_runtime: Arc<DeviceSyncRuntimeState>,
     pub health_service: Arc<health::HealthService>,
     pub custom_provider_service: Arc<mizan_core::custom_provider::CustomProviderService>,
+
+    // ─── v3.1 foundation services (in-memory for now; SQLite-backed in follow-on PRs) ───
+    //
+    // §A6 — emits per tool-call audit rows. Owned by ServiceContext so
+    // every chat stream attaches the same runtime + every Tauri command
+    // can call `state.ai_safety()` to register tool-call attempts.
+    pub ai_safety: Arc<AiSafetyRuntime>,
+    /// §A4 — append-only ledger of every sync attempt (Plaid / SnapTrade /
+    /// Yahoo / TradingView / CSV import / AI tools / FX refresh / Manual).
+    pub sync_ledger: Arc<dyn SyncRunLedger>,
+    /// §A12 — daily net-worth snapshot writer. Dashboard history line +
+    /// §A22 delta-computation read from this.
+    pub net_worth_snapshot_service: Arc<dyn NetWorthSnapshotService>,
+    /// §A22 — daily brief persistence (no email transport yet).
+    pub daily_brief_service: Arc<dyn DailyBriefService>,
+    /// §A1/§A2 — immutable hash-chained ledger that activities + accounts +
+    /// alt-asset writes append to. Holdings derivation will move to ledger
+    /// replay in a follow-on PR.
+    pub truth_ledger: Arc<dyn TruthLedger>,
 }
 
 impl ServiceContext {
@@ -186,4 +211,41 @@ impl ServiceContext {
     pub fn health_service(&self) -> Arc<health::HealthService> {
         Arc::clone(&self.health_service)
     }
+
+    // ─── v3.1 foundation accessors ────────────────────────────────────────
+    pub fn ai_safety(&self) -> Arc<AiSafetyRuntime> {
+        Arc::clone(&self.ai_safety)
+    }
+    pub fn sync_ledger(&self) -> Arc<dyn SyncRunLedger> {
+        Arc::clone(&self.sync_ledger)
+    }
+    pub fn net_worth_snapshot_service(&self) -> Arc<dyn NetWorthSnapshotService> {
+        Arc::clone(&self.net_worth_snapshot_service)
+    }
+    pub fn daily_brief_service(&self) -> Arc<dyn DailyBriefService> {
+        Arc::clone(&self.daily_brief_service)
+    }
+    pub fn truth_ledger(&self) -> Arc<dyn TruthLedger> {
+        Arc::clone(&self.truth_ledger)
+    }
+}
+
+/// Construct in-memory defaults for the §v3.1 foundation services.
+/// Each foundation is wrapped in `Arc` so it can be cloned cheaply
+/// across handlers + schedulers. Replace with SQLite-backed impls
+/// in dedicated follow-on PRs (each one is a single field swap).
+pub fn build_v31_foundation_defaults() -> (
+    Arc<AiSafetyRuntime>,
+    Arc<dyn SyncRunLedger>,
+    Arc<dyn NetWorthSnapshotService>,
+    Arc<dyn DailyBriefService>,
+    Arc<dyn TruthLedger>,
+) {
+    (
+        Arc::new(AiSafetyRuntime::new()),
+        Arc::new(InMemorySyncRunLedger::new()),
+        Arc::new(InMemoryNetWorthSnapshotService::new()),
+        Arc::new(InMemoryDailyBriefService::new()),
+        Arc::new(InMemoryTruthLedger::new()),
+    )
 }

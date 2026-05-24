@@ -363,6 +363,11 @@ pub async fn initialize_context(
         warn!("Failed to prune local sync outbox: {}", err);
     }
 
+    // §v3.1 foundation services — wired here so every command + scheduler
+    // shares the same instance. Switch to SQLite-backed impls per-PR.
+    let (ai_safety, sync_ledger, net_worth_snapshot_service, daily_brief_service, truth_ledger) =
+        crate::context::registry::build_v31_foundation_defaults();
+
     Ok(ContextInitResult {
         context: ServiceContext {
             base_currency,
@@ -398,6 +403,11 @@ pub async fn initialize_context(
             device_sync_runtime,
             health_service,
             custom_provider_service,
+            ai_safety,
+            sync_ledger,
+            net_worth_snapshot_service,
+            daily_brief_service,
+            truth_ledger,
         },
         event_receiver,
         sync_outbox_wake_receiver,
