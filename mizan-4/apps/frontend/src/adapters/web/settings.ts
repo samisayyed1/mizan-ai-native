@@ -97,6 +97,17 @@ export const getAppInfo = async (): Promise<AppInfo> => {
   }
 };
 
+/**
+ * §A20 — export the full local store as a JSON string. On web there's
+ * no local SQLite to read from, so this throws a clear error rather
+ * than returning a fake/empty export the user might trust by accident.
+ */
+export const exportUserDataJson = async (): Promise<string> => {
+  throw new Error(
+    "Export is only available in the desktop app — the web version has no local data to export.",
+  );
+};
+
 // ============================================================================
 // Updater Commands
 // ============================================================================
