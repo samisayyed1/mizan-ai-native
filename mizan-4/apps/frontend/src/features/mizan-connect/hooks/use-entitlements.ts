@@ -5,21 +5,21 @@ import { QueryKeys } from "@/lib/query-keys";
 
 import { type Entitlements, UNLIMITED, withinLimit } from "../types";
 
-/** Silver-capability defaults, used while loading or signed out. */
-const SILVER_ENTITLEMENTS: Entitlements = {
-  plan: "silver",
-  maxPortfolios: 25,
-  maxHoldings: UNLIMITED,
+/** Free-tier defaults, used while loading or signed out. Mirrors `Entitlements::default()` in Rust. */
+const FREE_ENTITLEMENTS: Entitlements = {
+  plan: "free",
+  maxPortfolios: 1,
+  maxHoldings: 20,
   maxAssetClasses: UNLIMITED,
   brokerSync: false,
   maxBrokerConnections: 0,
   deviceSync: false,
   cloudBackup: false,
-  managedAi: true,
-  aiCreditsMonthly: 300,
+  managedAi: false,
+  aiCreditsMonthly: 0,
   newsDailyLimit: 3,
   marketRefreshDailyLimit: 0,
-  csvImportsMonthly: UNLIMITED,
+  csvImportsMonthly: 0,
   advancedReports: false,
   zakatEngine: false,
   advisorMode: false,
@@ -40,7 +40,7 @@ export function useEntitlements() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const entitlements = query.data ?? SILVER_ENTITLEMENTS;
+  const entitlements = query.data ?? FREE_ENTITLEMENTS;
 
   return {
     entitlements,

@@ -162,6 +162,7 @@ export interface Entitlements {
   marketRefreshDailyLimit: number;
   csvImportsMonthly: number;
   advancedReports: boolean;
+  /** Zakat & purification assessment engine. Gold-only. */
   zakatEngine: boolean;
   advisorMode: boolean;
 }

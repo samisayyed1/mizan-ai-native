@@ -57,23 +57,25 @@ pub struct Entitlements {
 }
 
 impl Default for Entitlements {
-    /// Silver-capability fallback. Anyone without an active paid subscription
-    /// still gets the private local-first product.
+    /// Free-tier fallback. Anyone without an active subscription gets the
+    /// signed-out / unpaid experience: Yahoo + TradingView live quotes,
+    /// news, BYO-AI key, manual asset entry, ONE portfolio with up to 20
+    /// holdings. No managed AI, no CSV import, no Plaid, no Zakat engine.
     fn default() -> Self {
         Self {
-            plan: "silver".to_string(),
-            max_portfolios: 25,
-            max_holdings: UNLIMITED,
+            plan: "free".to_string(),
+            max_portfolios: 1,
+            max_holdings: 20,
             max_asset_classes: UNLIMITED,
             broker_sync: false,
             max_broker_connections: 0,
             device_sync: false,
             cloud_backup: false,
-            managed_ai: true,
-            ai_credits_monthly: 300,
+            managed_ai: false,
+            ai_credits_monthly: 0,
             news_daily_limit: 3,
             market_refresh_daily_limit: 0,
-            csv_imports_monthly: UNLIMITED,
+            csv_imports_monthly: 0,
             advanced_reports: false,
             zakat_engine: false,
             advisor_mode: false,
@@ -103,6 +105,9 @@ pub fn entitlements_for_plan(plan: Option<&str>, status: Option<&str>) -> Entitl
         None | Some("free") => Entitlements::default(),
 
         Some("silver") | Some("basic") => Entitlements {
+            // Local-first private product. CSV ingestion + managed AI are the
+            // Silver-only wins over Free; Gold-only things (Plaid, Zakat
+            // engine, monitoring) stay locked.
             plan: "silver".to_string(),
             max_portfolios: 25,
             max_holdings: UNLIMITED,
@@ -167,7 +172,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn inactive_subscription_falls_back_to_silver() {
+    fn inactive_subscription_falls_back_to_free() {
         assert_eq!(
             entitlements_for_plan(Some("pro"), Some("canceled")),
             Entitlements::default()
@@ -177,17 +182,22 @@ mod tests {
             Entitlements::default()
         );
         assert_eq!(entitlements_for_plan(None, None), Entitlements::default());
+        // Sanity: the default IS now Free, not Silver.
+        assert_eq!(Entitlements::default().plan, "free");
     }
 
     #[test]
-    fn silver_defaults() {
+    fn free_defaults() {
         let e = Entitlements::default();
-        assert_eq!(e.plan, "silver");
-        assert_eq!(e.max_portfolios, 25);
+        assert_eq!(e.plan, "free");
+        assert_eq!(e.max_portfolios, 1);
+        assert_eq!(e.max_holdings, 20);
         assert_eq!(e.max_asset_classes, UNLIMITED);
         assert!(!e.broker_sync);
-        assert!(e.managed_ai);
-        assert_eq!(e.ai_credits_monthly, 300);
+        assert!(!e.managed_ai, "Free is BYO-key only");
+        assert_eq!(e.ai_credits_monthly, 0);
+        assert_eq!(e.csv_imports_monthly, 0, "Free has no CSV import");
+        assert!(!e.zakat_engine);
     }
 
     #[test]
