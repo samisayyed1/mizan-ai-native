@@ -14,8 +14,8 @@ use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use mizan_connect::auth::JwksCache;
 use mizan_connect::config::{AppEnv, Config, LogFormat, PlaidConfig, PlaidEnv, SentryConfig};
 use mizan_connect::plaid::{client::PlaidClient, types::PlaidContext};
-use mizan_connect::server::build_app;
 use mizan_connect::secret_crypto::SecretCipher;
+use mizan_connect::server::build_app;
 use mizan_connect::state::AppState;
 use reqwest::Client;
 use secrecy::SecretString;
@@ -119,7 +119,8 @@ impl TestApp {
         let jwks = JwksCache::new(config.jwks_url());
         // Don't warm — test path uses HS256 fallback so JWKS is unreachable.
         let plaid_config = config.plaid.clone().expect("test plaid config");
-        let token_cipher = SecretCipher::from_bytes(&TEST_ENCRYPTION_KEY).expect("32-byte test key");
+        let token_cipher =
+            SecretCipher::from_bytes(&TEST_ENCRYPTION_KEY).expect("32-byte test key");
         let plaid = Some(PlaidContext {
             client: PlaidClient::new(&plaid_config),
             token_cipher,

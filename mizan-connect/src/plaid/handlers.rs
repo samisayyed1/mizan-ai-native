@@ -13,8 +13,7 @@ use crate::state::AppState;
 use super::repository;
 use super::types::{
     ExchangePublicTokenRequest, ExchangePublicTokenResponse, LinkTokenRequest, LinkTokenResponse,
-    PlaidHealthResponse, PlaidSyncRequest, PlaidSyncResponse, PlaidWebhookPayload,
-    UpsertPlaidItem,
+    PlaidHealthResponse, PlaidSyncRequest, PlaidSyncResponse, PlaidWebhookPayload, UpsertPlaidItem,
 };
 use super::webhook_verifier::{self, WebhookVerifyError};
 
@@ -67,10 +66,13 @@ pub async fn exchange_public_token(
         .client
         .exchange_public_token(req.public_token.trim())
         .await?;
-    let encrypted = plaid.token_cipher.encrypt(&token.access_token).map_err(|err| {
-        tracing::error!(error = %err, "Plaid access token encryption failed");
-        AppError::internal("Plaid token could not be stored securely")
-    })?;
+    let encrypted = plaid
+        .token_cipher
+        .encrypt(&token.access_token)
+        .map_err(|err| {
+            tracing::error!(error = %err, "Plaid access token encryption failed");
+            AppError::internal("Plaid token could not be stored securely")
+        })?;
 
     let accounts = plaid.client.accounts_get(&token.access_token).await?;
     repository::upsert_item(
@@ -112,7 +114,9 @@ pub async fn list_connections(
     State(state): State<AppState>,
     user: AuthenticatedUser,
 ) -> Result<Json<Vec<super::types::PlaidConnectionDto>>, AppError> {
-    Ok(Json(repository::list_connections(state.db(), user.id).await?))
+    Ok(Json(
+        repository::list_connections(state.db(), user.id).await?,
+    ))
 }
 
 pub async fn list_accounts(
@@ -145,7 +149,12 @@ pub async fn sync_now(
     Json(req): Json<PlaidSyncRequest>,
 ) -> Result<Json<Vec<PlaidSyncResponse>>, AppError> {
     let plaid = state.plaid().ok_or_else(plaid_unavailable)?;
-    let items = if let Some(item_id) = req.item_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let items = if let Some(item_id) = req
+        .item_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         vec![repository::fetch_item(state.db(), user.id, item_id).await?]
     } else {
         repository::fetch_items(state.db(), user.id).await?
@@ -183,8 +192,8 @@ pub async fn sync_now(
             }
         };
 
-        let response = sync_one_item(state.clone(), plaid, user.id, &item.item_id, &access_token)
-            .await?;
+        let response =
+            sync_one_item(state.clone(), plaid, user.id, &item.item_id, &access_token).await?;
         responses.push(response);
     }
 

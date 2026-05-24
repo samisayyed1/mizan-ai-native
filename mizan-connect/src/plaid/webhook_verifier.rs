@@ -172,7 +172,10 @@ pub async fn verify(
     hasher.update(body);
     let computed_hex = hex::encode(hasher.finalize());
 
-    if !constant_time_eq(claims.request_body_sha256.as_bytes(), computed_hex.as_bytes()) {
+    if !constant_time_eq(
+        claims.request_body_sha256.as_bytes(),
+        computed_hex.as_bytes(),
+    ) {
         return Err(WebhookVerifyError::BodyHashMismatch);
     }
 

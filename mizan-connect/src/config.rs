@@ -352,7 +352,10 @@ impl Config {
     }
 }
 
-fn build_plaid_config(raw: &RawConfig, app_env: AppEnv) -> Result<Option<PlaidConfig>, ConfigError> {
+fn build_plaid_config(
+    raw: &RawConfig,
+    app_env: AppEnv,
+) -> Result<Option<PlaidConfig>, ConfigError> {
     use base64::Engine;
 
     let any_configured = [
@@ -385,11 +388,8 @@ fn build_plaid_config(raw: &RawConfig, app_env: AppEnv) -> Result<Option<PlaidCo
     }
     let _ = app_env;
 
-    let environment = parse_required::<PlaidEnv>(
-        "PLAID_ENV",
-        raw.plaid_env.as_deref(),
-        Some("sandbox"),
-    )?;
+    let environment =
+        parse_required::<PlaidEnv>("PLAID_ENV", raw.plaid_env.as_deref(), Some("sandbox"))?;
     let api_base = raw
         .plaid_api_base
         .as_deref()
@@ -398,14 +398,16 @@ fn build_plaid_config(raw: &RawConfig, app_env: AppEnv) -> Result<Option<PlaidCo
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| environment.api_base().to_string());
 
-    let client_id =
-        pick_required("PLAID_CLIENT_ID", raw.plaid_client_id.as_deref(), required)?
-            .unwrap_or_default();
-    let secret = pick_required("PLAID_SECRET", raw.plaid_secret.as_deref(), required)?
+    let client_id = pick_required("PLAID_CLIENT_ID", raw.plaid_client_id.as_deref(), required)?
         .unwrap_or_default();
-    let redirect_uri =
-        pick_required("PLAID_REDIRECT_URI", raw.plaid_redirect_uri.as_deref(), required)?
-            .unwrap_or_default();
+    let secret =
+        pick_required("PLAID_SECRET", raw.plaid_secret.as_deref(), required)?.unwrap_or_default();
+    let redirect_uri = pick_required(
+        "PLAID_REDIRECT_URI",
+        raw.plaid_redirect_uri.as_deref(),
+        required,
+    )?
+    .unwrap_or_default();
 
     let enc_key_b64 = pick_required(
         "MIZAN_PLAID_TOKEN_ENCRYPTION_KEY",

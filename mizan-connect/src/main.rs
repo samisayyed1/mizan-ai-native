@@ -7,9 +7,10 @@ use mizan_connect::{
     auth::JwksCache,
     billing::{BillingContext, StripeClient, StripePrices},
     config::Config,
-    db, server, shutdown,
+    db,
     plaid::{client::PlaidClient, types::PlaidContext},
     secret_crypto::SecretCipher,
+    server, shutdown,
     state::AppState,
     telemetry,
 };
@@ -45,7 +46,10 @@ async fn main() -> anyhow::Result<()> {
             token_cipher
                 .self_test()
                 .context("AES-256-GCM self-test failed (Plaid token encryption key is unusable)")?;
-            tracing::info!(plaid.env = plaid_config.environment.as_str(), "Plaid configured");
+            tracing::info!(
+                plaid.env = plaid_config.environment.as_str(),
+                "Plaid configured"
+            );
             Some(PlaidContext {
                 client: PlaidClient::new(plaid_config),
                 token_cipher,

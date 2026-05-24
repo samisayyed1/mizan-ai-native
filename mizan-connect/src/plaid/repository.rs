@@ -277,7 +277,11 @@ pub async fn store_transactions(
         .bind(&txn.account_id)
         .bind(&txn.transaction_id)
         .bind(txn.amount)
-        .bind(txn.iso_currency_code.as_ref().or(txn.currency_code.as_ref()))
+        .bind(
+            txn.iso_currency_code
+                .as_ref()
+                .or(txn.currency_code.as_ref()),
+        )
         .bind(&txn.merchant_name)
         .bind(&txn.name)
         .bind(serde_json::to_value(&txn.category).unwrap_or(serde_json::Value::Null))
@@ -328,7 +332,12 @@ pub async fn store_liabilities(
 ) -> Result<usize, AppError> {
     let count = liabilities
         .as_object()
-        .map(|obj| obj.values().filter_map(|v| v.as_array()).map(Vec::len).sum())
+        .map(|obj| {
+            obj.values()
+                .filter_map(|v| v.as_array())
+                .map(Vec::len)
+                .sum()
+        })
         .unwrap_or(0);
     sqlx::query(
         r#"
@@ -364,7 +373,9 @@ pub async fn replace_holdings(
             .get("account_id")
             .and_then(serde_json::Value::as_str)
             .unwrap_or("");
-        let security_id = holding.get("security_id").and_then(serde_json::Value::as_str);
+        let security_id = holding
+            .get("security_id")
+            .and_then(serde_json::Value::as_str);
         sqlx::query(
             r#"
             INSERT INTO plaid_investment_holdings (

@@ -62,8 +62,7 @@ impl PlaidClient {
             body["redirect_uri"] = json!(uri);
         }
 
-        let response: PlaidLinkTokenCreateResponse =
-            self.post("/link/token/create", &body).await?;
+        let response: PlaidLinkTokenCreateResponse = self.post("/link/token/create", &body).await?;
         Ok(LinkTokenResponse {
             link_token: response.link_token,
             expiration: response.expiration,
@@ -151,16 +150,10 @@ impl PlaidClient {
         body: &serde_json::Value,
     ) -> Result<T, AppError> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
-            .http
-            .post(url)
-            .json(body)
-            .send()
-            .await
-            .map_err(|err| {
-                tracing::warn!(error = %err, plaid.path = path, "Plaid request failed");
-                AppError::service_unavailable("Plaid is temporarily unavailable")
-            })?;
+        let response = self.http.post(url).json(body).send().await.map_err(|err| {
+            tracing::warn!(error = %err, plaid.path = path, "Plaid request failed");
+            AppError::service_unavailable("Plaid is temporarily unavailable")
+        })?;
 
         let status = response.status();
         let text = response.text().await.map_err(|err| {
