@@ -23,6 +23,7 @@ pub mod quotes;
 pub mod secrets;
 pub mod settings;
 pub mod sync;
+pub mod sync_ledger;
 pub mod taxonomies;
 pub mod utils;
 
