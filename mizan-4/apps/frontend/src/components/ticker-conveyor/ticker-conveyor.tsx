@@ -1,8 +1,11 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useHoldings } from "@/hooks/use-holdings";
 import { useTickerQuotes } from "@/hooks/use-ticker-quotes";
 import { HoldingType, PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
+import { QueryKeys } from "@/lib/query-keys";
 
 import { TickerItem, type TickerDatum } from "./ticker-item";
 
@@ -18,6 +21,22 @@ const MAX_ITEMS = 40;
 export function TickerConveyor() {
   const { holdings } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { data: indices } = useTickerQuotes();
+  const queryClient = useQueryClient();
+
+  // Refetch the curated indices the moment the Tauri startup quote sync
+  // completes. Without this listener, the ticker waits up to ~6 hours
+  // (the periodic sync cadence) before showing live prices on a cold
+  // launch. The backend emits this event from
+  // `apps/tauri/src/scheduler.rs::run_startup_quote_sync`.
+  useEffect(() => {
+    const unlisten = listen("quotes:startup-sync-complete", () => {
+      void queryClient.invalidateQueries({ queryKey: [QueryKeys.TICKER_QUOTES] });
+      void queryClient.invalidateQueries({ queryKey: [QueryKeys.HOLDINGS] });
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [queryClient]);
 
   const items = useMemo<TickerDatum[]>(() => {
     const fromHoldings: TickerDatum[] = holdings

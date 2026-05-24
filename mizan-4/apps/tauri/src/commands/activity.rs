@@ -443,6 +443,39 @@ pub async fn parse_csv(
         })
 }
 
+/// Parse a CSV passed as a UTF-8 string (preferred path for the desktop UI).
+///
+/// Why this exists: the older `parse_csv` command takes `content: Vec<u8>`,
+/// which Tauri serialises as a JSON array of byte values (`[103,105,...]`).
+/// For a 5 MB CSV that's ~20 MB of JSON text crossing the IPC bridge and
+/// stalls the browser main thread for tens of seconds — the visible
+/// "loading forever" bug users hit on broker exports. Strings JSON-encode
+/// at ~1× their byte length and deserialise as a plain memcpy, so this
+/// path is dramatically faster.
+///
+/// We still keep `parse_csv` around for the rare case of non-UTF-8
+/// input — the frontend can fall back by reading the file as bytes
+/// after a UTF-8 decode error.
+#[tauri::command]
+pub async fn parse_csv_text(
+    text: String,
+    config: ParseConfig,
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<ParsedCsvResult, String> {
+    debug!(
+        "Parsing CSV (text) with {} chars, config: {:?}",
+        text.len(),
+        config
+    );
+    state
+        .activity_service()
+        .parse_csv(text.as_bytes(), &config)
+        .map_err(|e| {
+            debug!("CSV parse error: {}", e);
+            e.to_string()
+        })
+}
+
 /// Result of `analyze_csv_import` — everything the import-preview UI
 /// needs to show in one round-trip.
 #[derive(Debug, serde::Serialize)]
