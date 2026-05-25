@@ -202,17 +202,29 @@ function HoldingRow({
 
   const isClickable = !!holding.instrument?.id;
 
-  // Calculate display values
-  const fxRate = holding.fxRate ?? 1;
+  // Calculate display values. When toggled to "local currency" view but
+  // FX rate is missing for a non-base-currency holding, fall back to
+  // base-currency display rather than silently rendering a base value
+  // under a local label (QA Pass 6 — same bug shape as holdings-table).
+  const fxRate = holding.fxRate;
   const marketValueBase = holding.marketValue?.base ?? 0;
-  const marketValue = showConvertedValues ? marketValueBase : safeDivide(marketValueBase, fxRate);
-  const currency = showConvertedValues ? holding.baseCurrency : holding.localCurrency;
+  const fxAvailable = fxRate != null;
+  const fxNeeded =
+    !!holding.localCurrency &&
+    !!holding.baseCurrency &&
+    holding.localCurrency !== holding.baseCurrency;
+  const displayInBase = showConvertedValues || (fxNeeded && !fxAvailable);
+  const effectiveFxRate = fxAvailable ? (fxRate as number) : 1;
+  const marketValue = displayInBase
+    ? marketValueBase
+    : safeDivide(marketValueBase, effectiveFxRate);
+  const currency = displayInBase ? holding.baseCurrency : holding.localCurrency;
 
   // For liabilities, display value as negative
   const displayValue = holding.isLiability ? -Math.abs(marketValue) : marketValue;
 
   const valueBase = showTotalReturn ? holding.totalGain?.base : holding.dayChange?.base;
-  const gainValue = showConvertedValues ? valueBase : safeDivide(valueBase ?? 0, fxRate);
+  const gainValue = displayInBase ? valueBase : safeDivide(valueBase ?? 0, effectiveFxRate);
   const gainPct = showTotalReturn ? holding.totalGainPct : holding.dayChangePct;
 
   return (

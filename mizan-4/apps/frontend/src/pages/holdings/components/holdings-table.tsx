@@ -25,28 +25,47 @@ import { useNavigate } from "react-router-dom";
 
 import { AnimatedToggleGroup } from "@mizan/ui";
 
-// Helper function to get display value and currency based on toggle state
+// Helper function to get display value and currency based on toggle state.
+//
+// When showConvertedToBase is false we report the holding in its OWN
+// currency. That requires an FX rate from base → local. If the rate is
+// missing AND the currencies actually differ, we can't honestly do the
+// conversion — so we fall back to the base-currency value rather than
+// silently rendering a base-currency number under a local-currency
+// label (which would mis-state the holding to the user). QA Pass 6.
 const getDisplayValueAndCurrency = (
   holding: Holding,
   valueInBase: number | null | undefined,
   showConvertedToBase: boolean,
 ): { value: number; currency: string } => {
-  const fxRate = holding.fxRate ?? 1; // Use fxRate from Holding
-
   if (showConvertedToBase) {
-    // Show value in Base Currency
     return {
       value: valueInBase ?? 0,
-      currency: holding.baseCurrency, // Use baseCurrency from Holding
-    };
-  } else {
-    // Show value in Asset's Original Currency
-    const valueInOriginal = safeDivide(valueInBase ?? 0, fxRate);
-    return {
-      value: valueInOriginal,
-      currency: holding.localCurrency, // Use localCurrency from Holding
+      currency: holding.baseCurrency,
     };
   }
+
+  // Local-currency view. If FX is unavailable and the currencies
+  // differ, the safest honest answer is to show the base value under
+  // the base label; rendering "₹1,000" when the underlying is $1,000
+  // USD would be wrong by ~85x.
+  const fxRate = holding.fxRate;
+  if (
+    fxRate == null &&
+    holding.localCurrency &&
+    holding.baseCurrency &&
+    holding.localCurrency !== holding.baseCurrency
+  ) {
+    return {
+      value: valueInBase ?? 0,
+      currency: holding.baseCurrency,
+    };
+  }
+  const valueInOriginal = safeDivide(valueInBase ?? 0, fxRate ?? 1);
+  return {
+    value: valueInOriginal,
+    currency: holding.localCurrency,
+  };
 };
 
 export const HoldingsTable = ({
