@@ -222,14 +222,9 @@ pub async fn synthesize_account_history(
                     date,
                 ) {
                     Ok(v) => Some(v),
-                    Err(_) => match fx_service.convert_currency(
-                        value_local,
-                        &holding.local_currency,
-                        account_currency,
-                    ) {
-                        Ok(v) => Some(v),
-                        Err(_) => None,
-                    },
+                    Err(_) => fx_service
+                        .convert_currency(value_local, &holding.local_currency, account_currency)
+                        .ok(),
                 }
             };
 
