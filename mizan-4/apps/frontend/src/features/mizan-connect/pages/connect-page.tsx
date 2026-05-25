@@ -487,7 +487,7 @@ export default function ConnectPage() {
                       toast({
                         title: "Billing portal coming soon",
                         description:
-                          "Stripe checkout ships in the next release. We'll email you when it's ready.",
+                          "Stripe checkout is in the final mile — it ships in a coming release. Mizan keeps working offline-first in the meantime.",
                       })
                     }
                   >

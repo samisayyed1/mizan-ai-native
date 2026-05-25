@@ -168,14 +168,14 @@ function NoProvidersEmptyState({ className }: { className?: string }) {
   return (
     <div className={cn("flex h-full w-full items-center justify-center", className)}>
       <EmptyPlaceholder
-        icon={<Icons.Sparkles className="text-muted-foreground h-10 w-10" />}
-        title="No AI provider configured"
-        description="Connect an AI provider to start chatting with your personal finance assistant. Your data stays private and secure."
+        icon={<Icons.Sparkles className="h-10 w-10 text-amber-500" />}
+        title="Turn on Mizan AI"
+        description="Sign in with Mizan to chat about your wealth, or plug in your own provider under Advanced. Either way, your data stays on this device."
       >
         <Button asChild>
           <Link to="/settings/ai-providers">
-            <Icons.Settings className="mr-2 h-4 w-4" />
-            Configure AI Providers
+            <Icons.Sparkles className="mr-2 h-4 w-4" />
+            Set up Mizan AI
           </Link>
         </Button>
       </EmptyPlaceholder>

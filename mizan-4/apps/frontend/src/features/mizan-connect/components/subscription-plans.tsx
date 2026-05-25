@@ -113,7 +113,8 @@ function PlanCard({ plan, billingPeriod, isDefault, isComingSoon }: PlanCardProp
     // claim a feature that isn't live yet.
     toast({
       title: "Billing portal coming soon",
-      description: "Stripe checkout ships in the next release. We'll email you when it's ready.",
+      description:
+        "Stripe checkout is in the final mile — it ships in a coming release. Mizan keeps working offline-first in the meantime.",
     });
   };
 
