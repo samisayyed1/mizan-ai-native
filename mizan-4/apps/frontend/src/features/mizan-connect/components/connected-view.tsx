@@ -232,7 +232,15 @@ function BrokerConnectionRow({ connection }: { connection: BrokerConnection }) {
     connection.brokerage?.aws_s3_square_logo_url ?? connection.brokerage?.aws_s3_logo_url;
   const brokerageName =
     connection.brokerage?.display_name ?? connection.brokerage?.name ?? "Unknown Broker";
-  const isConnected = connection.status === "connected" && !connection.disabled;
+  // Cloud surfaces three terminal states: "connected" (healthy), "needs_attention"
+  // (last_error set — typically ITEM_LOGIN_REQUIRED, the broker rotated MFA or
+  // the user changed their password), and "disconnected" (user revoked). The
+  // healthy branch must reject needs_attention too, otherwise stale numbers
+  // ride under a green badge and the user has no idea their balances stopped
+  // updating days ago.
+  const isNeedsAttention = connection.status === "needs_attention" && !connection.disabled;
+  const isConnected =
+    connection.status === "connected" && !connection.disabled && !isNeedsAttention;
 
   // M3.5: surface a relative-time "last synced" hint sourced from the
   // connection's own `updated_at` (the cloud bumps it whenever sync results
@@ -306,20 +314,26 @@ function BrokerConnectionRow({ connection }: { connection: BrokerConnection }) {
       </Avatar>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium leading-tight">{brokerageName}</p>
-        {lastSynced && isConnected && (
+        {isNeedsAttention ? (
+          <p className="text-amber-600 dark:text-amber-400 mt-0.5 truncate text-[11px]">
+            Reconnect to resume syncing — your broker requires sign-in
+          </p>
+        ) : lastSynced && isConnected ? (
           <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
             Last synced {lastSynced}
           </p>
-        )}
+        ) : null}
       </div>
       <Badge
         className={`shrink-0 ${
           isConnected
             ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-            : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+            : isNeedsAttention
+              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
         }`}
       >
-        {isConnected ? "Connected" : "Disconnected"}
+        {isConnected ? "Connected" : isNeedsAttention ? "Needs reconnect" : "Disconnected"}
       </Badge>
       <ActionConfirm
         confirmTitle={`Disconnect ${brokerageName}?`}

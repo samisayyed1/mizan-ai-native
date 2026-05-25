@@ -495,9 +495,34 @@ impl ConnectApiClient {
     }
 
     /// Trigger Plaid cursor sync for all connected Items.
+    ///
+    /// The cloud returns a structured response with per-item counts and any
+    /// errors. We surface a non-empty `errors` field as an `Err` so the desktop
+    /// orchestrator can log + report partial failures instead of pretending
+    /// every Plaid item synced successfully — a key production-grade guarantee
+    /// per the Plaid Connect audit (GAP 7: "cloud returns 200 but sync was
+    /// partial, desktop never knows").
     pub async fn sync_plaid_data(&self) -> Result<()> {
         let body = serde_json::json!({});
-        let _: serde_json::Value = self.post_json("/api/v1/sync/plaid/sync", &body).await?;
+        let response: serde_json::Value = self.post_json("/api/v1/sync/plaid/sync", &body).await?;
+        // Best-effort parse: if the cloud surfaces an `errors` array with any
+        // entries, treat the call as a partial failure even though HTTP 200
+        // was returned. Tolerant of older cloud versions that don't yet emit
+        // the field — those still resolve Ok.
+        if let Some(errors) = response.get("errors").and_then(|v| v.as_array()) {
+            if !errors.is_empty() {
+                let first = errors
+                    .first()
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown sync error");
+                return Err(Error::Unexpected(format!(
+                    "Plaid sync completed with {} error(s); first: {}",
+                    errors.len(),
+                    first
+                )));
+            }
+        }
         Ok(())
     }
 
