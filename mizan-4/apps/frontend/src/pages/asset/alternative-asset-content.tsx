@@ -502,7 +502,7 @@ const AlternativeAssetDetailCard: React.FC<AlternativeAssetDetailCardProps> = ({
             </div>
             <div>
               <div
-                className={`text-xl font-extrabold ${netEquity >= 0 ? "text-success" : "text-destructive"}`}
+                className={`text-xl font-semibold tracking-tight ${netEquity >= 0 ? "text-success" : "text-destructive"}`}
               >
                 <AmountDisplay
                   value={netEquity}
@@ -532,7 +532,7 @@ const AlternativeAssetDetailCard: React.FC<AlternativeAssetDetailCardProps> = ({
             </div>
             <div>
               <div
-                className={`text-xl font-extrabold ${liabilityProgress.amountPaid >= 0 ? "text-success" : "text-destructive"}`}
+                className={`text-xl font-semibold tracking-tight ${liabilityProgress.amountPaid >= 0 ? "text-success" : "text-destructive"}`}
               >
                 <AmountDisplay
                   value={liabilityProgress.amountPaid}
