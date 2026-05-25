@@ -37,6 +37,13 @@ vi.mock("@tanstack/react-query", () => ({
   useQueries: vi.fn(),
 }));
 
+// AccountsSummary uses useAddAsset for its first-run "Set up with Mizan"
+// CTA. The test isn't exercising that path; provide a no-op stub so the
+// component renders without needing the real AddAssetProvider.
+vi.mock("@/features/add-asset", () => ({
+  useAddAsset: () => ({ open: vi.fn() }),
+}));
+
 vi.mock("@mizan/ui", () => ({
   PrivacyAmount: ({ value, currency }: { value: number; currency: string }) => (
     <span>{`value:${currency}:${value}`}</span>
