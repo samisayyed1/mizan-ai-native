@@ -205,6 +205,21 @@ export function HistoryChart({
     return null;
   }
 
+  // Enterprise UX: don't render an empty AreaChart when we have zero
+  // data points. Recharts would otherwise draw the gradient placeholder
+  // and axes with no series, which looks like a rendering bug. The
+  // IntervalSelector (gated to data extent in Enterprise UX-1) should
+  // make this case unreachable on the dashboard, but for the cold-start
+  // moment or any other consumer of this chart we surface an honest
+  // placeholder instead of a phantom plot.
+  if (!isLoading && data.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <p className="text-muted-foreground text-xs">No history yet</p>
+      </div>
+    );
+  }
+
   // Gradient stops for fill and stroke based on zero crossing
   const zeroPercent = `${(zeroOffset * 100).toFixed(1)}%`;
 

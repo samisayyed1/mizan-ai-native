@@ -151,8 +151,20 @@ export function NetWorthChart({ data, isLoading }: NetWorthChartProps) {
     return { zeroOffset: offset, allPositive: false, allNegative: false };
   }, [chartData]);
 
-  if (isLoading || chartData.length === 0) {
+  if (isLoading) {
     return null;
+  }
+
+  // Enterprise UX: explicit empty state instead of silently rendering
+  // nothing. Mirror of the HistoryChart change — IntervalSelector is
+  // gated to data extent (Enterprise UX-1) so this is rare in practice,
+  // but when it fires the user sees a labelled placeholder, not a void.
+  if (chartData.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <p className="text-muted-foreground text-xs">No history yet</p>
+      </div>
+    );
   }
 
   const zeroPercent = `${(zeroOffset * 100).toFixed(1)}%`;
