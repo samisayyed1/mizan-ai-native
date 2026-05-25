@@ -907,16 +907,17 @@ impl SnapshotService {
                     }
                     Err(e) => {
                         warn!(
-                            "Failed to convert position cost basis for asset {} ({} {} to {}) for TOTAL on {}: {}. Adding unconverted.",
-                            pos.asset_id, pos.total_cost_basis, pos.currency, base_portfolio_currency, target_date, e
+                            "Cannot convert position cost basis for asset {} ({} {} → {}) for \
+                             TOTAL on {} ({}). Excluding from TOTAL portfolio cost basis — \
+                             silent unconverted fallback would mis-state the dashboard.",
+                            pos.asset_id, pos.total_cost_basis, pos.currency,
+                            base_portfolio_currency, target_date, e
                         );
-                        if pos.currency != base_portfolio_currency {
-                            overall_cost_basis_base_ccy += pos.total_cost_basis;
-                        // Fallback
-                        } else {
-                            overall_cost_basis_base_ccy += pos.total_cost_basis;
-                            // Already in base
-                        }
+                        // Intentionally NOT adding pos.total_cost_basis to the
+                        // running total. The same-currency branch the old code
+                        // had can never actually trigger here — if the
+                        // currencies were equal, convert_currency_for_date
+                        // would have returned Ok(amount) instead of Err.
                     }
                 }
             }

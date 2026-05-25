@@ -1071,10 +1071,15 @@ impl HoldingsCalculator {
             Ok(converted) => converted,
             Err(e) => {
                 warn!(
-                    "Holdings Calc ({} {}): Failed conversion {} {}->{} on {}: {}. Using original amount.",
-                    context, activity.id, amount, activity_currency, account_currency, activity_date, e
+                    "Holdings Calc ({} {}): MISSING FX RATE {} → {} on {} ({}). Falling back \
+                     to original {} amount — downstream cost-basis math will treat this as \
+                     '{} of {}' which mis-states the per-account total. Add the FX pair under \
+                     Settings → Market Data → Exchange Rates to fix permanently.",
+                    context, activity.id, activity_currency, account_currency, activity_date, e,
+                    activity_currency, amount, account_currency
                 );
-                amount // Fallback to original amount
+                amount // intentional: downstream contract returns Decimal,
+                       // refactor to Option<Decimal> tracked under QA Pass 7.
             }
         }
     }
