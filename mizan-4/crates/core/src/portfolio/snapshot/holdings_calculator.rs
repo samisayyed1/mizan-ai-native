@@ -1256,7 +1256,13 @@ impl HoldingsCalculator {
         let mut total_base = Decimal::ZERO;
 
         for (currency, &amount) in &state.cash_balances {
-            // Convert to account currency
+            // Convert to account currency. When FX lookup fails we
+            // refuse to silently add the unconverted amount — that path
+            // turned `{SAR: 75000, USD: -97500}` into a "−$22,500"
+            // single-currency total because the calculator treated SAR
+            // and USD as the same unit. Now we skip the line and log
+            // an error; the per-currency cash_balances map still holds
+            // the truth for callers that need it.
             if currency == account_currency {
                 total_acct += amount;
             } else {
@@ -1269,10 +1275,11 @@ impl HoldingsCalculator {
                     Ok(converted) => total_acct += converted,
                     Err(e) => {
                         warn!(
-                            "Failed to convert cash {} {} to account currency {}: {}. Using unconverted.",
-                            amount, currency, account_currency, e
+                            "Cannot convert cash {} {} → account currency {} on {} ({}). \
+                             Excluding from cash_total_account_currency — silent \
+                             unconverted fallback would mis-state the balance.",
+                            amount, currency, account_currency, target_date, e
                         );
-                        total_acct += amount;
                     }
                 }
             }
@@ -1290,10 +1297,11 @@ impl HoldingsCalculator {
                     Ok(converted) => total_base += converted,
                     Err(e) => {
                         warn!(
-                            "Failed to convert cash {} {} to base currency {}: {}. Using unconverted.",
-                            amount, currency, &base_ccy, e
+                            "Cannot convert cash {} {} → base currency {} on {} ({}). \
+                             Excluding from cash_total_base_currency — silent \
+                             unconverted fallback would mis-state the dashboard.",
+                            amount, currency, &base_ccy, target_date, e
                         );
-                        total_base += amount;
                     }
                 }
             }
