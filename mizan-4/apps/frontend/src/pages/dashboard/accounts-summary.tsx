@@ -345,19 +345,50 @@ export const AccountsSummary = React.memo(
         }
 
         const perf = performanceQueries[i]?.data;
-        const fxRate = valuation.fxRateToBase ?? 1;
+        // QA Pass 16: when fxRateToBase is missing AND the account
+        // currency differs from base, multiplying by `?? 1` silently
+        // shows e.g. "SGD 30,420" as "$30,420 USD" — wrong by ~25%
+        // and the exact "silent wrong-but-plausible number" pattern
+        // the QA mission flags. Pass 5 fixed the same anti-pattern in
+        // the holdings table; this site was missed.
+        //
+        // Same-currency cards (USD account on USD base): rate is
+        // effectively 1.0 and `?? 1` was a no-op.
+        // Cross-currency cards with a valid rate: multiply as before.
+        // Cross-currency cards with NO rate: alias baseCurrency to
+        // accountCurrency for this card so the renderer labels the
+        // value with its true currency. The user sees "SGD 30,420"
+        // instead of "$30,420" — honest about what we don't know.
+        const fxRate = valuation.fxRateToBase;
+        const fxRateUsable = fxRate != null && fxRate !== 0;
+        const accountCurrencyDiffers =
+          !!valuation.accountCurrency &&
+          !!valuation.baseCurrency &&
+          valuation.accountCurrency !== valuation.baseCurrency;
+        const fxMissingCrossCurrency = accountCurrencyDiffers && !fxRateUsable;
+
         const totalValueAccountCurrency = valuation.totalValue;
-        const totalValueBaseCurrency = totalValueAccountCurrency * fxRate;
+        const totalValueBaseCurrency = fxRateUsable
+          ? totalValueAccountCurrency * fxRate
+          : totalValueAccountCurrency;
 
         const gainLossAccountCurrency = perf?.periodGain ?? null;
         const gainLossBaseCurrency =
-          gainLossAccountCurrency !== null ? gainLossAccountCurrency * fxRate : null;
+          gainLossAccountCurrency !== null && fxRateUsable
+            ? gainLossAccountCurrency * fxRate
+            : gainLossAccountCurrency;
         const gainPercent = perf?.periodReturn ?? null;
 
         return {
           accountName: acc.name,
           totalValueBaseCurrency,
-          baseCurrency,
+          // When FX is missing on a cross-currency account, alias the
+          // "base currency" label to the account currency so the value
+          // is rendered with its truthful unit (e.g. "SGD 30,420" not
+          // "$30,420"). See QA Pass 16 above.
+          baseCurrency: fxMissingCrossCurrency
+            ? (valuation.accountCurrency ?? baseCurrency)
+            : baseCurrency,
           totalGainLossAmountBaseCurrency: gainLossBaseCurrency,
           totalValueAccountCurrency,
           accountCurrency: valuation.accountCurrency,
