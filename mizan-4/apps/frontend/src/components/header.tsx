@@ -55,7 +55,7 @@ export function ApplicationHeader({
           )}
 
           <h1 className="font-heading text-xl font-bold tracking-tight md:text-2xl">{heading}</h1>
-          {text && <p className="text-muted-foreground ml-4 text-lg font-light">{text}</p>}
+          {text && <p className="text-muted-foreground ml-4 text-lg">{text}</p>}
         </div>
       </div>
       <div className="flex-shrink-0">{children}</div>

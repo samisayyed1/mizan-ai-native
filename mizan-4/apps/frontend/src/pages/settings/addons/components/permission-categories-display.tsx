@@ -73,7 +73,7 @@ export function PermissionCategoriesDisplay({ permissions }: PermissionCategorie
                         <Badge
                           key={func.name}
                           variant={getFunctionBadgeVariant(func)}
-                          className="text-xs font-light"
+                          className="text-xs"
                           title={func.name} // Show technical name on hover
                         >
                           {getFunctionDisplayName(permission.category, func.name)}

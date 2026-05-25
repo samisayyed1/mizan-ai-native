@@ -143,7 +143,7 @@ export const ActivityTable = ({
           return (
             <div className="ml-2 flex flex-col">
               <span>{formattedDate.date}</span>
-              <span className="text-muted-foreground text-xs font-light">{formattedDate.time}</span>
+              <span className="text-muted-foreground text-xs">{formattedDate.time}</span>
             </div>
           );
         },
@@ -198,7 +198,7 @@ export const ActivityTable = ({
                     </span>
                   ) : null}
                 </span>
-                <span className="text-muted-foreground truncate text-xs font-light">
+                <span className="text-muted-foreground truncate text-xs">
                   {isCash ? String(currency) : (optionSubtitle ?? String(assetName ?? currency))}
                 </span>
               </div>
@@ -395,7 +395,7 @@ export const ActivityTable = ({
           return (
             <div className="ml-2 flex min-w-[150px] flex-col">
               <span>{String(accountName)}</span>
-              <span className="text-muted-foreground text-xs font-light">
+              <span className="text-muted-foreground text-xs">
                 {String(accountCurrency)}
               </span>
             </div>

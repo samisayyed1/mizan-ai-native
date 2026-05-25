@@ -105,7 +105,7 @@ export function HoldingCurrencyChart({
 
           {/* Total amount */}
           <div className="flex flex-col items-baseline space-y-3">
-            <div className="text-xl font-light">
+            <div className="text-2xl font-semibold tracking-tight">
               <AmountDisplay value={totalBase} currency={baseCurrency} isHidden={isBalanceHidden} />
             </div>
             {/* Progress bar */}

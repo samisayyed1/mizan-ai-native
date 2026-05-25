@@ -467,21 +467,21 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
               ) : (
                 <>
                   <GainAmount
-                    className="lg:text-md text-sm font-light"
+                    className="lg:text-md text-sm font-medium"
                     value={gainLossAmount}
                     currency={currency}
                     displayCurrency={false}
                   />
                   <div className="border-secondary my-1 border-r pr-2" />
                   <GainPercent
-                    className="lg:text-md text-sm font-light"
+                    className="lg:text-md text-sm font-medium"
                     value={gainLossPercent}
                     animated={true}
                   />
                 </>
               )}
               {selectedIntervalDescription && (
-                <span className="lg:text-md text-muted-foreground ml-1 text-sm font-light">
+                <span className="lg:text-md text-muted-foreground ml-1 text-sm">
                   {selectedIntervalDescription}
                 </span>
               )}
