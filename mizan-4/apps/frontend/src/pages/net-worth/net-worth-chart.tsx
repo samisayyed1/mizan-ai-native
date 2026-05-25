@@ -1,5 +1,6 @@
 import { useHapticFeedback } from "@/hooks";
 import { ChartConfig, ChartContainer } from "@mizan/ui/components/ui/chart";
+import { Skeleton } from "@mizan/ui/components/ui/skeleton";
 import { useBalancePrivacy } from "@/hooks/use-balance-privacy";
 import { useIsMobileViewport } from "@/hooks/use-platform";
 import { formatDate } from "@/lib/utils";
@@ -151,8 +152,14 @@ export function NetWorthChart({ data, isLoading }: NetWorthChartProps) {
     return { zeroOffset: offset, allPositive: false, allNegative: false };
   }, [chartData]);
 
-  if (isLoading) {
-    return null;
+  // Reserve the chart area with a skeleton during initial fetch so the
+  // page doesn't reflow when data arrives. Mirror of UX-40 for HistoryChart.
+  if (isLoading && chartData.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center px-4">
+        <Skeleton className="h-full w-full rounded-lg" />
+      </div>
+    );
   }
 
   // Enterprise UX: explicit empty state instead of silently rendering

@@ -1,5 +1,6 @@
 import { useHapticFeedback } from "@/hooks";
 import { ChartConfig, ChartContainer } from "@mizan/ui/components/ui/chart";
+import { Skeleton } from "@mizan/ui/components/ui/skeleton";
 import { useBalancePrivacy } from "@/hooks/use-balance-privacy";
 import { useIsMobileViewport } from "@/hooks/use-platform";
 import { formatDate } from "@/lib/utils";
@@ -201,8 +202,17 @@ export function HistoryChart({
     [markerDataPoints],
   );
 
+  // Show a skeleton during the initial fetch so the chart area doesn't
+  // collapse to zero height + pop back in when data arrives — premium
+  // apps reserve the layout. Once we have data, we keep the existing
+  // plot visible during re-fetches (placeholderData keeps prev) so no
+  // skeleton flash on interval changes.
   if (isLoading && data.length === 0) {
-    return null;
+    return (
+      <div className="flex h-full w-full items-center justify-center px-4">
+        <Skeleton className="h-full w-full rounded-lg" />
+      </div>
+    );
   }
 
   // Enterprise UX: don't render an empty AreaChart when we have zero
