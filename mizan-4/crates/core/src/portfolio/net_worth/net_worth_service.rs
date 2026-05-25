@@ -467,10 +467,12 @@ impl NetWorthServiceTrait for NetWorthService {
                 Ok(v) => v,
                 Err(e) => {
                     warn!(
-                        "Failed to convert alternative asset {} value to base currency: {}. Using local value.",
-                        asset.id, e
+                        "Cannot value alternative asset {} ({} → {}): {}. Excluding from \
+                         net worth — silent local-currency fallback would mis-state the \
+                         dashboard.",
+                        asset.id, normalized_currency, base_currency, e
                     );
-                    price
+                    continue;
                 }
             };
 

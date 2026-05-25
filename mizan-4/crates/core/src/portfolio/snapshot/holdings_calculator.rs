@@ -178,12 +178,13 @@ impl HoldingsCalculator {
                 }
                 Err(e) => {
                     error!(
-                         "Holdings Calc (Book Cost): Failed to convert {} {} to {} on {}: {}. Using original unconverted cost for snapshot.",
+                         "Holdings Calc (Book Cost): Cannot convert {} {} → {} on {} ({}). \
+                          Excluding this position's cost basis from the account-level total. \
+                          Silent unconverted fallback would mis-state cost basis vs market value.",
                          position.total_cost_basis, position_currency, account_currency, target_date, e
                      );
-                    if position_currency != &account_currency {
-                        final_cost_basis_acct += position.total_cost_basis;
-                    }
+                    // Intentionally do NOT add the unconverted amount; leave
+                    // this position out of final_cost_basis_acct.
                 }
             }
         }

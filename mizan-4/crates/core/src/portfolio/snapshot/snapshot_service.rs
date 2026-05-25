@@ -958,10 +958,11 @@ impl SnapshotService {
                     Ok(converted) => cash_total_base += converted,
                     Err(e) => {
                         warn!(
-                            "Failed to convert cash {} {} to base currency {}: {}. Using unconverted.",
-                            amount, currency, base_portfolio_currency, e
+                            "Cannot convert cash {} {} → base currency {} on {}: {}. \
+                             Excluding from TOTAL portfolio cash — silent unconverted \
+                             fallback would mis-state the dashboard.",
+                            amount, currency, base_portfolio_currency, target_date, e
                         );
-                        cash_total_base += amount;
                     }
                 }
             }
@@ -1075,10 +1076,12 @@ impl SnapshotService {
                         Ok(converted) => converted,
                         Err(e) => {
                             warn!(
-                                "Failed to convert transfer amount {} {} to base {} on {}: {}. Using unconverted.",
+                                "Cannot convert transfer amount {} {} → base {} on {} ({}). \
+                                 Skipping this transfer from base-currency net-contribution \
+                                 tracking. Silent unconverted fallback would mis-state TWR.",
                                 amount, activity.currency, base_currency, activity_date, e
                             );
-                            amount
+                            continue;
                         }
                     }
                 };

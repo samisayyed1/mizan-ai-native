@@ -2320,12 +2320,29 @@ mod tests {
         );
 
         // --- Check Snapshot Cost Basis (CAD) ---
-        // The final snapshot cost basis calculation *also* tries to convert position.total_cost_basis (2015 EUR) to account currency (CAD).
-        // This conversion will also fail. Fallback uses 1:1 rate.
-        // So, 2015 EUR position cost basis becomes 2015 CAD for the snapshot's cost_basis field.
-        let expected_snapshot_cost_basis_cad = position_ads.total_cost_basis; // Fallback: 2015 EUR treated as 2015 CAD
-        assert_eq!(next_state.cost_basis, expected_snapshot_cost_basis_cad,
-            "Snapshot cost_basis mismatch. Expected fallback to use unconverted position currency value if final conversion fails.");
+        // The final snapshot cost-basis calculation tries to convert
+        // position.total_cost_basis (2015 EUR) into account currency (CAD).
+        // The conversion fails because no EUR/CAD rate is registered.
+        //
+        // QA Pass 2 fix: we NO LONGER silently treat the unconverted EUR
+        // amount as if it were CAD (that was the data-correctness bug
+        // that made ₹463,800 INR cash look like "$463,800 USD" on the
+        // dashboard). The position is now excluded from the account-
+        // level total instead.
+        //
+        // The position record itself still keeps its EUR cost basis
+        // (next_state.positions["ADS.DE"].total_cost_basis), the cash
+        // ledger still records the EUR outflow — only the summed
+        // account-level cost_basis is honest about not knowing the
+        // EUR/CAD rate. The frontend can surface this as "FX rate
+        // unavailable" instead of pretending the math worked.
+        assert_eq!(
+            next_state.cost_basis,
+            dec!(0),
+            "Snapshot cost_basis must be zero when the only position's currency cannot \
+             be converted to account currency — never silently inject the unconverted \
+             amount, which would mis-state cost basis vs market value."
+        );
 
         assert_eq!(
             next_state.net_contribution,
