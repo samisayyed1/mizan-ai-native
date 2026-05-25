@@ -60,6 +60,17 @@ export interface AddAssetDialogProps {
    *  opens. Falls back to a generic placeholder. Useful for context-
    *  aware Add buttons (e.g. on the goals page → "Set a new goal of…"). */
   initialPrompt?: string;
+  /**
+   * When set, the dialog was opened from an account-scoped surface
+   * (e.g. account-detail page's "Add stock" button). Skips re-asking
+   * the user which portfolio they want to add to:
+   *   - AI mode: the prompt is enriched with "for the {accountName}
+   *     portfolio (id {accountId})" so Mizan AI uses it without asking.
+   *   - Manual mode: navigates to /activities/manage?accountId=… so the
+   *     form pre-selects the account.
+   */
+  presetAccountId?: string;
+  presetAccountName?: string;
 }
 
 type Mode = "chooser" | "ai" | "running" | "done" | "error";
@@ -68,6 +79,8 @@ export function AddAssetDialog({
   open,
   onOpenChange,
   initialPrompt,
+  presetAccountId,
+  presetAccountName,
 }: AddAssetDialogProps) {
   const navigate = useNavigate();
   // We need to know whether the user has any portfolios so the
@@ -142,21 +155,26 @@ export function AddAssetDialog({
     //   * Has a portfolio → they want to add an ASSET (a holding, a
     //     transaction, a balance). The canonical form is
     //     /activities/manage — the Add Activity form with a portfolio
-    //     selector at the top.
+    //     selector at the top. When we came from an account-scoped
+    //     surface (Enterprise UX-2), pass the account ID so the form
+    //     pre-selects it and the user is NOT asked to pick a portfolio
+    //     again — that repetition was the reported bug.
     //
     //   * Has zero portfolios → they need a portfolio before any
     //     activity will make sense. Send them to the AccountEditModal
     //     (auto-opened via ?addAccount=1).
-    //
-    // Previously this always routed to /settings/accounts?addAccount=1,
-    // so a user who clearly already had a portfolio got asked to
-    // create another one. That was the reported bug.
     if (hasAnyPortfolio) {
-      navigate("/activities/manage");
+      // /activities/manage's existing param is `account` (the activity
+      // manager has had this since before Enterprise UX-2). Match that
+      // contract rather than introduce a new alias.
+      const target = presetAccountId
+        ? `/activities/manage?account=${encodeURIComponent(presetAccountId)}`
+        : "/activities/manage";
+      navigate(target);
     } else {
       navigate("/settings/accounts?addAccount=1");
     }
-  }, [hasAnyPortfolio, navigate, onOpenChange]);
+  }, [hasAnyPortfolio, navigate, onOpenChange, presetAccountId]);
 
   const handleFilePick = useCallback(
     async (files: FileList | null) => {
@@ -198,8 +216,19 @@ export function AddAssetDialog({
     const controller = new AbortController();
     abortRef.current = controller;
     try {
+      // Enterprise UX-2: prepend an account-scope hint to the agent's
+      // prompt when the dialog was opened from an account-detail page.
+      // The agent's record_activity / add_alternative_asset tools see
+      // the hint, resolve the account by id/name automatically, and
+      // skip the "which portfolio?" follow-up. Without this, the AI
+      // would ask the user the question they just answered by clicking
+      // "Add stock" from inside the account.
+      const accountHint = presetAccountId
+        ? `Use account "${presetAccountName ?? presetAccountId}" (account_id: ${presetAccountId}) for this. `
+        : "";
+      const composedPrompt = `${accountHint}${prompt.trim()}`.trim();
       const request: AgentRunRequest = {
-        content: prompt.trim() || "Process the attached file(s).",
+        content: composedPrompt || "Process the attached file(s).",
         attachments: attachments.length > 0 ? attachments : undefined,
       };
       for await (const ev of streamAgentChat(request, controller.signal)) {
@@ -240,7 +269,7 @@ export function AddAssetDialog({
       setErrorKind("generic");
       setMode("error");
     }
-  }, [prompt, attachments, ingest, reset]);
+  }, [prompt, attachments, ingest, reset, presetAccountId, presetAccountName]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();

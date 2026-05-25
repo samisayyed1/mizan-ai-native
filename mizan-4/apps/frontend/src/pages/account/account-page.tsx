@@ -383,12 +383,17 @@ const AccountPage = () => {
         requestUpgrade("max_holdings");
         return;
       }
+      // Enterprise UX-2: pass the current account context so the dialog
+      // doesn't ask the user which portfolio they want to add to — they
+      // just told us by clicking "Add" from inside an account.
       addAsset.open({
         source: "portfolio",
-        prompt: `I want to add a ${cls.toLowerCase().replace(/_/g, " ")} to this portfolio. Ask only what you need, draft a structured ADD_ASSET action, and require review before saving.`,
+        accountId: id,
+        accountName: account?.name,
+        prompt: `I want to add a ${cls.toLowerCase().replace(/_/g, " ")}. Ask only what you need, draft a structured ADD_ASSET action, and require review before saving.`,
       });
     },
-    [addAsset, holdings, entitlements.maxHoldings, requestUpgrade],
+    [addAsset, holdings, entitlements.maxHoldings, requestUpgrade, id, account?.name],
   );
 
   const handleAccountSwitch = (selectedAccount: Account) => {
