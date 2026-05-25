@@ -6,6 +6,16 @@ import {
   parseCsv,
   saveImportTemplate,
 } from "@/adapters";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@mizan/ui/components/ui/alert-dialog";
 import { Button } from "@mizan/ui/components/ui/button";
 import { CardContent } from "@mizan/ui/components/ui/card";
 import { Icons } from "@mizan/ui/components/ui/icons";
@@ -574,21 +584,23 @@ export function MappingStepUnified() {
     saveTemplateMutation.mutate(buildTemplatePayload(crypto.randomUUID()));
   }, [buildTemplatePayload, saveTemplateMutation, templateName]);
 
+  // Open the confirmation dialog instead of using the native browser
+  // window.confirm() — a desktop app should never look like the browser
+  // sneezed unstyled chrome at the user.
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const handleDeleteTemplate = useCallback(() => {
     if (!state.selectedTemplateId || state.selectedTemplateScope !== "USER") {
       return;
     }
-    if (!window.confirm(`Delete template "${templateName || localMapping.name}"?`)) {
+    setConfirmDeleteOpen(true);
+  }, [state.selectedTemplateId, state.selectedTemplateScope]);
+  const handleConfirmDeleteTemplate = useCallback(() => {
+    if (!state.selectedTemplateId || state.selectedTemplateScope !== "USER") {
       return;
     }
     deleteTemplateMutation.mutate(state.selectedTemplateId);
-  }, [
-    deleteTemplateMutation,
-    localMapping.name,
-    state.selectedTemplateId,
-    state.selectedTemplateScope,
-    templateName,
-  ]);
+    setConfirmDeleteOpen(false);
+  }, [deleteTemplateMutation, state.selectedTemplateId, state.selectedTemplateScope]);
 
   if (!data || data.length === 0) {
     return (
@@ -780,6 +792,28 @@ export function MappingStepUnified() {
           </CardContent>
         </Tabs>
       </div>
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete template</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete &quot;{templateName || localMapping.name}&quot;? This template will be
+              removed from your saved import mappings. The current import isn&apos;t affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteTemplateMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteTemplate}
+              disabled={deleteTemplateMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
