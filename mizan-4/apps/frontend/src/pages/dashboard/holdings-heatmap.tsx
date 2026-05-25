@@ -94,28 +94,49 @@ function tileColor(changePct: number): string {
   return sign === "pos" ? greens[bucket] : reds[bucket];
 }
 
+/**
+ * Recharts Treemap passes the leaf datum's properties at the TOP LEVEL
+ * of the content callback's props — NOT wrapped in a `payload` object
+ * (that's the Tooltip's convention, not Treemap's). The previous
+ * implementation pulled from `props.payload?.symbol` and got undefined
+ * for every leaf, so the early-return-null guard fired on every tile
+ * and the entire heatmap rendered blank.
+ *
+ * Source: Recharts treemap.tsx renderContentItem builds props as
+ * `{ ...nodeProps, depth, x, y, width, height, root, ...nodeData }`,
+ * where nodeData spreads our HeatmapDatum fields directly.
+ */
 interface TreemapTileProps {
   x?: number;
   y?: number;
   width?: number;
   height?: number;
   depth?: number;
-  payload?: HeatmapDatum;
+  // Fields spread from HeatmapDatum at render time:
+  symbol?: string;
+  changePct?: number;
+  size?: number;
+  // Some Recharts versions also expose the original datum under
+  // `payload` — kept as a fallback so tile rendering survives either
+  // shape.
+  payload?: Partial<HeatmapDatum>;
   currency: string;
 }
 
 function TreemapTile(props: TreemapTileProps) {
-  const { x = 0, y = 0, width = 0, height = 0, depth = 0, payload, currency } = props;
+  const { x = 0, y = 0, width = 0, height = 0, depth = 0, currency } = props;
 
-  // Treemap renders both the root container (depth 0) and the leaves
-  // (depth 1). Without this guard we'd paint a single grey rectangle
-  // covering the entire chart under the actual tiles — visible as a
-  // 1px border bleed at every gap.
-  if (depth === 0 || !payload || width <= 0 || height <= 0) {
+  // Skip the root container rect (depth 0) and any zero-area children.
+  if (depth === 0 || width <= 0 || height <= 0) {
     return null;
   }
 
-  const changePct = payload.changePct ?? 0;
+  // Read from top-level (modern Recharts) then fall back to `payload`
+  // (older versions) — covers both API shapes.
+  const symbol = props.symbol ?? props.payload?.symbol ?? "";
+  const changePct = props.changePct ?? props.payload?.changePct ?? 0;
+  const size = props.size ?? props.payload?.size ?? 0;
+
   const fill = tileColor(changePct);
 
   // Three label tiers based on tile size — keep wide tiles readable on
@@ -154,9 +175,9 @@ function TreemapTile(props: TreemapTileProps) {
           fill="white"
           fontSize={symbolFontSize}
           fontWeight={650}
-          style={{ letterSpacing: "-0.01em" }}
+          style={{ letterSpacing: "-0.01em", pointerEvents: "none" }}
         >
-          {payload.symbol}
+          {symbol}
         </text>
       )}
       {showPct && (
@@ -167,6 +188,7 @@ function TreemapTile(props: TreemapTileProps) {
           fill="rgba(255, 255, 255, 0.94)"
           fontSize={12}
           fontWeight={500}
+          style={{ pointerEvents: "none" }}
         >
           {pctText}
         </text>
@@ -179,8 +201,9 @@ function TreemapTile(props: TreemapTileProps) {
           fill="rgba(255, 255, 255, 0.72)"
           fontSize={11}
           fontWeight={400}
+          style={{ pointerEvents: "none" }}
         >
-          {formatCompactAmount(payload.size, currency)}
+          {formatCompactAmount(size, currency)}
         </text>
       )}
     </g>
