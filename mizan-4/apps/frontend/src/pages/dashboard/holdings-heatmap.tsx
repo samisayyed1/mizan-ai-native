@@ -18,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@mizan/ui/components/u
 import { Skeleton } from "@mizan/ui/components/ui/skeleton";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { Button } from "@mizan/ui/components/ui/button";
-import { isAlternativeAssetKind } from "@/lib/constants";
+import { HoldingType, isAlternativeAssetKind } from "@/lib/constants";
 import { Holding } from "@/lib/types";
 import { cn, formatCompactAmount } from "@mizan/ui";
 import { useMemo, useState } from "react";
@@ -172,6 +172,10 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
   const data = useMemo<HeatmapDatum[]>(() => {
     if (!holdings) return [];
     return holdings
+      // Cash holdings (USD/EUR/etc.) don't have meaningful day/total
+      // return — the heatmap is for tradeables only. Same reason we
+      // exclude property/vehicle/collectible/metal: no daily P&L.
+      .filter((h) => h.holdingType !== HoldingType.CASH)
       .filter((h) => !(h.assetKind && isAlternativeAssetKind(h.assetKind)))
       .filter((h) => (h.marketValue?.base ?? 0) > 0)
       .map((h) => {
