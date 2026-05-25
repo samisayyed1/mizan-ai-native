@@ -92,10 +92,10 @@ const ThreadWelcome: FC = () => {
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-8">
           <div className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-2 animate-in text-2xl font-semibold duration-300 ease-out">
-            Hello there!
+            What are we looking at today?
           </div>
           <div className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-2 animate-in text-muted-foreground/65 text-2xl delay-100 duration-300 ease-out">
-            How can I help you today?
+            Your wealth, your goals, your zakat — ask me anything.
           </div>
         </div>
       </div>
