@@ -227,6 +227,14 @@ function BrokerAccountCard({ account, connections }: BrokerAccountCardProps) {
  */
 function BrokerConnectionRow({ connection }: { connection: BrokerConnection }) {
   const queryClient = useQueryClient();
+  // Reconnect flow: when a connection lands in "needs_attention" (Plaid's
+  // ITEM_LOGIN_REQUIRED — the broker rotated MFA, password changed, etc.),
+  // we re-use the same Link mutation. Plaid Link recognises the existing
+  // institution and walks the user through re-authentication. Once the
+  // cloud also accepts `itemId` for update-mode link tokens, the UX gets
+  // a step shorter — but offering the affordance today is what unblocks
+  // the otherwise-silent stale-data failure mode.
+  const [linkMutation, isReconnecting] = useCreateBrokerLoginPortal();
 
   const logoUrl =
     connection.brokerage?.aws_s3_square_logo_url ?? connection.brokerage?.aws_s3_logo_url;
@@ -335,6 +343,23 @@ function BrokerConnectionRow({ connection }: { connection: BrokerConnection }) {
       >
         {isConnected ? "Connected" : isNeedsAttention ? "Needs reconnect" : "Disconnected"}
       </Badge>
+      {isNeedsAttention && (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="shrink-0"
+          aria-label={`Reconnect ${brokerageName}`}
+          disabled={linkMutation.isPending || isReconnecting}
+          onClick={() => linkMutation.mutate(undefined)}
+        >
+          {linkMutation.isPending || isReconnecting ? (
+            <Icons.Spinner className="h-4 w-4 animate-spin" />
+          ) : (
+            "Reconnect"
+          )}
+        </Button>
+      )}
       <ActionConfirm
         confirmTitle={`Disconnect ${brokerageName}?`}
         confirmMessage="Live sync stops immediately. Your already-synced accounts and history stay on this device — nothing is deleted locally. You can reconnect any time."
