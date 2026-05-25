@@ -1,8 +1,13 @@
 /**
  * Context-aware Add menu. The primary path is now Assistant-first: describe
  * the asset, drop a statement, or connect Plaid for Gold live sync.
+ *
+ * 'Drop a file' opens the inline AddAssetDialog with a CSV-flavoured seed
+ * prompt so the user stays on the current page instead of being redirected
+ * to the full-screen assistant (UX-1).
  */
 
+import { useAddAsset } from "@/features/add-asset";
 import { AssetClass, ASSET_CLASS_LABELS } from "@/lib/asset-classes";
 import { Button } from "@mizan/ui/components/ui/button";
 import {
@@ -53,6 +58,14 @@ export function AddHoldingMenu({
 }: AddHoldingMenuProps) {
   const labels = ASSET_CLASS_LABELS[cls];
   const showBroker = BROKER_SUPPORTED_CLASSES.has(cls);
+  const addAsset = useAddAsset();
+
+  const handleDropFile = () => {
+    addAsset.open({
+      source: "portfolio",
+      prompt: `I want to import a CSV or statement into portfolio ${accountId}. Help me map it, validate it, and review before saving.`,
+    });
+  };
 
   const trigger =
     size === "cta" ? (
@@ -105,20 +118,17 @@ export function AddHoldingMenu({
           </DropdownMenuItem>
         )}
 
-        <DropdownMenuItem asChild className="cursor-pointer items-start gap-3 py-2.5">
-          <Link
-            to={`/assistant?intent=import-csv&prompt=${encodeURIComponent(
-              `I want to import a CSV or statement into portfolio ${accountId}. Help me map it, validate it, and review before saving.`,
-            )}`}
-          >
-            <Icons.Import className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">Drop a file</p>
-              <p className="text-muted-foreground text-xs leading-snug">
-                Upload a broker or bank file. Mizan maps columns and asks for review when needed.
-              </p>
-            </div>
-          </Link>
+        <DropdownMenuItem
+          onSelect={handleDropFile}
+          className="cursor-pointer items-start gap-3 py-2.5"
+        >
+          <Icons.Import className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">Drop a file</p>
+            <p className="text-muted-foreground text-xs leading-snug">
+              Upload a broker or bank file. Mizan maps columns and asks for review when needed.
+            </p>
+          </div>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
