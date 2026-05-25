@@ -145,7 +145,13 @@ impl IncomeServiceTrait for IncomeService {
                 }
             };
 
-            // Correctly call methods on the FxService instance within the Arc
+            // FX-convert every income amount to base currency. Same
+            // safety rule as net_worth_service + holdings_calculator:
+            // when FX lookup fails we MUST NOT silently inject the raw
+            // local amount into the base-currency total. Skipping with
+            // a loud error keeps the dashboard honest. (Same family of
+            // bug as the historic "₹13,800 interest treated as $13,800"
+            // path that QA Pass 2 surfaced.)
             let converted_amount = match self.fx_service.convert_currency(
                 activity.amount,
                 &activity.currency,
@@ -153,9 +159,13 @@ impl IncomeServiceTrait for IncomeService {
             ) {
                 Ok(amount) => amount,
                 Err(e) => {
-                    error!("Error converting currency: {:?}", e);
-                    // Consider if returning the original amount is the correct fallback
-                    activity.amount
+                    error!(
+                        "Cannot convert income {} {} → {} ({}). Excluding from income \
+                         total — silent unconverted-amount fallback would mis-state the \
+                         dashboard.",
+                        activity.amount, activity.currency, base_currency, e
+                    );
+                    continue;
                 }
             };
 
