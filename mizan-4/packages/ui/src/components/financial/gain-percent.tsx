@@ -39,7 +39,7 @@ export function GainPercent({
   return (
     <div
       className={cn(
-        "amount inline-flex items-center justify-end text-right text-sm",
+        "amount inline-flex items-center justify-end text-right text-sm tabular-nums",
         value > 0 ? successColor : value < 0 ? destructiveColor : "text-foreground",
         variant === "badge" && [
           "rounded-md py-px pl-[9px] pr-[12px] font-light",

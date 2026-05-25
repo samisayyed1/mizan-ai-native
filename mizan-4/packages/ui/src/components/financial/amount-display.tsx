@@ -49,5 +49,12 @@ export function AmountDisplay({
   const negative = invertColor ? "text-success" : "text-destructive";
   const colorClass = colorFormat && hasNumericValue ? (numericValue >= 0 ? positive : negative) : "";
 
-  return <span className={cn(colorClass, className)}>{isHidden ? "••••" : formattedAmount}</span>;
+  // tabular-nums forces equal-width digits so amounts stop jittering as
+  // values update (the same trick Apple Stocks / Robinhood use to keep
+  // the headline price visually stable while it ticks).
+  return (
+    <span className={cn("tabular-nums", colorClass, className)}>
+      {isHidden ? "••••" : formattedAmount}
+    </span>
+  );
 }

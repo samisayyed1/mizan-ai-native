@@ -53,7 +53,7 @@ export function GainAmount({
   })();
 
   return (
-    <div className={cn("flex flex-col items-end text-right text-sm", className)} {...props}>
+    <div className={cn("flex flex-col items-end text-right text-sm tabular-nums", className)} {...props}>
       <div
         className={cn(
           "flex items-center",

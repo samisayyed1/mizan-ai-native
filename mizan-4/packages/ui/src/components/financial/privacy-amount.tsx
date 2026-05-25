@@ -9,8 +9,10 @@ interface PrivacyAmountProps extends React.HTMLAttributes<HTMLSpanElement> {
 export function PrivacyAmount({ value, currency, className, ...props }: PrivacyAmountProps) {
   const { isBalanceHidden } = useBalancePrivacy();
 
+  // tabular-nums keeps digits equal-width so the amount doesn't shimmy
+  // as numbers update — the same fix applied to AmountDisplay.
   return (
-    <span className={cn(className)} {...props}>
+    <span className={cn("tabular-nums", className)} {...props}>
       {isBalanceHidden ? "••••" : formatAmount(value, currency)}
     </span>
   );
