@@ -23,6 +23,7 @@ import { differenceInDays, format, parseISO } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { AccountsSummary } from "./accounts-summary";
+import { HoldingsHeatmap } from "./holdings-heatmap";
 import { NewsHomeWidget } from "./news-home-widget";
 import { PortfolioHealthCard } from "./portfolio-health-card";
 import { ZakatCard } from "./zakat-card";
@@ -252,8 +253,13 @@ export function DashboardContent() {
 
         <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-12 md:px-6 md:pb-6 md:pt-6 lg:px-10 lg:pb-8 lg:pt-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-20">
-            <div className="lg:col-span-2">
+            <div className="space-y-6 lg:col-span-2">
               <AccountsSummary dateRange={dateRange} isAllTime={isAllTime} />
+              <HoldingsHeatmap
+                holdings={allHoldings ?? []}
+                isLoading={isHoldingsLoading}
+                baseCurrency={baseCurrency}
+              />
             </div>
             <div className="space-y-6 lg:col-span-1">
               <SavingGoals />
