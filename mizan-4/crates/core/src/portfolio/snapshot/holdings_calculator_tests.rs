@@ -2247,6 +2247,113 @@ mod tests {
     }
 
     #[test]
+    fn test_realized_gain_account_ccy_skipped_when_fx_unavailable() {
+        // QA Pass 7 regression: when a SELL's activity currency cannot
+        // be converted to the account currency, the per-account realized-
+        // gain aggregate (proceeds_account_ccy / cost_basis_account_ccy /
+        // fees_account_ccy) must NOT be silently populated with the raw
+        // foreign-currency figures — that historic behaviour mis-stated
+        // realized P&L by hundreds of dollars per sale.
+        //
+        // The position lots must still be reduced (FIFO truth is local
+        // to the position) and quantity_sold must still be recorded
+        // (sale physically happened) — only the account-currency money
+        // aggregate is suppressed until the FX pair is configured.
+        let mock_fx_service = MockFxService::new(); // NO EUR/CAD rate
+        let account_currency = "CAD";
+        let base_currency = Arc::new(RwLock::new(account_currency.to_string()));
+        let calculator = create_calculator(Arc::new(mock_fx_service), base_currency);
+
+        let mut snap0 = create_initial_snapshot("acc_fx_skip", account_currency, "2024-01-01");
+        // Position priced in EUR with 10 shares @ 100 EUR cost = 1000 EUR
+        let initial_pos = Position {
+            id: "ADS.DE_acc_fx_skip".to_string(),
+            account_id: "acc_fx_skip".to_string(),
+            asset_id: "ADS.DE".to_string(),
+            quantity: dec!(10),
+            average_cost: dec!(100),
+            total_cost_basis: dec!(1000),
+            currency: "EUR".to_string(),
+            inception_date: Utc.from_utc_datetime(
+                &NaiveDate::from_str("2024-01-01")
+                    .unwrap()
+                    .and_hms_opt(0, 0, 0)
+                    .unwrap(),
+            ),
+            lots: VecDeque::from(vec![Lot {
+                id: "lot_eur".to_string(),
+                position_id: "ADS.DE_acc_fx_skip".to_string(),
+                acquisition_date: Utc.from_utc_datetime(
+                    &NaiveDate::from_str("2024-01-01")
+                        .unwrap()
+                        .and_hms_opt(0, 0, 0)
+                        .unwrap(),
+                ),
+                quantity: dec!(10),
+                cost_basis: dec!(1000),
+                acquisition_price: dec!(100),
+                acquisition_fees: Decimal::ZERO,
+                fx_rate_to_position: None,
+            }]),
+            created_at: Utc::now(),
+            last_updated: Utc::now(),
+            is_alternative: false,
+            contract_multiplier: Decimal::ONE,
+        };
+        snap0.positions.insert("ADS.DE".to_string(), initial_pos);
+
+        // Sell 3 shares @ 150 EUR (activity currency = EUR, account = CAD)
+        let sell_eur = create_default_activity(
+            "sell_eur_no_fx",
+            ActivityType::Sell,
+            "ADS.DE",
+            dec!(3),
+            dec!(150),
+            Decimal::ZERO,
+            "EUR",
+            "2024-02-01",
+        );
+        let target = NaiveDate::from_str("2024-02-01").unwrap();
+        let snap1 = calculator
+            .calculate_next_holdings(&snap0, &[sell_eur], target)
+            .expect("calculation must still succeed even if FX skipped")
+            .snapshot;
+
+        // Position lots reduced FIFO (truth lives in position currency).
+        let pos = snap1.positions.get("ADS.DE").expect("position remains");
+        assert_eq!(pos.quantity, dec!(7), "FIFO reduction must apply");
+        assert_eq!(pos.total_cost_basis, dec!(700), "EUR cost basis intact");
+
+        // Cash booked in EUR (activity currency, per design spec).
+        assert_eq!(
+            snap1.cash_balances.get("EUR"),
+            Some(&dec!(450)),
+            "EUR cash booked from sell proceeds"
+        );
+
+        // Realized-gain entry exists but account-ccy aggregate stayed at 0
+        // (the fail-loud-skip contract from QA Pass 7).
+        let entry = snap1
+            .realized_gains
+            .get("ADS.DE")
+            .expect("realized_gains entry should exist with quantity_sold");
+        assert_eq!(entry.quantity_sold, dec!(3));
+        assert_eq!(entry.last_sale_date, Some(target));
+        assert_eq!(
+            entry.proceeds_account_ccy,
+            Decimal::ZERO,
+            "account-ccy proceeds must NOT be silently populated with raw EUR — \
+             a 450 EUR proceeds figure booked as 450 CAD would lie by ~30%."
+        );
+        assert_eq!(
+            entry.cost_basis_account_ccy,
+            Decimal::ZERO,
+            "account-ccy cost-basis must NOT be silently populated with raw EUR."
+        );
+        assert_eq!(entry.fees_account_ccy, Decimal::ZERO);
+    }
+
+    #[test]
     fn test_fx_conversion_failure_fallback() {
         // Use CAD account, EUR activity, but provide NO EUR->CAD rate
         let mut mock_fx_service = MockFxService::new();

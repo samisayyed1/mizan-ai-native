@@ -393,25 +393,45 @@ impl HoldingsCalculator {
             return Ok(());
         }
 
-        let proceeds_account_ccy = self.convert_to_account_currency(
-            gross_proceeds_activity_ccy,
-            activity,
-            account_currency,
-            "Realized Gain Proceeds",
-        );
-        let fees_account_ccy = self.convert_to_account_currency(
-            fee_activity_ccy,
-            activity,
-            account_currency,
-            "Realized Gain Fee",
-        );
-        let cost_basis_account_ccy = self.convert_position_amount_to_account_currency(
-            cost_basis_removed_pos_ccy,
-            &position_currency,
-            activity,
-            account_currency,
-            "Realized Gain Cost Basis",
-        );
+        // All three account-currency conversions must succeed atomically.
+        // A partial update (e.g. proceeds in account ccy but cost-basis in
+        // raw position ccy) would mis-state realized gain by hundreds of
+        // dollars per sale. If any conversion is unavailable we log inside
+        // each helper and skip the entire account-ccy + base-ccy realized
+        // gain aggregate for this sell. Quantity and last-sale-date are
+        // still recorded so the position lots stay consistent.
+        let account_ccy_components = match (
+            self.convert_to_account_currency(
+                gross_proceeds_activity_ccy,
+                activity,
+                account_currency,
+                "Realized Gain Proceeds",
+            ),
+            self.convert_to_account_currency(
+                fee_activity_ccy,
+                activity,
+                account_currency,
+                "Realized Gain Fee",
+            ),
+            self.convert_position_amount_to_account_currency(
+                cost_basis_removed_pos_ccy,
+                &position_currency,
+                activity,
+                account_currency,
+                "Realized Gain Cost Basis",
+            ),
+        ) {
+            (Some(p), Some(f), Some(cb)) => Some((p, f, cb)),
+            _ => {
+                warn!(
+                    "Realized Gain (Sell {}): one or more FX conversions failed; \
+                     account-currency realized P&L NOT updated for this sale. \
+                     Per-currency cash_balances and position lots remain authoritative.",
+                    activity.id
+                );
+                None
+            }
+        };
 
         let base_ccy = self.base_currency.read().unwrap().clone();
         let proceeds_base_ccy = self
@@ -464,11 +484,15 @@ impl HoldingsCalculator {
             .realized_gains
             .entry(asset_id.to_string())
             .or_default();
-        entry.proceeds_account_ccy += proceeds_account_ccy;
+        if let Some((proceeds_account_ccy, fees_account_ccy, cost_basis_account_ccy)) =
+            account_ccy_components
+        {
+            entry.proceeds_account_ccy += proceeds_account_ccy;
+            entry.cost_basis_account_ccy += cost_basis_account_ccy;
+            entry.fees_account_ccy += fees_account_ccy;
+        }
         entry.proceeds_base_ccy += proceeds_base_ccy;
-        entry.cost_basis_account_ccy += cost_basis_account_ccy;
         entry.cost_basis_base_ccy += cost_basis_base_ccy;
-        entry.fees_account_ccy += fees_account_ccy;
         entry.fees_base_ccy += fees_base_ccy;
         entry.quantity_sold += reduction.quantity_reduced;
         entry.last_sale_date = Some(activity_date);
@@ -493,34 +517,34 @@ impl HoldingsCalculator {
         let net_amount = activity_amount - activity.fee_amt();
         add_cash(state, activity_currency, net_amount);
 
-        // Convert for net_contribution (pre-fee amount in account currency)
-        let amount_acct = self.convert_to_account_currency(
+        // Convert for net_contribution (pre-fee amount in account currency).
+        // If FX is unavailable we skip — better to omit one deposit from
+        // the aggregate than fold a raw foreign-currency amount into it.
+        if let Some(amount_acct) = self.convert_to_account_currency(
             activity_amount,
             activity,
             account_currency,
             "Deposit Amount",
-        );
+        ) {
+            state.net_contribution += amount_acct;
+        }
 
         // Convert for net_contribution_base
         let base_ccy = self.base_currency.read().unwrap();
-        let amount_base = match self.fx_service.convert_currency_for_date(
+        match self.fx_service.convert_currency_for_date(
             activity_amount,
             activity_currency,
             &base_ccy,
             activity_date,
         ) {
-            Ok(c) => c,
+            Ok(c) => state.net_contribution_base += c,
             Err(e) => {
                 warn!(
                     "Holdings Calc (NetContrib Deposit {}): Failed conversion {} {}->{} on {}: {}. Base contribution not updated.",
                     activity.id, activity_amount, activity_currency, &base_ccy, activity_date, e
                 );
-                Decimal::ZERO
             }
-        };
-
-        state.net_contribution += amount_acct;
-        state.net_contribution_base += amount_base;
+        }
         Ok(())
     }
 
@@ -543,33 +567,31 @@ impl HoldingsCalculator {
         add_cash(state, activity_currency, net_amount);
 
         // Convert for net_contribution (pre-fee amount in account currency)
-        let amount_acct = self.convert_to_account_currency(
+        if let Some(amount_acct) = self.convert_to_account_currency(
             activity_amount,
             activity,
             account_currency,
             "Withdrawal Amount",
-        );
+        ) {
+            state.net_contribution += amount_acct;
+        }
 
         // Convert for net_contribution_base
         let base_ccy = self.base_currency.read().unwrap();
-        let amount_base = match self.fx_service.convert_currency_for_date(
+        match self.fx_service.convert_currency_for_date(
             activity_amount,
             activity_currency,
             &base_ccy,
             activity_date,
         ) {
-            Ok(c) => c,
+            Ok(c) => state.net_contribution_base += c,
             Err(e) => {
                 warn!(
                     "Holdings Calc (NetContrib Withdrawal {}): Failed conversion {} {}->{} on {}: {}. Base contribution not updated.",
                     activity.id, activity_amount, activity_currency, &base_ccy, activity_date, e
                 );
-                Decimal::ZERO
             }
-        };
-
-        state.net_contribution += amount_acct;
-        state.net_contribution_base += amount_base;
+        }
         Ok(())
     }
 
@@ -603,34 +625,40 @@ impl HoldingsCalculator {
         if activity.effective_type() == ACTIVITY_TYPE_DIVIDEND {
             if let Some(asset_id) = activity.asset_id.as_deref() {
                 let activity_date = self.activity_local_date(activity);
-                let dividend_acct = self.convert_to_account_currency(
+                let dividend_acct_opt = self.convert_to_account_currency(
                     activity_amount,
                     activity,
                     account_currency,
                     "Dividend Income",
                 );
                 let base_ccy = self.base_currency.read().unwrap().clone();
-                let dividend_base = self
-                    .fx_service
-                    .convert_currency_for_date(
-                        activity_amount,
-                        activity_currency,
-                        &base_ccy,
-                        activity_date,
-                    )
-                    .unwrap_or_else(|e| {
+                let dividend_base_opt = match self.fx_service.convert_currency_for_date(
+                    activity_amount,
+                    activity_currency,
+                    &base_ccy,
+                    activity_date,
+                ) {
+                    Ok(c) => Some(c),
+                    Err(e) => {
                         warn!(
-                            "Dividend Income ({}): {}->{} on {}: {}. Falling back to activity-ccy magnitude.",
+                            "Dividend Income ({}): {}->{} on {}: {}. Excluding from \
+                             base-currency dividend total — silent fallback would mis-state \
+                             lifetime dividend totals on the holding card.",
                             activity.id, activity_currency, &base_ccy, activity_date, e
                         );
-                        activity_amount
-                    });
+                        None
+                    }
+                };
                 let entry = state
                     .realized_gains
                     .entry(asset_id.to_string())
                     .or_default();
-                entry.dividend_income_account_ccy += dividend_acct;
-                entry.dividend_income_base_ccy += dividend_base;
+                if let Some(d) = dividend_acct_opt {
+                    entry.dividend_income_account_ccy += d;
+                }
+                if let Some(d) = dividend_base_opt {
+                    entry.dividend_income_base_ccy += d;
+                }
             }
         }
 
@@ -642,33 +670,31 @@ impl HoldingsCalculator {
             let activity_date = self.activity_local_date(activity);
 
             // Convert to account currency for net_contribution
-            let amount_acct = self.convert_to_account_currency(
+            if let Some(amount_acct) = self.convert_to_account_currency(
                 activity_amount,
                 activity,
                 account_currency,
                 "Credit Bonus",
-            );
+            ) {
+                state.net_contribution += amount_acct;
+            }
 
             // Convert to base currency for net_contribution_base
             let base_ccy = self.base_currency.read().unwrap();
-            let amount_base = match self.fx_service.convert_currency_for_date(
+            match self.fx_service.convert_currency_for_date(
                 activity_amount,
                 activity_currency,
                 &base_ccy,
                 activity_date,
             ) {
-                Ok(c) => c,
+                Ok(c) => state.net_contribution_base += c,
                 Err(e) => {
                     warn!(
                         "Holdings Calc (NetContrib Credit Bonus {}): Failed conversion {} {}->{} on {}: {}. Base contribution not updated.",
                         activity.id, activity_amount, activity_currency, &base_ccy, activity_date, e
                     );
-                    Decimal::ZERO
                 }
-            };
-
-            state.net_contribution += amount_acct;
-            state.net_contribution_base += amount_base;
+            }
         }
 
         Ok(())
@@ -728,32 +754,30 @@ impl HoldingsCalculator {
             add_cash(state, activity_currency, net_amount);
 
             let activity_date = self.activity_local_date(activity);
-            let amount_acct = self.convert_to_account_currency(
+            if let Some(amount_acct) = self.convert_to_account_currency(
                 activity_amount,
                 activity,
                 account_currency,
                 "TransferIn Cash",
-            );
+            ) {
+                state.net_contribution += amount_acct;
+            }
 
             let base_ccy = self.base_currency.read().unwrap();
-            let amount_base = match self.fx_service.convert_currency_for_date(
+            match self.fx_service.convert_currency_for_date(
                 activity_amount,
                 activity_currency,
                 &base_ccy,
                 activity_date,
             ) {
-                Ok(c) => c,
+                Ok(c) => state.net_contribution_base += c,
                 Err(e) => {
                     warn!(
                         "Holdings Calc (NetContrib TransferIn Cash {}): Failed conversion {}: {}.",
                         activity.id, activity_currency, e
                     );
-                    Decimal::ZERO
                 }
-            };
-
-            state.net_contribution += amount_acct;
-            state.net_contribution_base += amount_base;
+            }
         } else {
             // Asset transfer
             let activity_date = self.activity_local_date(activity);
@@ -825,33 +849,32 @@ impl HoldingsCalculator {
             // Book fee in ACTIVITY currency
             add_cash(state, activity_currency, -activity.fee_amt());
 
-            let cost_basis_acct = self.convert_position_amount_to_account_currency(
+            if let Some(cost_basis_acct) = self.convert_position_amount_to_account_currency(
                 cost_basis_asset_curr,
                 &position_currency,
                 activity,
                 account_currency,
                 "Net Deposit TransferIn Asset",
-            );
+            ) {
+                state.net_contribution += cost_basis_acct;
+            }
 
             let base_ccy = self.base_currency.read().unwrap();
-            let cost_basis_base = match self.fx_service.convert_currency_for_date(
+            match self.fx_service.convert_currency_for_date(
                 cost_basis_asset_curr,
                 &position_currency,
                 &base_ccy,
                 activity_date,
             ) {
-                Ok(converted) => converted,
+                Ok(converted) => state.net_contribution_base += converted,
                 Err(e) => {
                     warn!(
-                        "Holdings Calc (NetContribBase TransferIn Asset {}): Failed conversion: {}.",
+                        "Holdings Calc (NetContribBase TransferIn Asset {}): Failed conversion: {}. \
+                         Base net_contribution NOT updated for this transfer.",
                         activity.id, e
                     );
-                    cost_basis_asset_curr
                 }
-            };
-
-            state.net_contribution += cost_basis_acct;
-            state.net_contribution_base += cost_basis_base;
+            }
         }
         Ok(())
     }
@@ -877,32 +900,30 @@ impl HoldingsCalculator {
             let net_amount = activity_amount - activity.fee_amt();
             add_cash(state, activity_currency, net_amount);
 
-            let amount_acct = self.convert_to_account_currency(
+            if let Some(amount_acct) = self.convert_to_account_currency(
                 activity_amount,
                 activity,
                 account_currency,
                 "TransferOut Cash",
-            );
+            ) {
+                state.net_contribution += amount_acct;
+            }
 
             let base_ccy = self.base_currency.read().unwrap();
-            let amount_base = match self.fx_service.convert_currency_for_date(
+            match self.fx_service.convert_currency_for_date(
                 activity_amount,
                 activity_currency,
                 &base_ccy,
                 activity_date,
             ) {
-                Ok(c) => c,
+                Ok(c) => state.net_contribution_base += c,
                 Err(e) => {
                     warn!(
                         "Holdings Calc (NetContrib TransferOut Cash {}): Failed conversion {}: {}.",
                         activity.id, activity_currency, e
                     );
-                    Decimal::ZERO
                 }
-            };
-
-            state.net_contribution += amount_acct;
-            state.net_contribution_base += amount_base;
+            }
         } else {
             // Asset transfer
             let activity_date = self.activity_local_date(activity);
@@ -932,33 +953,34 @@ impl HoldingsCalculator {
                 }
 
                 if !position_currency.is_empty() && cost_basis_removed != Decimal::ZERO {
-                    let cost_basis_removed_acct = self.convert_position_amount_to_account_currency(
-                        cost_basis_removed,
-                        &position_currency,
-                        activity,
-                        account_currency,
-                        "Net Deposit TransferOut Asset",
-                    );
+                    if let Some(cost_basis_removed_acct) = self
+                        .convert_position_amount_to_account_currency(
+                            cost_basis_removed,
+                            &position_currency,
+                            activity,
+                            account_currency,
+                            "Net Deposit TransferOut Asset",
+                        )
+                    {
+                        state.net_contribution -= cost_basis_removed_acct;
+                    }
 
                     let base_ccy = self.base_currency.read().unwrap();
-                    let cost_basis_removed_base = match self.fx_service.convert_currency_for_date(
+                    match self.fx_service.convert_currency_for_date(
                         cost_basis_removed,
                         &position_currency,
                         &base_ccy,
                         activity_date,
                     ) {
-                        Ok(converted) => converted,
+                        Ok(converted) => state.net_contribution_base -= converted,
                         Err(e) => {
                             warn!(
-                                "Holdings Calc (NetContribBase TransferOut Asset {}): Failed conversion: {}.",
+                                "Holdings Calc (NetContribBase TransferOut Asset {}): Failed conversion: {}. \
+                                 Base net_contribution NOT updated for this transfer.",
                                 activity.id, e
                             );
-                            cost_basis_removed
                         }
-                    };
-
-                    state.net_contribution -= cost_basis_removed_acct;
-                    state.net_contribution_base -= cost_basis_removed_base;
+                    }
                 }
             } else {
                 warn!(
@@ -1034,18 +1056,24 @@ impl HoldingsCalculator {
     /// If the activity has a valid fx_rate (Some and not zero), uses it directly.
     /// Otherwise, falls back to the FxService for conversion.
     /// The fx_rate represents the rate to convert from activity currency to account currency.
+    ///
+    /// Returns `None` when no FX rate is available. Callers MUST treat `None`
+    /// as "skip the per-account aggregate update for this activity" — the
+    /// per-currency `cash_balances` map still holds the truth, but adding an
+    /// un-converted figure into an account-currency total silently mis-states
+    /// every downstream view. See QA Pass 7 (fail-loud-skip contract).
     fn convert_to_account_currency(
         &self,
         amount: Decimal,
         activity: &Activity,
         account_currency: &str,
         context: &str,
-    ) -> Decimal {
+    ) -> Option<Decimal> {
         let activity_currency = &activity.currency;
 
         // If currencies are the same, no conversion needed
         if activity_currency == account_currency {
-            return amount;
+            return Some(amount);
         }
 
         // Check if activity has a valid fx_rate (Some and not zero)
@@ -1056,7 +1084,7 @@ impl HoldingsCalculator {
                     "Using activity fx_rate {} for {} conversion {}->{} (activity {})",
                     fx_rate, context, activity_currency, account_currency, activity.id
                 );
-                return amount * fx_rate;
+                return Some(amount * fx_rate);
             }
         }
 
@@ -1068,18 +1096,18 @@ impl HoldingsCalculator {
             account_currency,
             activity_date,
         ) {
-            Ok(converted) => converted,
+            Ok(converted) => Some(converted),
             Err(e) => {
                 warn!(
-                    "Holdings Calc ({} {}): MISSING FX RATE {} → {} on {} ({}). Falling back \
-                     to original {} amount — downstream cost-basis math will treat this as \
-                     '{} of {}' which mis-states the per-account total. Add the FX pair under \
-                     Settings → Market Data → Exchange Rates to fix permanently.",
+                    "Holdings Calc ({} {}): MISSING FX RATE {} → {} on {} ({}). \
+                     Excluding {} {} from the per-account aggregate — silent \
+                     unconverted fallback would mis-state the dashboard. Add the FX \
+                     pair under Settings → Market Data → Exchange Rates to fix \
+                     permanently. (per-currency cash_balances map retains the truth.)",
                     context, activity.id, activity_currency, account_currency, activity_date, e,
-                    activity_currency, amount, account_currency
+                    amount, activity_currency
                 );
-                amount // intentional: downstream contract returns Decimal,
-                       // refactor to Option<Decimal> tracked under QA Pass 7.
+                None
             }
         }
     }
@@ -1108,6 +1136,11 @@ impl HoldingsCalculator {
     /// This is used for cost basis which is stored in position currency, not activity currency.
     /// When activity currency == position currency, uses activity's fx_rate if available.
     /// Otherwise, falls back to FxService with position currency.
+    ///
+    /// Returns `None` when no FX rate is available. Callers MUST treat `None`
+    /// as "skip the per-account aggregate update" — silently adding the
+    /// un-converted position-currency amount into an account-currency total
+    /// breaks net_contribution and realized-gain reconciliation. See QA Pass 7.
     fn convert_position_amount_to_account_currency(
         &self,
         amount: Decimal,
@@ -1115,10 +1148,10 @@ impl HoldingsCalculator {
         activity: &Activity,
         account_currency: &str,
         context: &str,
-    ) -> Decimal {
+    ) -> Option<Decimal> {
         // If position currency matches account currency, no conversion needed
         if position_currency == account_currency {
-            return amount;
+            return Some(amount);
         }
 
         // If activity currency matches position currency, we can use activity's fx_rate
@@ -1129,7 +1162,7 @@ impl HoldingsCalculator {
                         "Using activity fx_rate {} for {} conversion {}->{} (activity {})",
                         fx_rate, context, position_currency, account_currency, activity.id
                     );
-                    return amount * fx_rate;
+                    return Some(amount * fx_rate);
                 }
             }
         }
@@ -1142,13 +1175,18 @@ impl HoldingsCalculator {
             account_currency,
             activity_date,
         ) {
-            Ok(converted) => converted,
+            Ok(converted) => Some(converted),
             Err(e) => {
                 warn!(
-                    "Holdings Calc ({} {}): Failed conversion {} {}->{} on {}: {}. Using original amount.",
-                    context, activity.id, amount, position_currency, account_currency, activity_date, e
+                    "Holdings Calc ({} {}): MISSING FX RATE {} → {} on {} ({}). \
+                     Excluding {} {} from the per-account aggregate — silent \
+                     unconverted fallback would corrupt net_contribution and \
+                     realized-gain math. Add the FX pair under Settings → Market \
+                     Data → Exchange Rates to fix permanently.",
+                    context, activity.id, position_currency, account_currency, activity_date, e,
+                    amount, position_currency
                 );
-                amount // Fallback to original amount
+                None
             }
         }
     }
