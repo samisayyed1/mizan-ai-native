@@ -204,6 +204,7 @@ mod desktop {
             //    before NW reads from it.
             {
                 use mizan_core::portfolio::snapshot::SnapshotRecalcMode;
+                use mizan_core::portfolio::valuation::ValuationRecalcMode;
                 let snapshot_service = startup_chain_context.snapshot_service();
                 if let Err(e) = snapshot_service
                     .recalculate_holdings_snapshots(None, SnapshotRecalcMode::IncrementalFromLast)
@@ -216,6 +217,40 @@ mod desktop {
                     .await
                 {
                     log::warn!("Startup holdings recompute (TOTAL): {}.", e);
+                }
+
+                // Also refresh per-account valuation history for every
+                // active account. Without this, accounts created or
+                // imported between sessions never get a row in
+                // daily_account_valuation and disappear from the
+                // dashboard's per-account cards until the user clicks
+                // 'Update Prices' by hand. QA Pass 5 surfaced six seed
+                // accounts (bond, saudi, dbs, emirates, forex, trade)
+                // that were missing from the dashboard for exactly this
+                // reason.
+                let valuation_service = startup_chain_context.valuation_service();
+                let account_service = startup_chain_context.account_service();
+                if let Ok(accounts) = account_service.list_accounts(Some(true), Some(false), None)
+                {
+                    let mut account_ids: Vec<String> =
+                        accounts.iter().map(|a| a.id.clone()).collect();
+                    account_ids.push(
+                        mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID.to_string(),
+                    );
+                    for account_id in account_ids {
+                        if let Err(e) = valuation_service
+                            .calculate_valuation_history(
+                                &account_id,
+                                ValuationRecalcMode::IncrementalFromLast,
+                            )
+                            .await
+                        {
+                            log::warn!(
+                                "Startup valuation history recompute for {}: {}",
+                                account_id, e
+                            );
+                        }
+                    }
                 }
             }
 
