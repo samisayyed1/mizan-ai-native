@@ -20,12 +20,13 @@ const settingsSections = [
         subtitle: "Theme, font, and menu bar",
         icon: <Icons.Monitor className="size-5" />,
       },
-      {
-        title: "Privacy",
-        href: "general",
-        subtitle: "Balance masking and local-first data controls",
-        icon: <Icons.EyeOff className="size-5" />,
-      },
+      // Privacy entry deliberately removed for now. The previous version
+      // pointed to href: "general" — meaning clicking "Privacy" sent the
+      // user to the General page, which has no privacy controls. Dead
+      // nav. When dedicated privacy controls land (balance masking
+      // toggle, local-first opt-outs) we can re-add this entry with a
+      // real route. Until then, balance privacy is exposed via the
+      // dashboard's eye-toggle and that's reachable from anywhere.
     ],
   },
   {
