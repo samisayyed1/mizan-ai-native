@@ -48,7 +48,7 @@ export default function ZakatPage() {
     <Page>
       <PageHeader
         heading="Zakat & Purification"
-        text={`Computes 2.5% on your zakatable wealth (in ${baseCurrency}) after subtracting short-term debts. Gold feature.`}
+        text={`Computes 2.5% on your zakatable wealth (in ${baseCurrency}) after subtracting short-term debts.`}
       />
       <PageContent>
         <div className="mx-auto w-full max-w-2xl space-y-6">
