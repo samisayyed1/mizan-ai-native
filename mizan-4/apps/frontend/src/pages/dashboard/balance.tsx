@@ -72,7 +72,7 @@ const Balance: React.FC<BalanceProps> = ({
   // without going Robinhood-style oversized.
   return (
     <h1
-      className="font-heading text-4xl font-semibold tracking-tighter md:text-5xl"
+      className="font-heading text-4xl font-semibold tracking-tighter tabular-nums md:text-5xl"
       data-testid="portfolio-balance"
     >
       {isBalanceHidden ? (
