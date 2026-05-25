@@ -72,9 +72,9 @@ const settingsSections = [
     title: "AI",
     items: [
       {
-        title: "Providers",
+        title: "Settings",
         href: "ai-providers",
-        subtitle: "Mizan AI or private provider configuration",
+        subtitle: "Mizan AI plus optional bring-your-own providers",
         icon: <Icons.SparklesOutline className="size-5" />,
       },
     ],
