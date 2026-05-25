@@ -362,7 +362,7 @@ function AssetClassDrilldown({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-lg font-semibold leading-tight">{labels.plural}</h2>
+              <h2 className="text-lg font-semibold leading-tight tracking-tight">{labels.plural}</h2>
               {sortedHoldings.length > 0 && (
                 <span className="text-muted-foreground text-xs tabular-nums">
                   {weightPercent.toFixed(1)}% of portfolio
