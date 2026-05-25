@@ -180,8 +180,8 @@ function BalanceSheet({ data, currency }: BalanceSheetProps) {
 
       {/* Net Worth Summary */}
       <div className="bg-muted/30 flex items-center justify-between border-t px-4 py-3 md:px-5">
-        <span className="text-sm font-bold">Net Worth</span>
-        <span className="text-sm font-bold">
+        <span className="text-sm font-semibold tracking-tight tabular-nums">Net Worth</span>
+        <span className="text-sm font-semibold tracking-tight tabular-nums">
           <PrivacyAmount value={data.netWorth} currency={currency} />
         </span>
       </div>
@@ -574,7 +574,7 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
 
               {/* Stale valuations warning */}
               {hasStaleValuations && (
-                <div className="border-warning/30 bg-warning/5 rounded-lg border p-4 md:p-5">
+                <div className="border-warning/30 bg-warning/5 rounded-xl border p-4 md:p-5">
                   <div className="flex items-start gap-3">
                     <div className="bg-warning/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
                       <Icons.AlertCircle className="text-warning h-4 w-4" />

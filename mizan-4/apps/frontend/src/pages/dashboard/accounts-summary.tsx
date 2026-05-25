@@ -423,7 +423,7 @@ export const AccountsSummary = React.memo(
 
       if (isErrorAccounts) {
         return (
-          <div className="border-destructive/30 bg-destructive/5 rounded-lg border p-4 md:p-5">
+          <div className="border-destructive/30 bg-destructive/5 rounded-xl border p-4 md:p-5">
             <div className="flex items-start gap-3">
               <div className="bg-destructive/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
                 <Icons.AlertTriangle className="text-destructive h-4 w-4" />
