@@ -48,7 +48,7 @@ export function NewsHomeWidget() {
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Icons.Newspaper className="text-muted-foreground h-4 w-4" />
-          <h2 className="text-sm font-semibold">{fallbackEnabled ? "Markets" : "For you"}</h2>
+          <h2 className="text-sm font-semibold tracking-tight">{fallbackEnabled ? "Markets" : "For you"}</h2>
         </div>
         <Link
           to="/news"
