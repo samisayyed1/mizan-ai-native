@@ -1,31 +1,28 @@
 /**
- * Context-aware Add menu. The primary path is now Assistant-first: describe
- * the asset, drop a statement, or connect Plaid for Gold live sync.
+ * Per-asset-class "Add" affordance.
  *
- * 'Drop a file' opens the inline AddAssetDialog with a CSV-flavoured seed
- * prompt so the user stays on the current page instead of being redirected
- * to the full-screen assistant (UX-1).
+ * Previously this surfaced a three-row dropdown ("Tell Mizan what you
+ * own" / "Connect with Plaid" / "Drop a file") whose two AI options
+ * both ended up in the same AddAssetDialog. The copy was also class-
+ * agnostic — clicking "Add Bond" surfaced an example about "15 oz gold
+ * or a rental property", which read as nonsense in context.
+ *
+ * The fix: replace the dropdown with a single class-aware button that
+ * routes straight to AddAssetDialog (which already handles describe-
+ * vs-drop-file in one composer). For broker-supported classes we add
+ * a small "or connect with Plaid" sibling so the live-sync path stays
+ * one click away without padding every menu with three rows.
  */
 
-import { useAddAsset } from "@/features/add-asset";
 import { AssetClass, ASSET_CLASS_LABELS } from "@/lib/asset-classes";
 import { Button } from "@mizan/ui/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@mizan/ui/components/ui/dropdown-menu";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { Link } from "react-router-dom";
 
 /**
  * Asset classes that have a meaningful broker-API path. Property,
- * Collectibles, Precious Metals, Other → not supported by live account
- * sync, so the connect option is suppressed for those. Adding new
- * tradeable classes? Add them here.
+ * Collectibles, Precious Metals, Other → no live sync available, so
+ * the Plaid sibling is suppressed for those.
  */
 const BROKER_SUPPORTED_CLASSES = new Set<AssetClass>([
   AssetClass.STOCKS,
@@ -38,100 +35,66 @@ const BROKER_SUPPORTED_CLASSES = new Set<AssetClass>([
 export interface AddHoldingMenuProps {
   /** The asset class the menu is being opened for. Drives copy + which options appear. */
   cls: AssetClass;
-  /** Portfolio (account) id — used to prefill the CSV import destination. */
-  accountId: string;
-  /** Fires the Assistant add flow for this asset class. */
+  /** Fires the inline AddAssetDialog with a class-flavoured seed prompt. */
   onManualAdd: () => void;
   /**
-   * `inline` — small button suitable for the drill-down header
-   *            (next to the Back button).
-   * `cta`    — large button suitable for the empty-state full card.
+   * `inline` — small button next to a section header.
+   * `cta`    — large button anchoring the empty-state card.
    */
   size?: "inline" | "cta";
 }
 
-export function AddHoldingMenu({
-  cls,
-  accountId,
-  onManualAdd,
-  size = "inline",
-}: AddHoldingMenuProps) {
+export function AddHoldingMenu({ cls, onManualAdd, size = "inline" }: AddHoldingMenuProps) {
   const labels = ASSET_CLASS_LABELS[cls];
   const showBroker = BROKER_SUPPORTED_CLASSES.has(cls);
-  const addAsset = useAddAsset();
 
-  const handleDropFile = () => {
-    addAsset.open({
-      source: "portfolio",
-      prompt: `I want to import a CSV or statement into portfolio ${accountId}. Help me map it, validate it, and review before saving.`,
-    });
-  };
-
-  const trigger =
-    size === "cta" ? (
-      <Button size="default">
-        <Icons.Plus className="mr-1.5 h-4 w-4" />
-        Add {labels.singular}
-        <Icons.ChevronDown className="ml-1 h-4 w-4 opacity-70" />
-      </Button>
-    ) : (
-      <Button size="sm" variant="outline">
-        <Icons.Plus className="mr-1 h-4 w-4" />
-        Add {labels.singular}
-        <Icons.ChevronDown className="ml-1 h-3.5 w-3.5 opacity-70" />
-      </Button>
+  if (size === "cta") {
+    return (
+      <div className="flex flex-col items-center gap-2 sm:flex-row">
+        <Button size="default" onClick={onManualAdd}>
+          <Icons.Plus className="mr-1.5 h-4 w-4" />
+          Add {labels.singular.toLowerCase()}
+        </Button>
+        {showBroker && (
+          <Button size="default" variant="outline" asChild>
+            <Link to="/connect">
+              <Icons.CloudSync className="mr-1.5 h-4 w-4" />
+              Or connect with Plaid
+            </Link>
+          </Button>
+        )}
+      </div>
     );
+  }
+
+  // Inline (small button beside a header).
+  if (showBroker) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Button size="sm" variant="outline" onClick={onManualAdd}>
+          <Icons.Plus className="mr-1 h-4 w-4" />
+          Add {labels.singular.toLowerCase()}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          asChild
+          className="text-muted-foreground hover:text-foreground text-xs"
+        >
+          <Link to="/connect">
+            <Icons.CloudSync className="mr-1 h-3.5 w-3.5" />
+            Or connect
+          </Link>
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
-        <DropdownMenuLabel className="text-muted-foreground text-xs font-medium">
-          Add a {labels.singular.toLowerCase()}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem
-          onSelect={onManualAdd}
-          className="cursor-pointer items-start gap-3 py-2.5"
-        >
-          <Icons.Pencil className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Tell Mizan what you own</p>
-            <p className="text-muted-foreground text-xs leading-snug">
-              Create a reviewed AI draft from a sentence like 15 oz gold or a rental property.
-            </p>
-          </div>
-        </DropdownMenuItem>
-
-        {showBroker && (
-          <DropdownMenuItem asChild className="cursor-pointer items-start gap-3 py-2.5">
-            <Link to="/connect">
-              <Icons.CloudSync className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">Connect with Plaid</p>
-                <p className="text-muted-foreground text-xs leading-snug">
-                  Gold keeps banks, cards, liabilities, and supported investments synced.
-                </p>
-              </div>
-            </Link>
-          </DropdownMenuItem>
-        )}
-
-        <DropdownMenuItem
-          onSelect={handleDropFile}
-          className="cursor-pointer items-start gap-3 py-2.5"
-        >
-          <Icons.Import className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">Drop a file</p>
-            <p className="text-muted-foreground text-xs leading-snug">
-              Upload a broker or bank file. Mizan maps columns and asks for review when needed.
-            </p>
-          </div>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button size="sm" variant="outline" onClick={onManualAdd}>
+      <Icons.Plus className="mr-1 h-4 w-4" />
+      Add {labels.singular.toLowerCase()}
+    </Button>
   );
 }
 
