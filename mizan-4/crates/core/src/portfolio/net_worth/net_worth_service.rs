@@ -84,18 +84,26 @@ impl NetWorthService {
 
     /// Get the latest quote for an asset on or before the given date.
     /// Returns (close_price, quote_currency, valuation_date) if found.
+    ///
+    /// Tie-breaking when multiple quotes exist for the same day (e.g. a
+    /// MANUAL override + a MARKET scrape both landed): use the full
+    /// `timestamp` instead of just `date_naive()` so the latest WRITE
+    /// wins deterministically. Without that, `max_by_key(date_naive)`
+    /// returned an arbitrary winner on ties — observed in QA Pass 4
+    /// against the seed, where one VTI day had two rows from different
+    /// providers and net_worth's "investments" total wobbled by tens
+    /// of thousands depending on which one the iterator picked.
     fn get_latest_quote_as_of(
         &self,
         asset_id: &str,
         date: NaiveDate,
     ) -> Option<(Decimal, String, NaiveDate)> {
-        // Get all quotes for this symbol and find the latest one <= date
         let quotes = self.quote_service.get_historical_quotes(asset_id).ok()?;
 
         quotes
             .iter()
             .filter(|q| q.timestamp.date_naive() <= date)
-            .max_by_key(|q| q.timestamp.date_naive())
+            .max_by_key(|q| q.timestamp)
             .map(|q| (q.close, q.currency.clone(), q.timestamp.date_naive()))
     }
 
