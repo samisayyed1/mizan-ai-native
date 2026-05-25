@@ -82,16 +82,34 @@ pub async fn synthesize_account_history(
     // Fixed cash floor: sum each cash holding's face value, FX-converted
     // to account currency. Constant across history (we can't reconstruct
     // historical cash without activities).
+    //
+    // QA Pass 7 fail-loud-skip: when a cash holding's local currency
+    // cannot be converted, EXCLUDE it from the floor rather than silently
+    // adding the raw foreign-currency amount as if it were account
+    // currency (an SGD 50k cash line silently became "USD 50k" on the
+    // synthesised history chart pre-fix). The synthesis is an estimate
+    // already — under-counting one cash line is far better than a
+    // factor-of-2 mis-statement.
     let cash_acct_ccy: Decimal = holdings
         .iter()
         .filter(|h| matches!(h.holding_type, HoldingType::Cash))
-        .map(|h| {
+        .filter_map(|h| {
             if h.local_currency == account_currency {
-                h.quantity
+                Some(h.quantity)
             } else {
-                fx_service
-                    .convert_currency(h.quantity, &h.local_currency, account_currency)
-                    .unwrap_or(h.quantity)
+                match fx_service.convert_currency(h.quantity, &h.local_currency, account_currency) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        warn!(
+                            "Synthesis ({}): excluding cash holding {} {} from history floor — \
+                             no {} → {} rate available ({}). Add the FX pair under \
+                             Settings → Market Data → Exchange Rates.",
+                            account_id, h.quantity, h.local_currency,
+                            h.local_currency, account_currency, e
+                        );
+                        None
+                    }
+                }
             }
         })
         .sum();
@@ -186,8 +204,16 @@ pub async fn synthesize_account_history(
             };
             let value_local = holding.quantity * adjusted_close * multiplier;
 
+            // QA Pass 7 fail-loud-skip: when neither dated nor spot FX
+            // is available, exclude this position from the daily total
+            // rather than booking a raw foreign-currency magnitude as if
+            // it were account currency. The `covered` count is the
+            // coverage gate downstream — a skipped position simply pushes
+            // the day below threshold and out of the synthesised series,
+            // which is the right behaviour for "we don't have enough
+            // data to compute this day honestly".
             let value_acct = if holding.local_currency == account_currency {
-                value_local
+                Some(value_local)
             } else {
                 match fx_service.convert_currency_for_date(
                     value_local,
@@ -195,25 +221,48 @@ pub async fn synthesize_account_history(
                     account_currency,
                     date,
                 ) {
-                    Ok(v) => v,
-                    Err(_) => fx_service
-                        .convert_currency(value_local, &holding.local_currency, account_currency)
-                        .unwrap_or(value_local),
+                    Ok(v) => Some(v),
+                    Err(_) => match fx_service.convert_currency(
+                        value_local,
+                        &holding.local_currency,
+                        account_currency,
+                    ) {
+                        Ok(v) => Some(v),
+                        Err(_) => None,
+                    },
                 }
             };
 
-            investment_value_acct += value_acct;
-            covered += 1;
+            if let Some(v) = value_acct {
+                investment_value_acct += v;
+                covered += 1;
+            }
+            // (skipped positions intentionally do not increment `covered`
+            //  so the coverage gate below filters out incoherent days.)
         }
 
         if covered >= coverage_threshold {
             let total_acct = investment_value_acct + cash_acct_ccy;
+            // QA Pass 7 fail-loud-skip: if we cannot resolve the
+            // account→base rate for this date, skip the day entirely
+            // rather than booking a 1:1 fallback that silently turns a
+            // SAR account's value into "$X" instead of "$X / 3.75". The
+            // synthesised series can have gaps; it must never lie.
             let fx_rate_to_base = if account_currency == base_currency {
                 Decimal::ONE
             } else {
-                fx_service
-                    .get_exchange_rate_for_date(account_currency, base_currency, date)
-                    .unwrap_or(Decimal::ONE)
+                match fx_service.get_exchange_rate_for_date(account_currency, base_currency, date) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        debug!(
+                            "Synthesis ({}): skipping {} — no {} → {} rate ({}).",
+                            account_id, date, account_currency, base_currency, e
+                        );
+                        let Some(next) = date.succ_opt() else { break };
+                        date = next;
+                        continue;
+                    }
+                }
             };
 
             output.push(DailyAccountValuation {
