@@ -49,6 +49,7 @@ import {
   useAgentEventStream,
 } from "@/features/ai-assistant/components/agent-progress-card";
 import type { AiStreamEvent } from "@/features/ai-assistant/types";
+import { useAccounts } from "@/hooks/use-accounts";
 
 // ─── Props + state ─────────────────────────────────────────────────────
 
@@ -69,6 +70,14 @@ export function AddAssetDialog({
   initialPrompt,
 }: AddAssetDialogProps) {
   const navigate = useNavigate();
+  // We need to know whether the user has any portfolios so the
+  // "Add manually" card can route to the right surface — adding an
+  // activity into an existing portfolio if they have one, or creating
+  // their first portfolio if they don't. Without this branch we always
+  // dump the user on the "create a new portfolio" form even when they
+  // already have one open in front of them, which was the reported bug.
+  const { accounts } = useAccounts({ filterActive: true });
+  const hasAnyPortfolio = (accounts?.length ?? 0) > 0;
   const [mode, setMode] = useState<Mode>("chooser");
   const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [attachments, setAttachments] = useState<
@@ -128,13 +137,26 @@ export function AddAssetDialog({
 
   const handleAddManually = useCallback(() => {
     onOpenChange(false);
-    // Existing manual surface. Most users land at Settings → Accounts
-    // (the "Add Portfolio" affordance there opens AccountEditModal).
-    // If the user is mid-task elsewhere, this still takes them to the
-    // canonical manual entry — which is the explicit promise of this
-    // option.
-    navigate("/settings/accounts?addAccount=1");
-  }, [navigate, onOpenChange]);
+    // The manual surface depends on what the user is actually missing:
+    //
+    //   * Has a portfolio → they want to add an ASSET (a holding, a
+    //     transaction, a balance). The canonical form is
+    //     /activities/manage — the Add Activity form with a portfolio
+    //     selector at the top.
+    //
+    //   * Has zero portfolios → they need a portfolio before any
+    //     activity will make sense. Send them to the AccountEditModal
+    //     (auto-opened via ?addAccount=1).
+    //
+    // Previously this always routed to /settings/accounts?addAccount=1,
+    // so a user who clearly already had a portfolio got asked to
+    // create another one. That was the reported bug.
+    if (hasAnyPortfolio) {
+      navigate("/activities/manage");
+    } else {
+      navigate("/settings/accounts?addAccount=1");
+    }
+  }, [hasAnyPortfolio, navigate, onOpenChange]);
 
   const handleFilePick = useCallback(
     async (files: FileList | null) => {
@@ -270,7 +292,11 @@ export function AddAssetDialog({
           <ChooserCard
             icon={<Icons.Plus className="h-5 w-5" />}
             title="Add manually"
-            subtitle="Use the existing form. Best for one-off accounts."
+            subtitle={
+              hasAnyPortfolio
+                ? "Record a buy, deposit, or balance in one of your portfolios."
+                : "Create your first portfolio, then add what's in it."
+            }
             active={false}
             onClick={handleAddManually}
           />
