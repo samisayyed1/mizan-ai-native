@@ -551,7 +551,11 @@ impl From<NewActivity> for ActivityDB {
             .map(|dt| dt.with_timezone(&Utc))
             .or_else(|_| {
                 NaiveDate::parse_from_str(&domain.activity_date, "%Y-%m-%d").map(|date| {
-                    Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).unwrap_or_default())
+                    // QA Pass 18: noon UTC (not midnight) so bare-date input
+                    // round-trips through user TZ without drifting by 1 day
+                    // for UTC-12..UTC+11. See activities_service.rs:1027 for
+                    // the matching quote-creation convention.
+                    Utc.from_utc_datetime(&date.and_hms_opt(12, 0, 0).unwrap_or_default())
                 })
             })
             .unwrap_or_else(|e| {
@@ -560,9 +564,11 @@ impl From<NewActivity> for ActivityDB {
                     domain.activity_date,
                     e
                 );
+                // QA Pass 18: noon UTC fallback so the date round-trips
+                // through user TZ consistently when the input is unparseable.
                 Utc.from_utc_datetime(
                     &now.date_naive()
-                        .and_hms_opt(0, 0, 0)
+                        .and_hms_opt(12, 0, 0)
                         .unwrap_or_else(|| now.naive_utc()),
                 )
             });
@@ -639,7 +645,11 @@ impl From<ActivityUpdate> for ActivityDB {
             .map(|dt| dt.with_timezone(&Utc))
             .or_else(|_| {
                 NaiveDate::parse_from_str(&domain.activity_date, "%Y-%m-%d").map(|date| {
-                    Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).unwrap_or_default())
+                    // QA Pass 18: noon UTC (not midnight) so bare-date input
+                    // round-trips through user TZ without drifting by 1 day
+                    // for UTC-12..UTC+11. See activities_service.rs:1027 for
+                    // the matching quote-creation convention.
+                    Utc.from_utc_datetime(&date.and_hms_opt(12, 0, 0).unwrap_or_default())
                 })
             })
             .unwrap_or_else(|e| {
@@ -648,9 +658,11 @@ impl From<ActivityUpdate> for ActivityDB {
                     domain.activity_date,
                     e
                 );
+                // QA Pass 18: noon UTC fallback so the date round-trips
+                // through user TZ consistently when the input is unparseable.
                 Utc.from_utc_datetime(
                     &now.date_naive()
-                        .and_hms_opt(0, 0, 0)
+                        .and_hms_opt(12, 0, 0)
                         .unwrap_or_else(|| now.naive_utc()),
                 )
             });
@@ -728,7 +740,11 @@ impl From<ActivityUpsert> for ActivityDB {
             .map(|dt| dt.with_timezone(&Utc))
             .or_else(|_| {
                 NaiveDate::parse_from_str(&domain.activity_date, "%Y-%m-%d").map(|date| {
-                    Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).unwrap_or_default())
+                    // QA Pass 18: noon UTC (not midnight) so bare-date input
+                    // round-trips through user TZ without drifting by 1 day
+                    // for UTC-12..UTC+11. See activities_service.rs:1027 for
+                    // the matching quote-creation convention.
+                    Utc.from_utc_datetime(&date.and_hms_opt(12, 0, 0).unwrap_or_default())
                 })
             })
             .unwrap_or_else(|e| {
@@ -737,9 +753,11 @@ impl From<ActivityUpsert> for ActivityDB {
                     domain.activity_date,
                     e
                 );
+                // QA Pass 18: noon UTC fallback so the date round-trips
+                // through user TZ consistently when the input is unparseable.
                 Utc.from_utc_datetime(
                     &now.date_naive()
-                        .and_hms_opt(0, 0, 0)
+                        .and_hms_opt(12, 0, 0)
                         .unwrap_or_else(|| now.naive_utc()),
                 )
             });
@@ -799,6 +817,151 @@ impl From<ActivityUpsert> for ActivityDB {
             // Audit
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod write_path_timezone_tests {
+    //! QA Pass 18 regression. Verify that bare-date activity inputs are
+    //! anchored at noon UTC, not midnight, so a date entered by a user in
+    //! a Western timezone (e.g. UTC-8 Los Angeles) round-trips back to the
+    //! same calendar date when displayed in their local timezone. The
+    //! pre-fix midnight-UTC behaviour was a real off-by-one for the
+    //! Americas: "2026-05-26" stored as 2026-05-26T00:00:00 UTC =
+    //! 2026-05-25T16:00 LA local → display surfaces 2026-05-25.
+    use super::*;
+    use chrono::Timelike;
+    use mizan_core::activities::{ActivityStatus, ActivityUpdate, ActivityUpsert, NewActivity};
+
+    fn bare_date_new_activity() -> NewActivity {
+        NewActivity {
+            id: Some("test-activity".to_string()),
+            account_id: "acc-1".to_string(),
+            asset: None,
+            activity_type: "DEPOSIT".to_string(),
+            subtype: None,
+            activity_date: "2026-05-26".to_string(),
+            quantity: None,
+            unit_price: None,
+            currency: "USD".to_string(),
+            fee: None,
+            amount: Some(rust_decimal_macros::dec!(100)),
+            status: Some(ActivityStatus::Posted),
+            notes: None,
+            fx_rate: None,
+            metadata: None,
+            needs_review: None,
+            source_system: None,
+            source_record_id: None,
+            source_group_id: None,
+            idempotency_key: None,
+        }
+    }
+
+    #[test]
+    fn new_activity_bare_date_is_anchored_at_noon_utc() {
+        let db: ActivityDB = bare_date_new_activity().into();
+        let ts =
+            chrono::DateTime::parse_from_rfc3339(&db.activity_date).expect("RFC3339 round-trip");
+        assert_eq!(ts.with_timezone(&Utc).date_naive().to_string(), "2026-05-26");
+        assert_eq!(
+            ts.with_timezone(&Utc).hour(),
+            12,
+            "bare-date input must store at noon UTC, not midnight — see QA Pass 18"
+        );
+    }
+
+    #[test]
+    fn update_bare_date_is_anchored_at_noon_utc() {
+        let update = ActivityUpdate {
+            id: "test-activity".to_string(),
+            account_id: "acc-1".to_string(),
+            asset: None,
+            activity_type: "DEPOSIT".to_string(),
+            subtype: None,
+            activity_date: "2026-05-26".to_string(),
+            quantity: None,
+            unit_price: None,
+            currency: "USD".to_string(),
+            fee: None,
+            amount: Some(Some(rust_decimal_macros::dec!(100))),
+            status: Some(ActivityStatus::Posted),
+            notes: None,
+            fx_rate: None,
+            metadata: None,
+        };
+        let db: ActivityDB = update.into();
+        let ts = chrono::DateTime::parse_from_rfc3339(&db.activity_date).unwrap();
+        assert_eq!(ts.with_timezone(&Utc).hour(), 12);
+    }
+
+    #[test]
+    fn upsert_bare_date_is_anchored_at_noon_utc() {
+        let upsert = ActivityUpsert {
+            id: "test-activity".to_string(),
+            account_id: "acc-1".to_string(),
+            asset_id: None,
+            activity_type: "DEPOSIT".to_string(),
+            subtype: None,
+            activity_date: "2026-05-26".to_string(),
+            quantity: None,
+            unit_price: None,
+            currency: "USD".to_string(),
+            fee: None,
+            amount: Some(rust_decimal_macros::dec!(100)),
+            status: Some(ActivityStatus::Posted),
+            notes: None,
+            fx_rate: None,
+            metadata: None,
+            needs_review: None,
+            source_system: None,
+            source_record_id: None,
+            source_group_id: None,
+            idempotency_key: None,
+            import_run_id: None,
+        };
+        let db: ActivityDB = upsert.into();
+        let ts = chrono::DateTime::parse_from_rfc3339(&db.activity_date).unwrap();
+        assert_eq!(ts.with_timezone(&Utc).hour(), 12);
+    }
+
+    /// Cross-timezone proof: noon UTC round-trips to the same calendar
+    /// date for every fixed offset from UTC-11 to UTC+11. (We use
+    /// FixedOffset rather than IANA names to keep this crate dep-free of
+    /// chrono-tz; the IANA equivalent is verified at the time_utils layer.)
+    #[test]
+    fn noon_utc_round_trips_to_same_date_at_all_common_offsets() {
+        use chrono::FixedOffset;
+        let db: ActivityDB = bare_date_new_activity().into();
+        let utc_ts =
+            chrono::DateTime::parse_from_rfc3339(&db.activity_date).unwrap().with_timezone(&Utc);
+        // Offsets in hours from UTC, covering the worst-case Western and
+        // Eastern zones the pre-fix bug would have broken.
+        let offsets_hours: &[i32] = &[
+            -11, // Pacific/Pago_Pago
+            -8,  // America/Los_Angeles standard
+            -5,  // America/New_York standard
+            0,   // London / UTC
+            1,   // Europe/Berlin
+            5,   // Asia/Karachi
+            9,   // Asia/Tokyo
+            11,  // Australia/Sydney DST
+        ];
+        for h in offsets_hours {
+            let tz = if *h >= 0 {
+                FixedOffset::east_opt(h * 3600).unwrap()
+            } else {
+                FixedOffset::west_opt((-h) * 3600).unwrap()
+            };
+            let local_date = utc_ts.with_timezone(&tz).date_naive();
+            assert_eq!(
+                local_date.to_string(),
+                "2026-05-26",
+                "noon UTC must surface as 2026-05-26 at offset {:+}h (pre-Pass-18 \
+                 midnight-UTC input drifted to 2026-05-25 for Western offsets)",
+                h
+            );
         }
     }
 }
