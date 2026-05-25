@@ -308,7 +308,7 @@ export function AddAssetDialog({
         {/* Header is tight on purpose. We don't want a giant title
             competing with the two cards below. */}
         <div className="mb-4 space-y-1">
-          <h2 className="text-foreground text-lg font-semibold">
+          <h2 className="text-foreground text-lg font-semibold tracking-tight">
             Add to your portfolio
           </h2>
           <p className="text-muted-foreground text-sm">
