@@ -815,7 +815,7 @@ export function ConnectedView() {
           syncs securely via an aggregator to your local database. Device sync uses end-to-end
           encryption.{" "}
           <ExternalLink
-            href="https://mizan-landing-rho.vercel.app"
+            href="https://mizan.app"
             className="text-muted-foreground hover:text-foreground underline underline-offset-2"
           >
             Learn more
