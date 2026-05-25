@@ -400,20 +400,54 @@ impl From<ActivityDB> for Activity {
             subtype: db.subtype,
             status,
 
-            // Timing
+            // Timing — accept both RFC3339 ("2025-03-20T00:00:00Z") AND
+            // bare ISO date ("2025-03-20"). The latter is what hand-
+            // crafted seed rows and the WRITE path's tolerant fallback
+            // produce. Without the bare-date branch, the loader was
+            // silently rewriting every unparseable activity_date to
+            // Utc::now() — which made SPLIT corporate actions land on
+            // *today* instead of their real date, so the split-factor
+            // ordering never fired ("split date > BUY date" is false
+            // when both got rewritten to today). Critical date-domain
+            // data-corruption bug surfaced during QA Pass 2.
             activity_date: DateTime::parse_from_rfc3339(&db.activity_date)
                 .map(|dt| dt.with_timezone(&Utc))
+                .or_else(|rfc3339_err| {
+                    NaiveDate::parse_from_str(&db.activity_date, "%Y-%m-%d")
+                        .map(|d| {
+                            d.and_hms_opt(0, 0, 0)
+                                .expect("00:00:00 is a valid time-of-day")
+                                .and_utc()
+                        })
+                        .map_err(|_| rfc3339_err)
+                })
                 .unwrap_or_else(|e| {
                     log::error!(
-                        "Failed to parse activity_date '{}': {}",
+                        "Cannot parse activity_date '{}' (RFC3339 or YYYY-MM-DD): {}. \
+                         Falling back to epoch — activity will appear at the start of \
+                         history rather than landing silently on today's date.",
                         db.activity_date,
                         e
                     );
-                    Utc::now()
+                    // Epoch start. Loud error + a date that sorts to the
+                    // start of any range — far more obvious than the
+                    // previous "silently rewrite to Utc::now()" behaviour
+                    // which was directly responsible for the SPLIT bug.
+                    DateTime::<Utc>::from_timestamp(0, 0)
+                        .expect("epoch is a valid timestamp")
                 }),
             settlement_date: db.settlement_date.as_ref().and_then(|s| {
                 DateTime::parse_from_rfc3339(s)
                     .map(|dt| dt.with_timezone(&Utc))
+                    .or_else(|rfc_err| {
+                        NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                            .map(|d| {
+                                d.and_hms_opt(0, 0, 0)
+                                    .expect("00:00:00 is a valid time-of-day")
+                                    .and_utc()
+                            })
+                            .map_err(|_| rfc_err)
+                    })
                     .ok()
             }),
 
