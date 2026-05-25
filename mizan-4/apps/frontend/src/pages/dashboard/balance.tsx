@@ -61,11 +61,20 @@ const Balance: React.FC<BalanceProps> = ({
   }, [currency, validCurrency, displayCurrency, displayDecimal, targetValue]);
 
   if (isLoading) {
-    return <Skeleton className="h-9 w-48" />;
+    return <Skeleton className="h-12 w-56 md:h-14 md:w-72" />;
   }
 
+  // Enterprise UX-6: bump the headline figure to a properly headline-
+  // scale weight (Apple Wallet / Notion-style portfolio summary). At
+  // text-3xl the most important number on the entire app was the same
+  // visual weight as a section header, which read cheap. tracking-tighter
+  // + medium-heavy weight at text-4xl/5xl gives the number presence
+  // without going Robinhood-style oversized.
   return (
-    <h1 className="font-heading text-3xl font-bold tracking-tight" data-testid="portfolio-balance">
+    <h1
+      className="font-heading text-4xl font-semibold tracking-tighter md:text-5xl"
+      data-testid="portfolio-balance"
+    >
       {isBalanceHidden ? (
         <span>
           {displayCurrency ? currencySymbol : ""}
