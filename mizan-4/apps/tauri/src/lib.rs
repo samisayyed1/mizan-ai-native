@@ -193,7 +193,33 @@ mod desktop {
             // 1) Refresh quotes so the snapshot below reads fresh prices.
             scheduler::run_startup_quote_sync(&startup_handle, &startup_chain_context).await;
 
-            // 2) §A12 — capture today's NW snapshot. Idempotent: same-day
+            // 2) Recompute holdings snapshots BEFORE the NW capture below.
+            //    Previously the chain was just quote-sync → NW-capture, but
+            //    that left a real race at cold start: when fresh activities
+            //    landed between sessions, the NW snapshot at boot read
+            //    yesterday's holdings_snapshot table and the dashboard
+            //    showed stale numbers until the user hit Recalc by hand.
+            //    Running an incremental recompute first guarantees
+            //    holdings_snapshots reflects every committed activity
+            //    before NW reads from it.
+            {
+                use mizan_core::portfolio::snapshot::SnapshotRecalcMode;
+                let snapshot_service = startup_chain_context.snapshot_service();
+                if let Err(e) = snapshot_service
+                    .recalculate_holdings_snapshots(None, SnapshotRecalcMode::IncrementalFromLast)
+                    .await
+                {
+                    log::warn!("Startup holdings recompute (per-account): {}. NW snapshot below may read stale data.", e);
+                }
+                if let Err(e) = snapshot_service
+                    .recalculate_total_portfolio_snapshots(SnapshotRecalcMode::IncrementalFromLast)
+                    .await
+                {
+                    log::warn!("Startup holdings recompute (TOTAL): {}.", e);
+                }
+            }
+
+            // 3) §A12 — capture today's NW snapshot. Idempotent: same-day
             // re-runs replace the row, never duplicate it.
             scheduler::run_startup_net_worth_snapshot(&startup_chain_context).await;
 
