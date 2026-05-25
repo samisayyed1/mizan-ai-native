@@ -299,7 +299,7 @@ function AddonsMenu({ addons, collapsed }: AddonsMenuProps) {
                 >
                   {addon.icon ?? <Icons.ArrowRight className="h-5 w-5" />}
                 </span>
-                <span className="text-sm font-medium">{addon.title}</span>
+                <span className="text-sm font-medium tracking-tight">{addon.title}</span>
               </Link>
             </DropdownMenuItem>
           );
