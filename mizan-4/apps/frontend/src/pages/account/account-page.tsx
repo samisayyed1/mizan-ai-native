@@ -755,13 +755,22 @@ const AccountPage = () => {
                             past trades, splits, and contributions are not reflected.
                           </p>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setUseEstimatedHistory((v) => !v)}
-                          className="border-border/60 bg-background/60 text-muted-foreground hover:text-foreground hover:border-border cursor-pointer rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide transition-colors sm:text-xs"
-                        >
-                          {useEstimatedHistory ? "Back to actual history" : "Estimate full history"}
-                        </button>
+                        {/* UX-10: same gate as the dashboard — hide the
+                            "Estimate full history" affordance on free
+                            accounts. The synthesis path needs a starting
+                            snapshot (typical of Plaid imports) to make
+                            sense; promising 5-year synthesised charts
+                            on a manually-entered free account over-
+                            promises what the dataset can support. */}
+                        {entitlements.brokerSync && (
+                          <button
+                            type="button"
+                            onClick={() => setUseEstimatedHistory((v) => !v)}
+                            className="border-border/60 bg-background/60 text-muted-foreground hover:text-foreground hover:border-border cursor-pointer rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide transition-colors sm:text-xs"
+                          >
+                            {useEstimatedHistory ? "Back to actual history" : "Estimate full history"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -1,4 +1,3 @@
-import { HealthStatusIndicator } from "@/components/health-status-icon";
 import { SwipablePage, SwipablePageView } from "@/components/page";
 import { PrivacyToggle } from "@/components/privacy-toggle";
 import { useAddAsset } from "@/features/add-asset";
@@ -51,9 +50,15 @@ export default function PortfolioPage() {
     });
   }, [addAsset]);
 
+  // UX-10: HealthStatusIndicator removed from the customer-facing
+  // dashboard per user request — health warnings were leaking
+  // diagnostic-grade detail (FX gaps, missing quotes, classification
+  // drift) into the headline action row. The backend health checks
+  // still run and self-correct via the existing scheduler; the /health
+  // route remains accessible for support, just no longer linked from
+  // the dashboard chrome.
   const commonActions = (
     <>
-      <HealthStatusIndicator />
       {isFocusMode && (
         <Button
           variant="secondary"

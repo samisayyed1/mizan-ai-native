@@ -5,6 +5,7 @@ import { useHapticFeedback } from "@/hooks";
 import { useHoldings } from "@/hooks/use-holdings";
 import { useValuationExtent } from "@/hooks/use-valuation-extent";
 import { useValuationHistory } from "@/hooks/use-valuation-history";
+import { useEntitlements } from "@/features/mizan-connect";
 import type { AccountValuation } from "@/lib/types";
 import { isAlternativeAssetKind, PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -67,6 +68,16 @@ export function DashboardContent() {
   // Toggle: when ON, the chart shows an *estimated* historical curve
   // computed by pricing current holdings against historical quotes (good
   // for accounts where the broker only delivered a current snapshot).
+  //
+  // UX-10 gating: the "Estimate full history" button is gated behind
+  // brokerSync (Plaid / broker imports enabled) per user request. Free
+  // users see only the actual valuation history they've recorded —
+  // promising 5-year synthesised charts on a fresh install over-promises
+  // what the dataset can support. Paid users who've connected via Plaid
+  // get the option because they typically only have a starting-snapshot
+  // worth of history and need the synthesis to populate the chart.
+  const { entitlements } = useEntitlements();
+  const showEstimateToggle = entitlements.brokerSync;
   const [useEstimatedHistory, setUseEstimatedHistory] = useState(false);
 
   const { valuationHistory: realValuationHistory, isLoading: isRealHistoryLoading } =
@@ -242,6 +253,7 @@ export function DashboardContent() {
                     trades, splits, and contributions are not reflected.
                   </p>
                 )}
+                {showEstimateToggle && (
                 <button
                   type="button"
                   onClick={() => {
@@ -252,6 +264,7 @@ export function DashboardContent() {
                 >
                   {useEstimatedHistory ? "Back to actual history" : "Estimate full history"}
                 </button>
+                )}
               </div>
             </div>
           )}

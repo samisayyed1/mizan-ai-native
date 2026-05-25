@@ -101,16 +101,16 @@ const useGlobalEventListener = () => {
         toast.dismiss(TOAST_IDS.marketSyncStart);
       }
 
-      // Show error toast on both mobile and desktop for failed syncs
+      // Show error toast on both mobile and desktop for failed syncs.
+      // UX-10: customer-facing health surfaces removed per user request;
+      // the toast still fires (real, actionable signal: "we couldn't
+      // refresh these prices") but no longer offers a "View" link into
+      // the now-unlinked /health diagnostic page.
       if (failed_syncs && failed_syncs.length > 0) {
         const count = failed_syncs.length;
         toast.error(`Price update failed for ${count} asset${count === 1 ? "" : "s"}`, {
           id: "market-sync-error",
           duration: 10000,
-          action: {
-            label: "View",
-            onClick: () => navigateRef.current("/health"),
-          },
         });
       }
     };
