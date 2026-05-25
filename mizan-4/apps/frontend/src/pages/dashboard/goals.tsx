@@ -74,7 +74,7 @@ export function SavingGoals() {
         <div className="flex items-center justify-between py-2">
           <h2 className="text-md font-semibold">Goals</h2>
         </div>
-        <Card className="shadow-xs w-full">
+        <Card className="w-full">
           <CardContent className="px-5 py-6">
             <div className="space-y-6">
               {[0, 1, 2].map((i) => (
@@ -110,7 +110,7 @@ export function SavingGoals() {
             <Icons.ChevronRight className="ml-1 h-3 w-3" />
           </Link>
         </div>
-        <Card className="border-border/50 bg-success/10 shadow-xs w-full">
+        <Card className="border-border/50 bg-success/10 w-full">
           <CardContent className="px-4 py-6">
             <div className="text-center">
               <p className="text-sm font-medium">Plan what you want next</p>
@@ -144,7 +144,7 @@ export function SavingGoals() {
           <Icons.ChevronRight className="ml-1 h-3 w-3" />
         </Link>
       </div>
-      <Card className="shadow-xs w-full">
+      <Card className="w-full">
         <CardContent className="px-4 pb-2 pt-4">
           {visibleGoals.map((goal) => {
             const progress = goal.summaryProgress ?? 0;
