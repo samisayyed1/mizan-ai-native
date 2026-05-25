@@ -252,9 +252,11 @@ const SettingsAccountsPage = () => {
           {accounts.length === 0 ? (
             <EmptyPlaceholder>
               <EmptyPlaceholder.Icon name="Wallet" />
-              <EmptyPlaceholder.Title>No portfolio added!</EmptyPlaceholder.Title>
+              <EmptyPlaceholder.Title>No portfolios yet</EmptyPlaceholder.Title>
               <EmptyPlaceholder.Description>
-                You don&apos;t have any portfolio yet. Start adding your investment portfolios.
+                A portfolio groups accounts that belong together — brokerage, retirement, crypto,
+                cash. Add your first one to start tracking, or use the top-bar Add button to let
+                Mizan AI set one up for you.
               </EmptyPlaceholder.Description>
               <Button onClick={() => handleAddAccount()}>
                 <Icons.Plus className="mr-2 h-4 w-4" />
