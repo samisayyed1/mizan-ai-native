@@ -113,12 +113,16 @@ export function SavingGoals() {
         <Card className="border-border/50 bg-success/10 shadow-xs w-full">
           <CardContent className="px-4 py-6">
             <div className="text-center">
-              <p className="text-sm">No goals set.</p>
+              <p className="text-sm font-medium">Plan what you want next</p>
+              <p className="text-muted-foreground mx-auto mt-1 max-w-[16rem] text-xs leading-relaxed">
+                Retirement, a house, hajj, a sabbatical. Mizan tracks the gap and how
+                you're closing it.
+              </p>
               <Link
                 to="/goals/new"
-                className="text-muted-foreground hover:text-foreground mt-2 inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
+                className="text-muted-foreground hover:text-foreground mt-3 inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
               >
-                Create your first goal
+                Add your first goal
                 <Icons.ChevronRight className="h-3 w-3" />
               </Link>
             </div>
