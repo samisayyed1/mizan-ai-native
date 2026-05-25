@@ -138,15 +138,14 @@ impl<E: AiEnvironment + 'static> Tool for GetValuationHistoryTool<E> {
         let valuations = if account_id == "TOTAL" {
             // Get all active accounts and aggregate their valuations.
             //
-            // QA Pass 14: must EXCLUDE the "TOTAL" synthetic account from
-            // the iteration. Pass 6 inserted TOTAL into the accounts table
-            // (is_active=1) so the FK constraint on holdings_snapshots
-            // could pass; get_active_accounts() now returns it too. Adding
-            // TOTAL's own daily_account_valuation row on top of the sum
-            // of the real accounts' rows DOUBLES the figure — the AI
-            // would tell the user their $254k portfolio is worth $509k.
-            // Same fact, two numbers (dashboard $254k vs AI $509k):
-            // textbook CRITICAL per the QA mission.
+            // The synthetic TOTAL account is filtered out by the accounts
+            // repository (QA Pass 15) when no explicit ID list is given —
+            // so get_active_accounts() returns only real accounts. Adding
+            // TOTAL's own daily_account_valuation row on top of the per-
+            // real-account sum would double the figure (Pass 14 found
+            // dashboard $254k vs AI $509k). The defense lives at the
+            // repository boundary; the in-loop assertion below is a
+            // belt-and-suspenders in case the policy changes upstream.
             let accounts = self
                 .env
                 .account_service()
@@ -159,10 +158,12 @@ impl<E: AiEnvironment + 'static> Tool for GetValuationHistoryTool<E> {
             let mut aggregated: HashMap<NaiveDate, (Decimal, Decimal)> = HashMap::new();
 
             for account in accounts {
+                // Defense in depth: skip the synthetic TOTAL even though
+                // the repository (Pass 15) already filters it out — mock
+                // services in tests may not apply that filter, and we
+                // don't want the production code path to silently double-
+                // count if the filter ever regresses.
                 if account.id == mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID {
-                    // Skip the synthetic TOTAL — its own valuation row IS
-                    // the aggregate, and we're rebuilding that aggregate
-                    // from real per-account rows below.
                     continue;
                 }
                 let account_valuations = self
