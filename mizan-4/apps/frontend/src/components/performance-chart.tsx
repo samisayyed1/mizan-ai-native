@@ -90,6 +90,17 @@ export function PerformanceChart({ data }: PerformanceChartProps) {
   const tooltipLabelFormatter = (label: React.ReactNode) =>
     typeof label === "string" ? format(parseISO(label), "PPP") : "";
 
+  // Honest empty state — without this, Recharts draws an axis grid with
+  // no series and the chart looks like a rendering bug. Match the
+  // treatment HistoryChart + NetWorthChart use (UX-4 / UX-40).
+  if (!formattedData?.length) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <p className="text-muted-foreground text-xs">No history yet</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full">
       <ChartContainer config={chartConfig} className="h-full w-full">

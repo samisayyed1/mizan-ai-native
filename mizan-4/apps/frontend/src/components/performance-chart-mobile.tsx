@@ -95,6 +95,15 @@ export function PerformanceChartMobile({ data }: PerformanceChartMobileProps) {
   const tooltipLabelFormatter = (label: React.ReactNode) =>
     typeof label === "string" ? format(parseISO(label), "MMM d, yyyy") : "";
 
+  // Honest empty state — mirror of UX-41 desktop chart fix.
+  if (!formattedData?.length) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <p className="text-muted-foreground text-xs">No history yet</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full">
       <ChartContainer config={chartConfig} className="h-full w-full" data-no-swipe-drag>
