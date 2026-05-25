@@ -167,10 +167,20 @@ export function AddAssetDialog({
       // /activities/manage's existing param is `account` (the activity
       // manager has had this since before Enterprise UX-2). Match that
       // contract rather than introduce a new alias.
-      const target = presetAccountId
-        ? `/activities/manage?account=${encodeURIComponent(presetAccountId)}`
-        : "/activities/manage";
-      navigate(target);
+      //
+      // Also pass `redirect-to` pointing back at the account-detail page
+      // when we know it — the activity manager already honours that
+      // param on close, so the user lands back where they started
+      // instead of one step down the stack ("Activities" page).
+      if (presetAccountId) {
+        const back = `/accounts/${encodeURIComponent(presetAccountId)}`;
+        const target =
+          `/activities/manage?account=${encodeURIComponent(presetAccountId)}` +
+          `&redirect-to=${encodeURIComponent(back)}`;
+        navigate(target);
+      } else {
+        navigate("/activities/manage");
+      }
     } else {
       navigate("/settings/accounts?addAccount=1");
     }
