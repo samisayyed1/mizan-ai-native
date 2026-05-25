@@ -160,10 +160,26 @@ fn calculate_investment_market_value_acct(
                 performance_eligible_market_value += market_value;
             }
         } else {
+            // QA Pass 12 cross-consistency: previously valued at ZERO, which
+            // contradicted the holdings page where holdings_valuation_service
+            // falls back to cost basis for the same missing-quote case. Result
+            // was a $5,000 noquote position showing $5k on the holdings card
+            // but $0 in the dashboard headline — same fact, two numbers. Now
+            // both paths agree: cost basis is the honest fallback when we
+            // don't know the live price. The position still has economic
+            // value (its acquisition price); the UI labels staleness via
+            // `as_of_date` and the absence of a `price`. Alternative assets
+            // are handled the same way — their cost basis IS their stored
+            // "current" value when no fresh quote exists.
             warn!(
-                "Missing quote for asset {} on date {}. Position market value treated as ZERO.",
-                asset_id, target_date
+                "Missing quote for asset {} on date {}. Falling back to cost basis ({}) \
+                 for market_value — matches holdings page behaviour.",
+                asset_id, target_date, position.total_cost_basis
             );
+            total_position_market_value += position.total_cost_basis;
+            if !position.is_alternative {
+                performance_eligible_market_value += position.total_cost_basis;
+            }
         }
     }
     Ok((
@@ -417,5 +433,75 @@ mod tests {
         .unwrap();
         assert_eq!(adjusted.investment_market_value, dec!(5000));
         assert_eq!(adjusted.total_value, dec!(5000));
+    }
+
+    /// QA Pass 12 regression. A position with cost basis but no live quote
+    /// must fall back to cost basis (matching the holdings page), not silently
+    /// be valued at zero. Pre-fix: a $5,000 noquote position showed $5k on
+    /// the holdings card but $0 in the dashboard headline — same fact, two
+    /// numbers.
+    #[test]
+    fn test_no_quote_position_falls_back_to_cost_basis_in_market_value() {
+        let target_date = NaiveDate::from_ymd_opt(2026, 5, 25).unwrap();
+
+        let mut positions = HashMap::new();
+        positions.insert(
+            "NOQUOTE_ASSET".to_string(),
+            Position {
+                id: "POS-NQ-acc_1".to_string(),
+                account_id: "acc_1".to_string(),
+                asset_id: "NOQUOTE_ASSET".to_string(),
+                quantity: dec!(100),
+                average_cost: dec!(50),
+                total_cost_basis: dec!(5000),
+                currency: "USD".to_string(),
+                inception_date: Utc::now(),
+                lots: VecDeque::new(),
+                created_at: Utc::now(),
+                last_updated: Utc::now(),
+                is_alternative: false,
+                contract_multiplier: Decimal::ONE,
+            },
+        );
+
+        let snapshot = AccountStateSnapshot {
+            id: "acc_1_2026-05-25".to_string(),
+            account_id: "acc_1".to_string(),
+            snapshot_date: target_date,
+            currency: "USD".to_string(),
+            positions,
+            cash_balances: HashMap::new(),
+            cost_basis: dec!(5000),
+            net_contribution: dec!(5000),
+            net_contribution_base: dec!(5000),
+            cash_total_account_currency: dec!(0),
+            cash_total_base_currency: dec!(0),
+            realized_gains: HashMap::new(),
+            calculated_at: Utc::now().naive_utc(),
+            source: SnapshotSource::Calculated,
+        };
+
+        // Intentionally NO quote for NOQUOTE_ASSET.
+        let quotes_today: HashMap<String, Quote> = HashMap::new();
+        let fx_rates_today = HashMap::new();
+
+        let result = calculate_valuation(
+            &snapshot,
+            &quotes_today,
+            &fx_rates_today,
+            target_date,
+            "USD",
+            &SplitFactors::new(),
+        )
+        .unwrap();
+
+        // Must be $5,000 (cost basis), not $0.
+        assert_eq!(
+            result.investment_market_value,
+            dec!(5000),
+            "no-quote position must fall back to cost basis, matching holdings page contract"
+        );
+        assert_eq!(result.total_value, dec!(5000));
+        assert_eq!(result.cost_basis, dec!(5000));
     }
 }
