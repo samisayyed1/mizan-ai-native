@@ -354,7 +354,7 @@ function IncomeContentImpl({ args, result, status }: IncomeContentProps) {
             <PrivacyAmount
               value={parsed.totalIncome}
               currency={currency}
-              className="text-2xl font-bold"
+              className="text-2xl font-semibold tracking-tight tracking-tight"
             />
           </div>
         </div>

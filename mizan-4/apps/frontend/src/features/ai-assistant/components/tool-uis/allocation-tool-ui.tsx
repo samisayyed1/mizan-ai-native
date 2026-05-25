@@ -304,7 +304,7 @@ function AllocationContentImpl({ args, result, status }: AllocationContentProps)
             </Badge>
           </div>
           <div className="mt-2">
-            <span className="text-xl font-bold">{formatValue(totalValue)}</span>
+            <span className="text-xl font-semibold tracking-tight">{formatValue(totalValue)}</span>
           </div>
         </CardHeader>
         <CardContent className="pb-4">
@@ -355,7 +355,7 @@ function AllocationContentImpl({ args, result, status }: AllocationContentProps)
           )}
         </div>
         <div className="mt-2">
-          <span className="text-xl font-bold">{formatValue(totalValue)}</span>
+          <span className="text-xl font-semibold tracking-tight">{formatValue(totalValue)}</span>
         </div>
       </CardHeader>
       <CardContent className="pb-4">
