@@ -109,9 +109,9 @@ function BalanceSheet({ data, currency }: BalanceSheetProps) {
             <Icons.ChevronRight
               className={`text-muted-foreground h-4 w-4 transition-transform ${assetsOpen ? "rotate-90" : ""}`}
             />
-            <span className="text-sm font-semibold">Assets</span>
+            <span className="text-sm font-semibold tracking-tight">Assets</span>
           </div>
-          <span className="text-success text-sm font-semibold">
+          <span className="text-success text-sm font-semibold tracking-tight tabular-nums">
             <PrivacyAmount value={data.assets.total} currency={currency} />
           </span>
         </CollapsibleTrigger>
@@ -149,9 +149,9 @@ function BalanceSheet({ data, currency }: BalanceSheetProps) {
               <Icons.ChevronRight
                 className={`text-muted-foreground h-4 w-4 transition-transform ${liabilitiesOpen ? "rotate-90" : ""}`}
               />
-              <span className="text-sm font-semibold">Liabilities</span>
+              <span className="text-sm font-semibold tracking-tight">Liabilities</span>
             </div>
-            <span className="text-destructive text-sm font-semibold">
+            <span className="text-destructive text-sm font-semibold tracking-tight tabular-nums">
               -<PrivacyAmount value={data.liabilities.total} currency={currency} />
             </span>
           </CollapsibleTrigger>

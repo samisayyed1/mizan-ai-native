@@ -72,7 +72,7 @@ function HoldingRow({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <TickerAvatar symbol={avatarSymbol} className="size-9 shrink-0" />
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-semibold">{title}</span>
+          <span className="truncate text-sm font-semibold tracking-tight">{title}</span>
           <span className="text-muted-foreground text-xs">{subtitle}</span>
         </div>
       </div>
@@ -81,7 +81,7 @@ function HoldingRow({
           value={marketValue}
           currency={baseCurrency}
           isHidden={isHidden}
-          className="text-sm font-semibold"
+          className="text-sm font-semibold tracking-tight tabular-nums"
         />
         <div className="flex items-center gap-2">
           <GainAmount
@@ -147,7 +147,7 @@ function TopHoldingsSkeleton() {
   return (
     <Card className="w-full border-0 bg-transparent shadow-none">
       <CardHeader className="py-2">
-        <CardTitle className="text-md">Top Holdings</CardTitle>
+        <CardTitle className="text-md font-semibold tracking-tight">Top Holdings</CardTitle>
       </CardHeader>
       <CardContent>
         <Card className="shadow-xs w-full">
@@ -183,7 +183,7 @@ function TopHoldingsEmptyState() {
   return (
     <Card className="w-full border-0 bg-transparent p-0 shadow-none">
       <CardHeader className="px-0 py-2">
-        <CardTitle className="text-md">Top Holdings</CardTitle>
+        <CardTitle className="text-md font-semibold tracking-tight">Top Holdings</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <Card className="border-border/50 bg-success/10 shadow-xs w-full">
@@ -262,7 +262,7 @@ export function TopHoldings({ holdings, isLoading, baseCurrency }: TopHoldingsPr
   return (
     <Card className="w-full border-0 bg-transparent p-0 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between px-0 py-2">
-        <CardTitle className="text-md">Holdings</CardTitle>
+        <CardTitle className="text-md font-semibold tracking-tight">Holdings</CardTitle>
         <div className="flex items-center gap-1">
           <Popover>
             <PopoverTrigger asChild>

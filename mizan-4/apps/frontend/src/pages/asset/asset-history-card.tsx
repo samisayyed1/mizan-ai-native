@@ -145,7 +145,7 @@ const AssetHistoryCard: React.FC<AssetHistoryProps> = ({
       />
       <Card className={`flex flex-col ${className}`}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-md">
+          <CardTitle className="text-md font-semibold tracking-tight">
             <HoverCard>
               <HoverCardTrigger asChild className="cursor-pointer">
                 <div>

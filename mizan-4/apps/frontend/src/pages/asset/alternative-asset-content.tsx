@@ -183,7 +183,7 @@ export const AlternativeAssetContent: React.FC<AlternativeAssetContentProps> = (
           {/* Left: Value history chart with value/gain/equity in header */}
           <Card className="col-span-1 md:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-md">
+              <CardTitle className="text-md font-semibold tracking-tight">
                 <div>
                   <p className="pt-3 text-xl font-bold">
                     <AmountDisplay

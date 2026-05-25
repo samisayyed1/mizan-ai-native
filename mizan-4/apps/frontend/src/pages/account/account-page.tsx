@@ -665,7 +665,7 @@ const AccountPage = () => {
             <div className="grid grid-cols-1 gap-4 pt-0 md:grid-cols-3">
               <Card className="col-span-1 md:col-span-2">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-md">
+                  <CardTitle className="text-md font-semibold tracking-tight">
                     <PortfolioUpdateTrigger lastCalculatedAt={currentValuation?.calculatedAt}>
                       <div className="flex items-start gap-2">
                         <div>
