@@ -186,7 +186,7 @@ function TopHoldingsEmptyState() {
         <CardTitle className="text-md font-semibold tracking-tight">Top Holdings</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <Card className="bg-success/10 w-full">
+        <Card className="bg-muted/30 w-full">
           <CardContent className="px-4 py-6">
             <div className="text-center">
               <p className="text-sm">No holdings yet.</p>
@@ -269,7 +269,7 @@ export function TopHoldings({ holdings, isLoading, baseCurrency }: TopHoldingsPr
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground hover:bg-success/10 h-8 w-8 p-0"
+                className="text-muted-foreground hover:bg-accent h-8 w-8 p-0"
               >
                 <Icons.ListFilter className="h-4 w-4" />
               </Button>
@@ -356,7 +356,7 @@ export function TopHoldings({ holdings, isLoading, baseCurrency }: TopHoldingsPr
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground hover:bg-success/10 text-xs"
+            className="text-muted-foreground hover:bg-accent text-xs"
             onClick={() => navigate("/holdings")}
           >
             View All

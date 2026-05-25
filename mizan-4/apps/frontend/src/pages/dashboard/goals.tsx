@@ -104,7 +104,7 @@ export function SavingGoals() {
           <h2 className="text-md font-semibold tracking-tight">Goals</h2>
           <Link
             to="/goals"
-            className="text-muted-foreground hover:bg-success/10 inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors"
+            className="text-muted-foreground hover:bg-accent inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors"
           >
             View All
             <Icons.ChevronRight className="ml-1 h-3 w-3" />
@@ -138,7 +138,7 @@ export function SavingGoals() {
         <h2 className="text-md font-semibold tracking-tight">Goals</h2>
         <Link
           to="/goals"
-          className="text-muted-foreground hover:bg-success/10 inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors"
+          className="text-muted-foreground hover:bg-accent inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors"
         >
           View All
           <Icons.ChevronRight className="ml-1 h-3 w-3" />
