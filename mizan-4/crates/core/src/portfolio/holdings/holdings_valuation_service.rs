@@ -719,11 +719,33 @@ impl HoldingsValuationService {
 
         holding.price = Some(dec!(1.0));
 
-        let fx_rate_cash_to_base =
-            self.get_fx_rate_or_fallback(cash_currency, base_currency, &context_msg);
-        holding.fx_rate = Some(fx_rate_cash_to_base);
+        // QA Pass 10: market_value.base for cash MUST use the strict
+        // FX getter — silently valuing SGD cash at SGD == USD is the
+        // exact "wrong + invisible" failure pattern this file's docs
+        // (see get_fx_rate_or_fallback above) explicitly forbid. When
+        // no rate is available we mark fx_rate=None, leave .local as
+        // the truth, and set .base = 0 so the UI can render "—" or a
+        // warning chip instead of a fabricated dollar amount.
+        let fx_rate_opt = self.try_get_fx_rate(
+            cash_currency,
+            base_currency,
+            &format!("{}: FX Cash->Base", context_msg),
+        );
+        holding.fx_rate = fx_rate_opt;
 
-        let value_base = cash_amount * fx_rate_cash_to_base;
+        let value_base = match fx_rate_opt {
+            Some(rate) => cash_amount * rate,
+            None => {
+                warn!(
+                    "{}: NO {} → {} FX rate available. Setting market_value.base to ZERO \
+                     instead of silently treating the foreign-currency amount as base \
+                     currency. .local still carries the truthful amount. Add the FX pair \
+                     under Settings → Market Data → Exchange Rates.",
+                    context_msg, cash_currency, base_currency
+                );
+                Decimal::ZERO
+            }
+        };
 
         holding.market_value.base = value_base;
         holding.market_value.local = cash_amount;
