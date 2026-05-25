@@ -85,7 +85,7 @@ const AccountSummaryComponent = React.memo(
       }
 
       return (
-        <div className="border-border bg-card shadow-xs flex w-full items-center justify-between gap-3 rounded-lg border px-4 py-3 md:px-5 md:py-4">
+        <div className="border-border/70 bg-card shadow-sm flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 md:px-5 md:py-4">
           {skeletonContent}
         </div>
       );
@@ -250,7 +250,7 @@ const AccountSummaryComponent = React.memo(
       return (
         <Link
           to={`/accounts/${accountId}`}
-          className="border-border bg-card shadow-xs flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-all duration-150 hover:shadow-md md:px-5 md:py-4"
+          className="border-border/70 bg-card shadow-sm flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-all duration-150 hover:shadow-md md:px-5 md:py-4"
         >
           {content}
         </Link>
@@ -258,7 +258,7 @@ const AccountSummaryComponent = React.memo(
     }
 
     return (
-      <div className="border-border bg-card shadow-xs flex w-full items-center justify-between gap-3 rounded-lg border px-4 py-3 md:px-5 md:py-4">
+      <div className="border-border/70 bg-card shadow-sm flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 md:px-5 md:py-4">
         {content}
       </div>
     );
@@ -414,7 +414,7 @@ export const AccountsSummary = React.memo(
         return Array.from({ length: 4 }).map((_, index) => (
           <div
             key={`skeleton-${index}`}
-            className="border-border bg-card shadow-xs rounded-lg border px-4 py-3 md:px-5 md:py-4"
+            className="border-border/70 bg-card shadow-sm rounded-xl border px-4 py-3 md:px-5 md:py-4"
           >
             <AccountSummarySkeleton />
           </div>
@@ -612,7 +612,7 @@ export const AccountsSummary = React.memo(
               return (
                 <div
                   key={group.accountName}
-                  className="border-border bg-card shadow-xs overflow-hidden rounded-lg border transition-shadow duration-150 hover:shadow-md"
+                  className="border-border/70 bg-card shadow-sm overflow-hidden rounded-xl border transition-shadow duration-150 hover:shadow-md"
                 >
                   <div className="cursor-pointer">
                     <AccountSummaryComponent
