@@ -14,8 +14,10 @@ import { AccountsSummary } from "@/pages/dashboard/accounts-summary";
  * portfolio drill-down at `/accounts/:id`, with no single "list of all my
  * portfolios" page in between).
  *
- * The Add CTA routes to Assistant asset ingest instead of the legacy manual
- * wizard.
+ * The Add CTA opens the inline AddAssetDialog — the user picks
+ * "Ask Mizan AI" or "Add manually" right there. (Previously this
+ * routed to /assistant with a pre-filled prompt; that redirect was
+ * killed in favour of the in-place dialog UX.)
  */
 export default function PortfolioListPage() {
   const addAsset = useAddAsset();

@@ -3,6 +3,7 @@ import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { useCallback, useMemo, useState } from "react";
 
+import { useAddAsset } from "@/features/add-asset";
 import { useHoldings } from "@/hooks/use-holdings";
 import { usePortfolioAllocations } from "@/hooks/use-portfolio-allocations";
 import { PORTFOLIO_ACCOUNT_ID, isAlternativeAssetKind } from "@/lib/constants";
@@ -25,6 +26,7 @@ interface HoldingsInsightsPageProps {
 
 export const HoldingsInsightsPage = ({ accountId: accountIdProp }: HoldingsInsightsPageProps) => {
   const navigate = useNavigate();
+  const addAsset = useAddAsset();
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
 
@@ -117,18 +119,26 @@ export const HoldingsInsightsPage = ({ accountId: accountIdProp }: HoldingsInsig
   const renderEmptyState = () => (
     <div className="flex items-center justify-center py-16">
       <EmptyPlaceholder
-        icon={<Icons.TrendingUp className="text-muted-foreground h-10 w-10" />}
+        icon={<Icons.Sparkles className="h-10 w-10 text-amber-500" />}
         title="No holdings yet"
-        description="Get started by adding your first transaction or quickly import your existing holdings from a CSV file."
+        description="Drop a broker CSV, snap a statement, or just describe what you own — Mizan handles the rest."
       >
         <div className="flex flex-col items-center gap-3 sm:flex-row">
-          <Button size="default" onClick={() => navigate("/activities/manage")}>
-            <Icons.Plus className="mr-2 h-4 w-4" />
-            Add Transaction
+          <Button
+            size="default"
+            onClick={() =>
+              addAsset.open({
+                source: "portfolio",
+                prompt: "Add my holdings from this file.",
+              })
+            }
+          >
+            <Icons.Sparkles className="mr-2 h-4 w-4" />
+            Set up with Mizan
           </Button>
-          <Button size="default" variant="outline" onClick={() => navigate("/import")}>
-            <Icons.Import className="mr-2 h-4 w-4" />
-            Import from CSV
+          <Button size="default" variant="outline" onClick={() => navigate("/activities/manage")}>
+            <Icons.Plus className="mr-2 h-4 w-4" />
+            Add manually
           </Button>
         </div>
       </EmptyPlaceholder>

@@ -26,9 +26,9 @@ export default function ConnectSettingsPage() {
       <Separator />
       {!isEnabled ? (
         <ComingSoonCard
-          title="Mizan Connect is disabled in this build"
-          message="Set CONNECT_AUTH_URL and CONNECT_AUTH_PUBLISHABLE_KEY in your .env to enable the sign-in flow."
-          detail="Mizan still works fully offline without these."
+          title="Mizan Connect is offline in this build"
+          message="This copy of Mizan ships without the cloud sign-in flow wired in. Everything else works offline-first — your data stays on this device."
+          detail="If you built this from source, drop CONNECT_AUTH_URL + CONNECT_AUTH_PUBLISHABLE_KEY into .env and rebuild. Production binaries from the Mizan site come pre-wired."
         />
       ) : isInitializing ? null : isConnected ? (
         <ConnectedView />
