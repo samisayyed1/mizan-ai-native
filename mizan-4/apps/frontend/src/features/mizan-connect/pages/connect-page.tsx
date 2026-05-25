@@ -282,7 +282,7 @@ export default function ConnectPage() {
             {showBrokerSync && (
               <Card className="flex flex-col border">
                 <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center justify-between text-base font-medium">
+                  <CardTitle className="flex items-center justify-between text-base font-semibold">
                     <div className="flex items-center gap-2">
                       <div className="bg-muted flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">
                         <Icons.Link className="text-muted-foreground h-3.5 w-3.5" />
@@ -372,7 +372,7 @@ export default function ConnectPage() {
 
             <Card className="flex flex-col border">
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between text-base font-medium">
+                <CardTitle className="flex items-center justify-between text-base font-semibold">
                   <div className="flex items-center gap-2">
                     <div className="bg-muted flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">
                       <Icons.Smartphone className="text-muted-foreground h-3.5 w-3.5" />
@@ -429,7 +429,7 @@ export default function ConnectPage() {
           {showBrokerSync && (
             <Card className="border">
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <div className="bg-muted flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">
                     <Icons.History className="text-muted-foreground h-3.5 w-3.5" />
                   </div>

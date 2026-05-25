@@ -51,7 +51,7 @@ export function ImportRunsList({ runs, isLoading }: ImportRunsListProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-medium">Recent Sync Runs</CardTitle>
+          <CardTitle className="text-base font-semibold">Recent Sync Runs</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
@@ -66,7 +66,7 @@ export function ImportRunsList({ runs, isLoading }: ImportRunsListProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-medium">Recent Sync Runs</CardTitle>
+          <CardTitle className="text-base font-semibold">Recent Sync Runs</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-sm">No sync runs yet.</p>
@@ -78,7 +78,7 @@ export function ImportRunsList({ runs, isLoading }: ImportRunsListProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base font-medium">Recent Sync Runs</CardTitle>
+        <CardTitle className="text-base font-semibold">Recent Sync Runs</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         {sortedRuns.map((run) => (

@@ -211,7 +211,7 @@ export function SubscriptionPlans({
             <div className="bg-warning/15 mb-4 rounded-full p-4">
               <Icons.AlertCircle className="text-warning h-8 w-8" />
             </div>
-            <h3 className="text-foreground mb-2 text-base font-medium">Connection Issue</h3>
+            <h3 className="text-foreground mb-2 text-base font-semibold">Connection Issue</h3>
             <p className="text-muted-foreground mb-4 max-w-sm text-sm">
               We&apos;re having trouble connecting to your account. This can happen if your session
               has expired.{" "}
@@ -277,7 +277,7 @@ export function SubscriptionPlans({
             <div className="bg-warning/15 mb-4 rounded-full p-4">
               <Icons.CloudOff className="text-warning h-8 w-8" />
             </div>
-            <h3 className="text-foreground mb-2 text-base font-medium">Unable to Load Plans</h3>
+            <h3 className="text-foreground mb-2 text-base font-semibold">Unable to Load Plans</h3>
             <p className="text-muted-foreground mb-4 max-w-sm text-sm">
               We couldn&apos;t retrieve subscription plans right now. This is usually a temporary
               issue.{" "}
@@ -324,7 +324,7 @@ export function SubscriptionPlans({
       <CardHeader className="pb-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="text-base font-medium">Choose Your Plan</CardTitle>
+            <CardTitle className="text-base font-semibold">Choose Your Plan</CardTitle>
             <CardDescription className="text-xs">
               Silver is private AI wealth tracking. Gold adds Plaid live sync and monitoring.
             </CardDescription>

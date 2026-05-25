@@ -377,7 +377,7 @@ export function DeviceSyncSection() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-medium">Device Sync</CardTitle>
+          <CardTitle className="text-base font-semibold">Device Sync</CardTitle>
           <CardDescription>Failed to initialize device sync.</CardDescription>
         </CardHeader>
         <CardContent>
