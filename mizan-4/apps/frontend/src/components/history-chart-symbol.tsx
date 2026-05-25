@@ -37,6 +37,19 @@ export default function HistoryChart({
   interval?: TimePeriod;
   height?: number;
 }) {
+  // Honest empty state — UX-4 / UX-40 / UX-41 pattern. Recharts will
+  // otherwise render a gradient placeholder with no series, which reads
+  // like the chart broke.
+  if (!data?.length) {
+    return (
+      <div
+        className="text-muted-foreground flex h-full w-full items-center justify-center text-xs"
+        style={{ minHeight: height }}
+      >
+        No history yet
+      </div>
+    );
+  }
   return (
     <div className="relative flex h-full flex-col" data-no-swipe-drag>
       <div className="grow">
