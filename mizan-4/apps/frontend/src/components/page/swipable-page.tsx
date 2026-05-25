@@ -48,7 +48,7 @@ function NavigationPills({
             type="button"
             onClick={() => onViewChange(view.value)}
             className={cn(
-              "relative flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-200",
+              "relative flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium tracking-tight transition-colors duration-200",
               "focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-2",
               isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground/80",
             )}
@@ -101,7 +101,7 @@ function MobileNavigation({
             type="button"
             onClick={() => onViewChange(item.value)}
             className={cn(
-              "relative flex cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors duration-200",
+              "relative flex cursor-pointer items-center justify-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium tracking-tight transition-colors duration-200",
               "focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
               isActive ? "text-foreground" : "text-muted-foreground",
             )}
