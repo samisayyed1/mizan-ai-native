@@ -24,6 +24,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AnimatedToggleGroup } from "@mizan/ui";
+import { useAddAsset } from "@/features/add-asset";
+import { useAccounts } from "@/hooks/use-accounts";
 
 // Helper function to get display value and currency based on toggle state.
 //
@@ -510,14 +512,43 @@ const getColumns = (
     header: () => null,
     cell: ({ row }) => {
       const navigate = useNavigate();
+      const addAsset = useAddAsset();
+      // Look up the account name for the holding so the AddAsset dialog
+      // can show "for the Schwab portfolio" rather than the raw ID hash.
+      const { accounts } = useAccounts({ filterActive: true });
       const holding = row.original;
       const hasInstrument = !!holding.instrument;
+      const accountName = accounts?.find((a) => a.id === holding.accountId)?.name;
+      const symbol = holding.instrument?.symbol ?? holding.id;
+      const assetId = holding.instrument?.id ?? holding.id;
 
       const handleNavigate = () => {
-        // Use instrument.id (asset ID) for navigation, not symbol (which may be stripped)
-        const navSymbol = holding.instrument?.id ?? holding.id;
-        navigate(`/holdings/${encodeURIComponent(navSymbol)}`, {
+        navigate(`/holdings/${encodeURIComponent(assetId)}`, {
           state: { holding },
+        });
+      };
+
+      // Enterprise UX-5: one-click "Record activity" routes to the
+      // activity manager with account AND asset pre-filled. No
+      // re-asking the user which portfolio or which stock — they just
+      // told us by clicking this row's menu.
+      const handleRecordActivity = () => {
+        navigate(
+          `/activities/manage?account=${encodeURIComponent(holding.accountId)}` +
+            `&assetId=${encodeURIComponent(assetId)}` +
+            `&redirect-to=${encodeURIComponent(`/accounts/${holding.accountId}`)}`,
+        );
+      };
+
+      // Ask Mizan AI to update — opens the AI dialog with full context
+      // (account + asset symbol). The agent's record_activity tool
+      // resolves both automatically.
+      const handleAskAi = () => {
+        addAsset.open({
+          source: "portfolio",
+          accountId: holding.accountId,
+          accountName,
+          prompt: `Update my ${symbol} holding. What would you like to change?`,
         });
       };
 
@@ -530,6 +561,18 @@ const getColumns = (
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {hasInstrument && (
+                <DropdownMenuItem onClick={handleRecordActivity}>
+                  <Icons.Plus className="mr-2 h-4 w-4" />
+                  Record activity
+                </DropdownMenuItem>
+              )}
+              {hasInstrument && (
+                <DropdownMenuItem onClick={handleAskAi}>
+                  <Icons.Sparkles className="mr-2 h-4 w-4" />
+                  Ask Mizan AI to update
+                </DropdownMenuItem>
+              )}
               {hasInstrument && onClassify && (
                 <DropdownMenuItem onClick={() => onClassify(holding)}>
                   <Icons.Tag className="mr-2 h-4 w-4" />
@@ -538,7 +581,7 @@ const getColumns = (
               )}
               <DropdownMenuItem onClick={handleNavigate}>
                 <Icons.ChevronRight className="mr-2 h-4 w-4" />
-                View Details
+                View details
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
