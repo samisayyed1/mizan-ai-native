@@ -471,24 +471,40 @@ export function calculatePerformanceMetrics(
   }
 
   // ── period Perf: daily time‑weighted return (TWR) ───────────────
-  let twr = 1;
+  //
+  // QA Pass 13 cross-consistency. The backend (crates/core .../performance_service.rs
+  // compute_compounded_daily_returns) uses the start-of-day flow convention:
+  //
+  //     daily_return = curr / (prev + cf) - 1
+  //
+  // i.e. "today's deposit was in the market all day, so it earns today's return."
+  // The frontend previously used the end-of-day convention `(curr - cf) / prev`,
+  // producing a *different* TWR for the same data: e.g. prev=$100, curr=$120,
+  // cf=$10 → backend 9.09%, frontend 10%. The dashboard headline and the
+  // Performance page (which reads backend-computed TWR) would disagree on
+  // "past year" returns — the textbook "two numbers for one fact" CRITICAL.
+  //
+  // Now both paths agree. The factor `curr/(prev+cf)` is the per-day TWR
+  // factor; chaining multiplicatively gives the cumulative factor; subtract 1
+  // for the cumulative return.
+  let twrFactor = 1;
   for (let i = 1; i < history.length; i++) {
     const prev = history[i - 1];
     const curr = history[i];
 
     const cf = Number(curr.netContribution) - Number(prev.netContribution); // deposit(+)/withdraw(-)
-    const mv0 = Number(prev.totalValue);
-    if (mv0 === 0) {
-      continue; // skip day zero if portfolio just opened
+    const denom = Number(prev.totalValue) + cf;
+    if (denom === 0) {
+      continue; // skip degenerate day (matches backend zero-denom guard)
     }
 
-    const dailyReturn = (Number(curr.totalValue) - cf) / mv0;
-    twr *= dailyReturn;
+    const dailyFactor = Number(curr.totalValue) / denom;
+    twrFactor *= dailyFactor;
   }
 
   const result = {
     gainLossAmount: gain$,
-    simpleReturn: twr - 1, // e.g. 0.034 -> 3.4 %
+    simpleReturn: twrFactor - 1, // e.g. 1.034 -> 0.034 -> 3.4 %
   };
 
   return result;
