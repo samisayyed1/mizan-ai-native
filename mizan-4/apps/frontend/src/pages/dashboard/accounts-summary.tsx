@@ -453,7 +453,7 @@ export const AccountsSummary = React.memo(
 
             <div className="mt-3">
               <Link
-                to="/settings/accounts"
+                to="/settings/accounts?addAccount=1"
                 className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
               >
                 or add manually
