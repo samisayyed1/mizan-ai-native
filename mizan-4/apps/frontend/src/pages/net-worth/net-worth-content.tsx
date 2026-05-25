@@ -1,4 +1,8 @@
-import { useNetWorth, useNetWorthHistory } from "@/hooks/use-alternative-assets";
+import {
+  useNetWorth,
+  useNetWorthHistory,
+  useNetWorthHistoryExtent,
+} from "@/hooks/use-alternative-assets";
 import { excludeVehiclesFromNetWorth } from "@/lib/net-worth";
 import { useSettingsContext } from "@/lib/settings-provider";
 import type { DateRange } from "@/lib/types";
@@ -326,6 +330,8 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
     endDate: historyDates?.endDate ?? "",
     enabled: !!historyDates,
   });
+  // Data extent for gating IntervalSelector to ranges we can plot.
+  const dataEarliestDate = useNetWorthHistoryExtent();
 
   // Interval selector callback
   const handleIntervalSelect = (
@@ -516,6 +522,7 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
                 isLoading={isHistoryLoading}
                 storageKey={INTERVAL_STORAGE_KEY}
                 defaultValue={DEFAULT_INTERVAL}
+                dataEarliestDate={dataEarliestDate}
               />
             </div>
           )}

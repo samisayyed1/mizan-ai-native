@@ -288,6 +288,32 @@ export function useNetWorthHistory(options: UseNetWorthHistoryOptions) {
   });
 }
 
+/**
+ * Returns the earliest net-worth snapshot date we have data for. Used
+ * by the IntervalSelector to hide window buttons (5Y, 1Y…) that would
+ * just render mostly-empty axes for accounts younger than the window.
+ * Cached aggressively (5min) — extent doesn't shift minute-to-minute.
+ */
+export function useNetWorthHistoryExtent(): Date | null {
+  const { data } = useQuery<Date | null, Error>({
+    queryKey: [...QueryKeys.netWorthHistory("__extent__", "__extent__")],
+    queryFn: async () => {
+      // Unbounded fetch (empty string sentinels) — adapters interpret
+      // missing range as "all rows". One-shot per session.
+      const rows = await getNetWorthHistory("", "");
+      if (!rows?.length) return null;
+      const earliest = rows.reduce<string | null>((acc, row) => {
+        if (!row.date) return acc;
+        if (!acc || row.date < acc) return row.date;
+        return acc;
+      }, null);
+      return earliest ? new Date(earliest) : null;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  return data ?? null;
+}
+
 interface UseAlternativeAssetHoldingOptions {
   /** The asset ID to fetch */
   assetId: string;

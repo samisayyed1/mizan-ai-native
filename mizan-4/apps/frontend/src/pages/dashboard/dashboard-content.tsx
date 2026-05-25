@@ -3,6 +3,7 @@ import { HistoryChart } from "@/components/history-chart";
 import { TickerConveyor } from "@/components/ticker-conveyor";
 import { useHapticFeedback } from "@/hooks";
 import { useHoldings } from "@/hooks/use-holdings";
+import { useValuationExtent } from "@/hooks/use-valuation-extent";
 import { useValuationHistory } from "@/hooks/use-valuation-history";
 import type { AccountValuation } from "@/lib/types";
 import { isAlternativeAssetKind, PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
@@ -48,6 +49,10 @@ export function DashboardContent() {
 
   const { holdings: allHoldings, isLoading: isHoldingsLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { triggerHaptic } = useHapticFeedback();
+  // Data extent for gating IntervalSelector — hides 5Y/1Y/6M etc. when
+  // the user only has a few weeks of history. Cached aggressively so
+  // toggling between intervals doesn't re-fetch.
+  const dataEarliestDate = useValuationExtent(PORTFOLIO_ACCOUNT_ID);
 
   // Total portfolio value (includes cash, excludes alternative assets)
   const totalValue = useMemo(() => {
@@ -219,6 +224,7 @@ export function DashboardContent() {
                   isLoading={isValuationHistoryLoading}
                   storageKey={INTERVAL_STORAGE_KEY}
                   defaultValue={DEFAULT_INTERVAL}
+                  dataEarliestDate={dataEarliestDate}
                 />
               )}
               <div className="flex w-full max-w-md flex-col items-center gap-2 px-4">
