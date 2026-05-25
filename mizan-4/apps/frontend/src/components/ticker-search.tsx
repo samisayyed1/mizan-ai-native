@@ -519,7 +519,7 @@ const TickerSearchInput = forwardRef<HTMLButtonElement, SearchProps>(
                           )
                         )}
                         {quoteInfo?.currency && !quoteInfo.isLoading && (
-                          <span className="text-muted-foreground font-light">
+                          <span className="text-muted-foreground">
                             {quoteInfo.currency}
                           </span>
                         )}
