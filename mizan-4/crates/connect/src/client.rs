@@ -943,4 +943,75 @@ mod tests {
         assert_eq!(accounts[0].institution_name.as_deref(), Some("Plaid Bank"));
     }
 
+    // Plaid-1 partial-failure regression: cloud may return 200 OK with a
+    // non-empty `errors` array if a subset of Plaid items failed mid-sync
+    // (one institution down, one rate-limited, etc). The desktop used to
+    // swallow the response and tell the user "sync succeeded" — leaving
+    // their numbers stale with zero feedback. We now surface that as Err.
+    #[tokio::test]
+    async fn sync_plaid_data_treats_non_empty_errors_array_as_err() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "synced": 2,
+                "errors": [
+                    { "itemId": "item-1", "message": "ITEM_LOGIN_REQUIRED" }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
+        let err = client
+            .sync_plaid_data()
+            .await
+            .expect_err("non-empty errors array must surface as Err");
+        let msg = err.to_string();
+        assert!(msg.contains("ITEM_LOGIN_REQUIRED"), "got: {msg}");
+        assert!(msg.contains("1 error"), "got: {msg}");
+    }
+
+    // Companion: a clean response with `errors: []` (or no `errors` field
+    // at all, for backward-compat with older cloud builds) must still
+    // resolve Ok.
+    #[tokio::test]
+    async fn sync_plaid_data_accepts_empty_errors_array_and_missing_field() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "synced": 3,
+                "errors": []
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
+        client
+            .sync_plaid_data()
+            .await
+            .expect("empty errors array must resolve Ok");
+
+        // Backward-compat: older cloud builds may not emit the field at all.
+        let server2 = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "synced": 1
+            })))
+            .expect(1)
+            .mount(&server2)
+            .await;
+        let client2 = ConnectApiClient::new(&server2.uri(), "mizan-test-jwt").unwrap();
+        client2
+            .sync_plaid_data()
+            .await
+            .expect("missing errors field must resolve Ok");
+    }
+
 }
