@@ -96,7 +96,13 @@ const USER_SYNCABLE_ACTIVITIES_FILTER: &str = "is_user_modified = 1 \
 const OVERWRITE_RISK_TABLE_COUNTS: &[(&str, Option<&str>)] = &[
     ("platforms", None),
     ("market_data_custom_providers", None),
-    ("accounts", None),
+    // The 'TOTAL' synthetic account is provisioned by the
+    // 2026-05-25-000002 migration as a FK target for the aggregated
+    // holdings_snapshots; it carries no user data and is invisible to
+    // the UI. Exclude it from the overwrite-risk count so the sync
+    // confirmation doesn't ask the user to confirm losing one row of
+    // user-irrelevant scaffolding.
+    ("accounts", Some("id != 'TOTAL'")),
     (
         "assets",
         Some("kind IN ('PROPERTY', 'VEHICLE', 'COLLECTIBLE', 'PRECIOUS_METAL', 'PRIVATE_EQUITY', 'LIABILITY', 'OTHER')"),

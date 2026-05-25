@@ -31,6 +31,44 @@ fn parse_decimal_string_tolerant(value_str: &str, field_name: &str) -> Decimal {
     }
 }
 
+/// Tolerant ISO-timestamp parser. Accepts:
+///   - RFC3339 "2026-05-25T15:16:19Z" / "2026-05-25T15:16:19+00:00"
+///   - SQLite default "2026-05-25 15:16:19" (space separator, no tz)
+///   - Bare ISO date "2026-05-25" (midnight UTC)
+///
+/// Falls back to the Unix epoch + loud error log on parse failure
+/// rather than `Utc::now()` so a broken row doesn't silently masquerade
+/// as fresh data (the same failure mode QA Pass 3 found on activity_date).
+fn parse_timestamp_tolerant(s: &str, field: &str) -> chrono::DateTime<Utc> {
+    use chrono::{DateTime, NaiveDate, NaiveDateTime};
+
+    // 1) RFC3339 (the writer's canonical format)
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return dt.with_timezone(&Utc);
+    }
+    // 2) SQLite default "YYYY-MM-DD HH:MM:SS"
+    if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return Utc.from_utc_datetime(&naive);
+    }
+    // 3) SQLite "YYYY-MM-DD HH:MM:SS.f..."
+    if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f") {
+        return Utc.from_utc_datetime(&naive);
+    }
+    // 4) Bare ISO date
+    if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        if let Some(t) = date.and_hms_opt(0, 0, 0) {
+            return Utc.from_utc_datetime(&t);
+        }
+    }
+    log::error!(
+        "Failed to parse {} '{}'. Falling back to epoch — an obvious wrong value the operator \
+         will notice, instead of silently flattening to Utc::now().",
+        field,
+        s
+    );
+    DateTime::<Utc>::from_timestamp(0, 0).expect("epoch is a valid timestamp")
+}
+
 /// Database model for activities - COMPLETELY REDESIGNED
 #[derive(
     Queryable,
@@ -489,19 +527,15 @@ impl From<ActivityDB> for Activity {
             is_user_modified: db.is_user_modified != 0,
             needs_review: db.needs_review != 0,
 
-            // Audit
-            created_at: chrono::DateTime::parse_from_rfc3339(&db.created_at)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|e| {
-                    log::error!("Failed to parse created_at '{}': {}", db.created_at, e);
-                    Utc::now()
-                }),
-            updated_at: chrono::DateTime::parse_from_rfc3339(&db.updated_at)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|e| {
-                    log::error!("Failed to parse updated_at '{}': {}", db.updated_at, e);
-                    Utc::now()
-                }),
+            // Audit — accept RFC3339 ("2026-05-25T15:16:19+00:00") AND
+            // sqlite's default "YYYY-MM-DD HH:MM:SS" (space separator).
+            // Live logs showed millions of "premature end of input"
+            // errors against the space-separated default that sqlite's
+            // `datetime('now')` produces; the previous Utc::now()
+            // fallback silently flattened every old row's audit
+            // timestamp to right-now.
+            created_at: parse_timestamp_tolerant(&db.created_at, "created_at"),
+            updated_at: parse_timestamp_tolerant(&db.updated_at, "updated_at"),
         }
     }
 }
