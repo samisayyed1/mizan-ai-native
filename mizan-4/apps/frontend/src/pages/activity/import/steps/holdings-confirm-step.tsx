@@ -340,19 +340,19 @@ export function HoldingsConfirmStep() {
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div className="bg-muted/30 rounded-lg p-3 text-center">
-                <div className="text-primary text-2xl font-bold">{snapshots.length}</div>
+                <div className="text-primary text-2xl font-semibold tracking-tight">{snapshots.length}</div>
                 <div className="text-muted-foreground text-xs">Snapshots</div>
               </div>
               <div className="bg-muted/30 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold">{totalPositions}</div>
+                <div className="text-2xl font-semibold tracking-tight">{totalPositions}</div>
                 <div className="text-muted-foreground text-xs">Positions</div>
               </div>
               <div className="bg-muted/30 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold">{totalCashEntries}</div>
+                <div className="text-2xl font-semibold tracking-tight">{totalCashEntries}</div>
                 <div className="text-muted-foreground text-xs">Cash Balances</div>
               </div>
               <div className="bg-muted/30 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold">{parsedRows.length}</div>
+                <div className="text-2xl font-semibold tracking-tight">{parsedRows.length}</div>
                 <div className="text-muted-foreground text-xs">CSV Rows</div>
               </div>
             </div>
