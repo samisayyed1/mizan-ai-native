@@ -279,10 +279,21 @@ export const HoldingsPage = () => {
 
   const openAssistantAssetDraft = useCallback(
     (kind: "asset" | "bank account" | "liability" = "asset") => {
-      addAsset.open({
-        source: "portfolio",
-        prompt: `I want to add a ${kind}. Ask only what you need, draft a structured ADD_ASSET action, and require review before saving.`,
-      });
+      // Per-kind seed prompt that's plain English the user will see
+      // pre-filled in the AddAssetDialog composer. They can edit before
+      // sending. The legacy version leaked tool-internal language
+      // ("structured ADD_ASSET action", "require review before saving")
+      // into a user-visible textarea — replaced with natural sentences
+      // per kind.
+      const seed = {
+        asset:
+          "Add an asset (property, vehicle, collectible, gold, etc.) — I'll tell you the details when you ask.",
+        "bank account":
+          "Add a bank or cash account — I'll share the balance and currency when you ask.",
+        liability:
+          "Add a liability (mortgage, loan, credit card balance) — I'll fill in the rate and balance when you ask.",
+      }[kind];
+      addAsset.open({ source: "portfolio", prompt: seed });
     },
     [addAsset],
   );
