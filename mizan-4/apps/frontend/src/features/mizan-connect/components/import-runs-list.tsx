@@ -153,11 +153,11 @@ function ImportRunItem({ run }: { run: ImportRun }) {
                   <p className="text-muted-foreground text-xs">Fetched</p>
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-green-600">{run.summary.inserted}</p>
+                  <p className="text-lg font-semibold text-success">{run.summary.inserted}</p>
                   <p className="text-muted-foreground text-xs">Inserted</p>
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-blue-600">{run.summary.updated}</p>
+                  <p className="text-lg font-semibold text-info">{run.summary.updated}</p>
                   <p className="text-muted-foreground text-xs">Updated</p>
                 </div>
                 <div>
@@ -198,7 +198,7 @@ function ImportRunItem({ run }: { run: ImportRun }) {
             {/* Error */}
             {run.error && (
               <div className="rounded-md bg-red-50 p-2 dark:bg-red-900/20">
-                <p className="text-sm text-red-600 dark:text-red-400">{run.error}</p>
+                <p className="text-sm text-destructive dark:text-red-400">{run.error}</p>
               </div>
             )}
 

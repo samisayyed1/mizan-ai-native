@@ -177,7 +177,7 @@ function BrokerAccountCard({ account, connections }: BrokerAccountCardProps) {
             <Tooltip>
               <TooltipTrigger>
                 {account.sync_enabled ? (
-                  <Icons.Eye className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                  <Icons.Eye className="h-3.5 w-3.5 shrink-0 text-info" />
                 ) : (
                   <Icons.EyeOff className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                 )}

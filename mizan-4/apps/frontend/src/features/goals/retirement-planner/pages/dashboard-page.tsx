@@ -508,10 +508,10 @@ export default function DashboardPage({
           {(() => {
             const statusAccent =
               heroHealth === "on_track"
-                ? "text-green-600"
+                ? "text-success"
                 : heroHealth === "at_risk"
                   ? "text-amber-600"
-                  : "text-red-500";
+                  : "text-destructive";
             const goalShortfallNominal =
               targetReconciliation?.shortfallNominal ?? retirementOverview.shortfallAtGoalAge;
             const goalShortfallToday =
@@ -884,7 +884,7 @@ export default function DashboardPage({
                             ? "text-green-700 dark:text-green-300"
                             : heroHealth === "at_risk"
                               ? "text-amber-700 dark:text-amber-300"
-                              : "text-red-600 dark:text-red-300"
+                              : "text-destructive dark:text-red-300"
                         }`}
                       >
                         {heroGuidance}

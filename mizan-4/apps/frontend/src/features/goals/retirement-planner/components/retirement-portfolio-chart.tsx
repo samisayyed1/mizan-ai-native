@@ -199,7 +199,7 @@ function RetirementChartTooltip({
         <span className="text-muted-foreground text-xs">Net portfolio change:</span>
         <span
           className={`text-xs font-semibold tabular-nums ${
-            point.netChange >= 0 ? "text-green-600" : "text-red-500"
+            point.netChange >= 0 ? "text-success" : "text-destructive"
           }`}
         >
           {point.netChange >= 0 ? "+" : "-"}
