@@ -703,5 +703,231 @@ pub async fn webhook(
     )
     .await;
 
+    // Audit Issue #5 — Webhook-triggered sync. Plaid sends webhooks like
+    // DEFAULT_UPDATE (new transactions ready) or HOLDINGS/DEFAULT_UPDATE
+    // (new holdings ready) precisely so we don't have to poll. Previously
+    // we just logged + returned 202; now we fan the relevant codes into
+    // a spawned sync task so the desktop sees the new data on its next
+    // poll without waiting for the scheduled tick.
+    //
+    // We must return 202 ACCEPTED within ~30s (Plaid's webhook timeout),
+    // so the sync runs detached via tokio::spawn. The spawned task
+    // acquires the same per-user advisory lock the synchronous /sync
+    // endpoint uses (Plaid-5 / audit Issue #4), so webhook-triggered
+    // syncs never race with user-initiated ones.
+    if should_trigger_sync(webhook_type, webhook_code) {
+        // Look up the user that owns this item. Two indexes needed:
+        // (a) the item must still be 'connected' (don't resurrect a
+        //     disconnected one), (b) we need the encrypted token.
+        match sqlx::query_as::<_, (uuid::Uuid, Vec<u8>)>(
+            r#"
+            SELECT user_id, access_token_encrypted
+            FROM plaid_items
+            WHERE item_id = $1 AND status <> 'disconnected'
+            LIMIT 1
+            "#,
+        )
+        .bind(item_id)
+        .fetch_optional(state.db())
+        .await
+        {
+            Ok(Some((user_id, encrypted))) => {
+                let state_clone = state.clone();
+                let item_id_owned = item_id.to_string();
+                let webhook_type_owned = webhook_type.to_string();
+                let webhook_code_owned = webhook_code.to_string();
+                tokio::spawn(async move {
+                    if let Err(err) = webhook_triggered_sync(
+                        state_clone,
+                        user_id,
+                        item_id_owned,
+                        encrypted,
+                        webhook_type_owned,
+                        webhook_code_owned,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            error = %err,
+                            "Webhook-triggered Plaid sync failed (non-fatal)"
+                        );
+                    }
+                });
+            }
+            Ok(None) => {
+                tracing::debug!(
+                    item_id = item_id,
+                    "Webhook for unknown or disconnected Plaid item; ignoring"
+                );
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    item_id = item_id,
+                    "Webhook item lookup failed"
+                );
+            }
+        }
+    }
+
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Which webhook codes warrant kicking off a sync.
+///
+/// Plaid documents many webhook codes; we only act on the ones that
+/// signal "new data is ready". TRANSACTIONS_REMOVED is included because
+/// it materially changes the user's ledger. ERROR + USER_PERMISSION_REVOKED
+/// are recorded but not synced — the next user-initiated sync will see
+/// the item's status reflect the new state.
+fn should_trigger_sync(webhook_type: &str, webhook_code: &str) -> bool {
+    matches!(
+        (webhook_type, webhook_code),
+        ("TRANSACTIONS", "SYNC_UPDATES_AVAILABLE")
+            | ("TRANSACTIONS", "DEFAULT_UPDATE")
+            | ("TRANSACTIONS", "INITIAL_UPDATE")
+            | ("TRANSACTIONS", "HISTORICAL_UPDATE")
+            | ("TRANSACTIONS", "TRANSACTIONS_REMOVED")
+            | ("HOLDINGS", "DEFAULT_UPDATE")
+            | ("INVESTMENTS_TRANSACTIONS", "DEFAULT_UPDATE")
+            | ("INVESTMENTS_TRANSACTIONS", "HISTORICAL_UPDATE")
+            | ("LIABILITIES", "DEFAULT_UPDATE"),
+    )
+}
+
+/// Detached webhook-triggered sync. Owns the same lock + concurrency
+/// guarantees as the synchronous /sync/plaid/sync handler so the two
+/// can't race.
+async fn webhook_triggered_sync(
+    state: AppState,
+    user_id: uuid::Uuid,
+    item_id: String,
+    access_token_encrypted: Vec<u8>,
+    webhook_type: String,
+    webhook_code: String,
+) -> Result<(), AppError> {
+    let plaid = state.plaid().ok_or_else(plaid_unavailable)?;
+
+    // Acquire the same per-user advisory lock the user-facing sync
+    // takes (Plaid-5). If a manual sync is already running for this
+    // user we silently bail — the manual sync will pull the new data.
+    let mut lock_conn = state.db().acquire().await?;
+    let lock_acquired: bool = sqlx::query_scalar(
+        "SELECT pg_try_advisory_lock(hashtext($1::text), hashtext('plaid_sync'))",
+    )
+    .bind(user_id.to_string())
+    .fetch_one(&mut *lock_conn)
+    .await?;
+    if !lock_acquired {
+        tracing::debug!(
+            user_id = %user_id,
+            item_id = %item_id,
+            "Webhook sync skipped: another sync already running for user"
+        );
+        return Ok(());
+    }
+    let _guard = PlaidSyncLockGuard {
+        conn: Some(lock_conn),
+        user_id: user_id.to_string(),
+    };
+
+    let access_token = plaid
+        .token_cipher
+        .decrypt(&access_token_encrypted)
+        .map_err(|err| {
+            tracing::error!(error = %err, item_id = %item_id, "webhook token decrypt failed");
+            AppError::internal("Plaid token decrypt failed")
+        })?;
+
+    tracing::info!(
+        user_id = %user_id,
+        item_id = %item_id,
+        webhook_type = %webhook_type,
+        webhook_code = %webhook_code,
+        "Webhook-triggered Plaid sync starting"
+    );
+
+    match sync_one_item(state.clone(), plaid, user_id, &item_id, &access_token).await {
+        Ok(resp) => {
+            tracing::info!(
+                user_id = %user_id,
+                item_id = %item_id,
+                accounts = resp.accounts_synced,
+                txns_added = resp.transactions_added,
+                holdings = resp.holdings_synced,
+                invest_txns = resp.investment_transactions_synced,
+                "Webhook-triggered Plaid sync complete"
+            );
+        }
+        Err(err) => {
+            let msg = err.to_string();
+            tracing::warn!(
+                user_id = %user_id,
+                item_id = %item_id,
+                error = %msg,
+                "Webhook-triggered Plaid sync failed; marking item"
+            );
+            let _ = repository::mark_item_error(
+                state.db(),
+                user_id,
+                &item_id,
+                &format!("Webhook sync failed: {}", msg),
+            )
+            .await;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_trigger_sync;
+
+    #[test]
+    fn transactions_sync_updates_available_triggers() {
+        assert!(should_trigger_sync("TRANSACTIONS", "SYNC_UPDATES_AVAILABLE"));
+    }
+
+    #[test]
+    fn transactions_default_update_triggers() {
+        assert!(should_trigger_sync("TRANSACTIONS", "DEFAULT_UPDATE"));
+    }
+
+    #[test]
+    fn holdings_default_update_triggers() {
+        assert!(should_trigger_sync("HOLDINGS", "DEFAULT_UPDATE"));
+    }
+
+    #[test]
+    fn investments_transactions_historical_update_triggers() {
+        assert!(should_trigger_sync(
+            "INVESTMENTS_TRANSACTIONS",
+            "HISTORICAL_UPDATE"
+        ));
+    }
+
+    #[test]
+    fn liabilities_default_update_triggers() {
+        assert!(should_trigger_sync("LIABILITIES", "DEFAULT_UPDATE"));
+    }
+
+    #[test]
+    fn unknown_webhook_does_not_trigger() {
+        assert!(!should_trigger_sync("UNKNOWN", "UNKNOWN"));
+    }
+
+    #[test]
+    fn item_error_does_not_trigger_sync() {
+        // ITEM errors are surfaced via the existing connection-status flow,
+        // not by re-syncing the broken item (which would just re-fail).
+        assert!(!should_trigger_sync("ITEM", "ERROR"));
+        assert!(!should_trigger_sync("ITEM", "USER_PERMISSION_REVOKED"));
+        assert!(!should_trigger_sync("ITEM", "LOGIN_REPAIRED"));
+    }
+
+    #[test]
+    fn webhook_verification_does_not_trigger() {
+        assert!(!should_trigger_sync("WEBHOOK", "WEBHOOK_UPDATE_ACKNOWLEDGED"));
+    }
 }
