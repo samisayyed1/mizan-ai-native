@@ -4,8 +4,9 @@ use uuid::Uuid;
 use crate::error::AppError;
 
 use super::types::{
-    PlaidAccount, PlaidAccountDto, PlaidConnectionDto, PlaidInvestmentTransaction, PlaidTransaction,
-    RemovedTransaction, StoredPlaidItem, UpsertPlaidItem,
+    PlaidAccount, PlaidAccountDto, PlaidConnectionDto, PlaidInvestmentTransaction,
+    PlaidInvestmentTransactionDto, PlaidTransaction, RemovedTransaction, StoredPlaidItem,
+    UpsertPlaidItem,
 };
 
 pub async fn upsert_item(pool: &PgPool, item: UpsertPlaidItem<'_>) -> Result<(), AppError> {
@@ -394,6 +395,88 @@ pub async fn replace_holdings(
         .await?;
     }
     Ok(holdings.len())
+}
+
+/// Page a user's investment transactions for the desktop.
+///
+/// Filters:
+///   - `since` (optional ISO date string) → `transaction_date >= since`.
+///   - `account_id` (optional) → narrow to a single Plaid account.
+///   - `limit` (capped server-side) → cap row count.
+///
+/// Ordered DESC by `transaction_date` so the desktop gets the most
+/// recent activity first (matches the activities-timeline reading
+/// pattern; older history can be paged with `since`).
+pub async fn list_investment_transactions(
+    pool: &PgPool,
+    user_id: Uuid,
+    since: Option<&str>,
+    account_id: Option<&str>,
+    limit: i64,
+) -> Result<Vec<PlaidInvestmentTransactionDto>, AppError> {
+    // Cast NUMERIC columns to TEXT in-query so Postgres does the decimal
+    // formatting — avoids needing sqlx's `bigdecimal` feature flag for
+    // a single read path. The desktop receives strings like "12.500000"
+    // and parses them into Decimal at the boundary, matching the
+    // existing Decimal-as-string convention used for activity wire data.
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            investment_transaction_id,
+            item_id,
+            account_id,
+            type,
+            subtype,
+            name,
+            security_id,
+            amount::text AS amount,
+            price::text AS price,
+            quantity::text AS quantity,
+            fees::text AS fees,
+            iso_currency_code,
+            unofficial_currency_code,
+            to_char(transaction_date, 'YYYY-MM-DD') AS transaction_date,
+            cancelled,
+            raw_json,
+            updated_at
+        FROM plaid_investment_transactions
+        WHERE user_id = $1
+          AND ($2::TEXT IS NULL OR account_id = $2)
+          AND ($3::DATE IS NULL OR transaction_date >= $3::DATE)
+        ORDER BY transaction_date DESC, investment_transaction_id ASC
+        LIMIT $4
+        "#,
+    )
+    .bind(user_id)
+    .bind(account_id)
+    .bind(since)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(PlaidInvestmentTransactionDto {
+            investment_transaction_id: row.get("investment_transaction_id"),
+            item_id: row.get("item_id"),
+            account_id: row.get("account_id"),
+            transaction_type: row.get("type"),
+            subtype: row.get("subtype"),
+            name: row.get("name"),
+            security_id: row.get("security_id"),
+            amount: row.get("amount"),
+            price: row.get("price"),
+            quantity: row.get("quantity"),
+            fees: row.get("fees"),
+            iso_currency_code: row.get("iso_currency_code"),
+            unofficial_currency_code: row.get("unofficial_currency_code"),
+            transaction_date: row.get("transaction_date"),
+            cancelled: row.get("cancelled"),
+            raw_json: row.get("raw_json"),
+            updated_at: row.get("updated_at"),
+        });
+    }
+    Ok(out)
 }
 
 /// Read the date we last successfully pulled investment transactions

@@ -52,6 +52,51 @@ pub struct PlaidConnectionDto {
     pub updated_at: OffsetDateTime,
 }
 
+/// Investment transaction row served to the desktop.
+///
+/// Mirrors the storage schema 1:1 but with camelCase keys for the JSON
+/// wire format. Monetary fields are serialised as strings rather than
+/// JSON numbers so the desktop can parse them into Decimal without f64
+/// round-trip drift at the boundary — same convention the desktop's
+/// Decimal-as-string adapter uses for activities.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaidInvestmentTransactionDto {
+    pub investment_transaction_id: String,
+    pub item_id: String,
+    pub account_id: String,
+    #[serde(rename = "type")]
+    pub transaction_type: Option<String>,
+    pub subtype: Option<String>,
+    pub name: Option<String>,
+    pub security_id: Option<String>,
+    /// Decimal-as-string. Empty string would be ambiguous; we emit
+    /// `null` for absent values via Option.
+    pub amount: Option<String>,
+    pub price: Option<String>,
+    pub quantity: Option<String>,
+    pub fees: Option<String>,
+    pub iso_currency_code: Option<String>,
+    pub unofficial_currency_code: Option<String>,
+    pub transaction_date: String,
+    pub cancelled: bool,
+    pub raw_json: serde_json::Value,
+    pub updated_at: OffsetDateTime,
+}
+
+/// Query-string parameters for GET /sync/plaid/investment-transactions.
+/// All optional — defaults pull the most recent 500 across all accounts.
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ListInvestmentTransactionsParams {
+    /// ISO YYYY-MM-DD. Only rows with `transaction_date >= since` returned.
+    pub since: Option<String>,
+    /// Filter to a single Plaid account_id.
+    pub account_id: Option<String>,
+    /// Max rows. Server-side cap at 1000 to bound memory.
+    pub limit: Option<i64>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaidAccountDto {

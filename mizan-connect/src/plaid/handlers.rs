@@ -1,5 +1,5 @@
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use serde_json::json;
@@ -13,7 +13,8 @@ use crate::state::AppState;
 use super::repository;
 use super::types::{
     ExchangePublicTokenRequest, ExchangePublicTokenResponse, LinkTokenRequest, LinkTokenResponse,
-    PlaidHealthResponse, PlaidSyncRequest, PlaidSyncResponse, PlaidWebhookPayload, UpsertPlaidItem,
+    ListInvestmentTransactionsParams, PlaidHealthResponse, PlaidInvestmentTransactionDto,
+    PlaidSyncRequest, PlaidSyncResponse, PlaidWebhookPayload, UpsertPlaidItem,
 };
 use super::webhook_verifier::{self, WebhookVerifyError};
 
@@ -124,6 +125,35 @@ pub async fn list_accounts(
     user: AuthenticatedUser,
 ) -> Result<Json<Vec<super::types::PlaidAccountDto>>, AppError> {
     Ok(Json(repository::list_accounts(state.db(), user.id).await?))
+}
+
+/// GET /sync/plaid/investment-transactions?since=YYYY-MM-DD&accountId=...&limit=N
+///
+/// Returns Plaid investment transactions for the authenticated user,
+/// ordered newest first. Cap the requested `limit` at 1000 so a single
+/// request can't pull the entire history into memory; the desktop can
+/// paginate via `since`.
+pub async fn list_investment_transactions(
+    State(state): State<AppState>,
+    user: AuthenticatedUser,
+    Query(params): Query<ListInvestmentTransactionsParams>,
+) -> Result<Json<Vec<PlaidInvestmentTransactionDto>>, AppError> {
+    const DEFAULT_LIMIT: i64 = 500;
+    const MAX_LIMIT: i64 = 1000;
+    let limit = params
+        .limit
+        .unwrap_or(DEFAULT_LIMIT)
+        .clamp(1, MAX_LIMIT);
+
+    let rows = repository::list_investment_transactions(
+        state.db(),
+        user.id,
+        params.since.as_deref(),
+        params.account_id.as_deref(),
+        limit,
+    )
+    .await?;
+    Ok(Json(rows))
 }
 
 pub async fn disconnect_connection(
