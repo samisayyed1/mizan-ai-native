@@ -341,6 +341,24 @@ export {
 // AI Streaming (web-specific HTTP fetch implementation)
 export { streamAiChat } from "./ai-streaming";
 
+// Notifications — no-op stub on web; the engine + storage live on the
+// desktop. See ./notifications for the rationale.
+export {
+  listNotifications,
+  notificationsUnreadCount,
+  markNotificationRead,
+  dismissNotification,
+  markAllNotificationsRead,
+  notificationAdapter,
+  type Notification,
+  type NotificationsPage,
+} from "./notifications";
+export type {
+  NotificationKind,
+  NotificationSeverity,
+  NotificationAdapter,
+} from "../types-notifications";
+
 // Event Listeners (web-specific SSE implementation)
 export {
   listenBrokerSyncComplete,

@@ -7,7 +7,9 @@ use mizan_core::{
     events::DomainEventSink,
     fx, goals, health, limits,
     net_worth_snapshot::NetWorthSnapshotService,
-    news, portfolio, quotes, settings,
+    news,
+    notifications::NotificationService,
+    portfolio, quotes, settings,
     sync_ledger::SyncRunLedger,
     taxonomies,
     truth_engine::TruthLedger,
@@ -16,6 +18,7 @@ use mizan_device_sync::{engine::DeviceSyncRuntimeState, DeviceEnrollService};
 use mizan_storage_sqlite::{
     daily_brief::SqliteDailyBriefService,
     net_worth_snapshot::SqliteNetWorthSnapshotService,
+    notifications::SqliteNotificationService,
     portfolio::snapshot::SnapshotRepository,
     sync::AppSyncRepository,
     sync_run_ledger::SqliteSyncRunLedger,
@@ -96,6 +99,11 @@ pub struct ServiceContext {
     pub net_worth_snapshot_service: Arc<dyn NetWorthSnapshotService>,
     /// §A22 — daily brief persistence (no email transport yet).
     pub daily_brief_service: Arc<dyn DailyBriefService>,
+    /// Notify track — personalized AI wealth-insight notifications.
+    /// Backed by the `notifications` SQLite table. Read by the Tauri
+    /// commands in `commands::notifications`; written by the insights
+    /// scheduler in `scheduler::insights`.
+    pub notification_service: Arc<dyn NotificationService>,
     /// §A1/§A2 — immutable hash-chained ledger that activities + accounts +
     /// alt-asset writes append to. Holdings derivation will move to ledger
     /// replay in a follow-on PR.
@@ -255,6 +263,9 @@ impl ServiceContext {
     pub fn daily_brief_service(&self) -> Arc<dyn DailyBriefService> {
         Arc::clone(&self.daily_brief_service)
     }
+    pub fn notification_service(&self) -> Arc<dyn NotificationService> {
+        Arc::clone(&self.notification_service)
+    }
     pub fn truth_ledger(&self) -> Arc<dyn TruthLedger> {
         Arc::clone(&self.truth_ledger)
     }
@@ -280,6 +291,9 @@ pub fn build_v31_foundation_defaults(
     );
     let daily_brief: Arc<dyn DailyBriefService> =
         Arc::new(SqliteDailyBriefService::new(Arc::clone(&pool), writer.clone()));
+    let notifications: Arc<dyn NotificationService> = Arc::new(
+        SqliteNotificationService::new(Arc::clone(&pool), writer.clone()),
+    );
     let truth_ledger: Arc<dyn TruthLedger> = Arc::new(SqliteTruthLedger::new(
         Arc::clone(&pool),
         writer.clone(),
@@ -290,6 +304,7 @@ pub fn build_v31_foundation_defaults(
         sync_ledger,
         nw_snapshot,
         daily_brief,
+        notifications,
         truth_ledger,
         retry_queue,
     }
@@ -304,6 +319,7 @@ pub struct V31Foundations {
     pub sync_ledger: Arc<dyn SyncRunLedger>,
     pub nw_snapshot: Arc<dyn NetWorthSnapshotService>,
     pub daily_brief: Arc<dyn DailyBriefService>,
+    pub notifications: Arc<dyn NotificationService>,
     pub truth_ledger: Arc<dyn TruthLedger>,
     pub retry_queue: Arc<SqliteTruthLedgerRetryQueue>,
 }

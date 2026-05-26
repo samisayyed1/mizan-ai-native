@@ -151,4 +151,12 @@ export const QueryKeys = {
     accountId,
     date,
   ],
+
+  // Notify track — personalized AI wealth-notification center.
+  // `NOTIFICATIONS` is the page list (capped at `limit`); the
+  // unread count has its own key so the bell badge stays cheap to
+  // poll without paginating.
+  NOTIFICATIONS: "notifications",
+  notifications: (limit?: number) => [QueryKeys.NOTIFICATIONS, limit ?? 25],
+  NOTIFICATIONS_UNREAD_COUNT: "notificationsUnreadCount",
 } as const;

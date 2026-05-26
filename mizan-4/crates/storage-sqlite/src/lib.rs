@@ -51,6 +51,7 @@ pub mod news;
 pub mod portfolio;
 pub mod daily_brief;
 pub mod net_worth_snapshot;
+pub mod notifications;
 pub mod settings;
 pub mod sync;
 pub mod sync_run_ledger;

@@ -20,6 +20,8 @@ pub mod limits;
 pub mod mizan_error;
 pub mod net_worth_snapshot;
 pub mod news;
+pub mod notifications;
+pub mod insights;
 pub mod onboarding;
 #[cfg(test)]
 pub mod perf_budget;

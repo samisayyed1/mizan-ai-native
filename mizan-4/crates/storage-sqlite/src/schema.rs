@@ -566,6 +566,22 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    notifications (id) {
+        id -> Text,
+        kind -> Text,
+        severity -> Text,
+        title -> Text,
+        body -> Text,
+        deep_link -> Nullable<Text>,
+        payload_json -> Text,
+        dedupe_key -> Text,
+        created_at -> BigInt,
+        read_at -> Nullable<BigInt>,
+        dismissed_at -> Nullable<BigInt>,
+    }
+}
+
 diesel::joinable!(accounts -> platforms (platform_id));
 diesel::joinable!(activities -> accounts (account_id));
 diesel::joinable!(activities -> assets (asset_id));
@@ -624,4 +640,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     daily_briefs,
     truth_ledger_entries,
     truth_ledger_retry_queue,
+    notifications,
 );

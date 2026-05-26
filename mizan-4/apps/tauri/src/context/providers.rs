@@ -189,6 +189,7 @@ pub async fn initialize_context(
         sync_ledger,
         nw_snapshot: net_worth_snapshot_service,
         daily_brief: daily_brief_service,
+        notifications: notification_service,
         truth_ledger,
         retry_queue: truth_ledger_retry_queue,
     } = crate::context::registry::build_v31_foundation_defaults(pool.clone(), writer.clone());
@@ -422,6 +423,7 @@ pub async fn initialize_context(
             sync_ledger,
             net_worth_snapshot_service,
             daily_brief_service,
+            notification_service,
             truth_ledger,
             truth_ledger_retry_queue,
         },

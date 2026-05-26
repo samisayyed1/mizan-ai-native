@@ -30,6 +30,12 @@ tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-log = "2"
 tauri-plugin-deep-link = "2"
+# Native OS notifications for the wealth-insights center (Notify-1).
+# macOS Notification Center / Windows Action Center / Linux freedesktop.
+# Permission is requested lazily on first emit; if denied, insights
+# still surface in the in-app notification center (Notify-7) so the
+# user never silently misses anything.
+tauri-plugin-notification = "2"
 
 # Workspace dependencies
 serde = { workspace = true }

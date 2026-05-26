@@ -466,7 +466,11 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_deep_link::init())
+        // Native OS notifications for the personalized wealth-insights
+        // center. Surfacing happens in `scheduler::insights::dispatch`
+        // — this only registers the plugin so the IPC bridge exists.
+        .plugin(tauri_plugin_notification::init());
 
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
@@ -604,6 +608,14 @@ pub fn run() {
             commands::limits::update_contribution_limit,
             commands::limits::delete_contribution_limit,
             commands::limits::calculate_deposits_for_contribution_limit,
+            // Personalized wealth-notification center (Notify-6)
+            commands::notifications::list_notifications,
+            commands::notifications::notifications_unread_count,
+            commands::notifications::mark_notification_read,
+            commands::notifications::dismiss_notification,
+            commands::notifications::mark_all_notifications_read,
+            #[cfg(debug_assertions)]
+            commands::notifications::debug_emit_test_notification,
             // Utility commands
             commands::utilities::get_app_info,
             commands::utilities::export_user_data_json,
