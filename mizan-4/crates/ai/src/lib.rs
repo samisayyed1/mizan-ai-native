@@ -64,6 +64,7 @@ pub mod agent_recipes;
 pub mod chat;
 pub mod env;
 pub mod error;
+pub mod insights_digest;
 #[cfg(test)]
 pub mod eval;
 pub mod prompt_template;

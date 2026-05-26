@@ -7,11 +7,16 @@ import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { OnboardingAppearance, OnboardingAppearanceHandle } from "./onboarding-appearance";
+import { OnboardingSignIn } from "./onboarding-signin";
 import { OnboardingStep1 } from "./onboarding-step1";
 import { OnboardingStep2, OnboardingStep2Handle } from "./onboarding-step2";
 
-const DESKTOP_MAX_STEPS = 3;
-const MOBILE_MAX_STEPS = 3;
+// AI-Native-3 — insert a new step 2 ("Sign in to Mizan Connect") so
+// new users discover managed AI + cross-device sync during onboarding
+// rather than finding it buried in settings. Skipping is a first-class
+// path; the rest of the app is identical either way.
+const DESKTOP_MAX_STEPS = 4;
+const MOBILE_MAX_STEPS = 4;
 
 const OnboardingPage = () => {
   const { data: settings, isLoading: isSettingsLoading } = useSettings();
@@ -39,9 +44,15 @@ const OnboardingPage = () => {
   };
 
   const handleContinue = () => {
-    if (currentStep === 2 && settingsStepRef.current) {
+    // Step ordering after AI-Native-3:
+    //   1) Welcome
+    //   2) Sign-in (optional — Continue skips it; the in-step button
+    //      signs in then advances)
+    //   3) Currency / timezone (ref-driven submit)
+    //   4) Appearance (ref-driven submit)
+    if (currentStep === 3 && settingsStepRef.current) {
       settingsStepRef.current.submitForm();
-    } else if (currentStep === 3 && appearanceStepRef.current) {
+    } else if (currentStep === 4 && appearanceStepRef.current) {
       appearanceStepRef.current.submitForm();
     } else {
       handleNext();
@@ -87,13 +98,16 @@ const OnboardingPage = () => {
           >
             {currentStep === 1 && <OnboardingStep1 />}
             {currentStep === 2 && (
+              <OnboardingSignIn onSkip={handleNext} onSignedIn={handleNext} />
+            )}
+            {currentStep === 3 && (
               <OnboardingStep2
                 ref={settingsStepRef}
                 onNext={handleNext}
                 onValidityChange={setIsStepValid}
               />
             )}
-            {currentStep === 3 && (
+            {currentStep === 4 && (
               <OnboardingAppearance
                 ref={appearanceStepRef}
                 onNext={handleNext}

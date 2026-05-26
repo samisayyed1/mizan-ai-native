@@ -561,6 +561,158 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
     if let Some(banner) = banner {
         push_os_notification(handle, &banner.title, &banner.body);
     }
+
+    // Notify-4 — AI-narrated digest. Fail-soft: any path that can't
+    // produce a digest (entitlement, missing key, network) is silently
+    // skipped — the user still has the deterministic rows above.
+    if let Err(e) = run_ai_digest(handle, context, &newly_emitted).await {
+        debug!("Insights AI digest skipped: {}", e);
+    }
+}
+
+/// Notify-4 — wrap the day's deterministic insights in a single
+/// 2-sentence AI-generated digest and persist it as one additional
+/// `AiDigest` notification row.
+///
+/// COST GATE
+///  - `managed_ai` must be true (Silver/Gold). Free returns immediately.
+///  - The persisted row's dedupe_key is `ai_digest:<today>`, so the
+///    UNIQUE index naturally prevents more than one digest per day per
+///    user — the entire rest of this function is a no-op on the second
+///    call within the same UTC day.
+///
+/// FAIL-SOFT
+///  - Returns `Ok(())` on the happy path AND on quiet skips (no
+///    entitlement, no Connect session, no insights to summarise).
+///  - Returns `Err` only for unexpected runtime failures the caller
+///    should log; the user-visible bell still has all the
+///    deterministic rows we emitted above, so the digest is purely
+///    additive value.
+async fn run_ai_digest(
+    handle: &AppHandle,
+    context: &std::sync::Arc<ServiceContext>,
+    newly_emitted: &[mizan_core::notifications::Notification],
+) -> Result<(), String> {
+    use mizan_ai::insights_digest::{
+        InsightForDigest, InsightsDigestService, InsightsDigestServiceTrait,
+    };
+    use mizan_core::notifications::{Notification, NotificationKind, NotificationSeverity};
+
+    // 1) Filter out anything that's already an AiDigest from a prior tick
+    //    so we don't recursively summarise our own output.
+    let insights: Vec<&Notification> = newly_emitted
+        .iter()
+        .filter(|n| n.kind != NotificationKind::AiDigest)
+        .collect();
+    if insights.is_empty() {
+        return Ok(());
+    }
+
+    // 2) Entitlement gate — only Silver/Gold get the managed-AI digest.
+    //    Free tier (and any unsigned-in user) keeps the deterministic
+    //    rows but skips the LLM call.
+    let ent = match context.connect_service().get_entitlements().await {
+        Ok(e) => e,
+        Err(e) => {
+            debug!("AI digest: get_entitlements failed ({}). Skipping.", e);
+            return Ok(());
+        }
+    };
+    if !ent.managed_ai {
+        debug!("AI digest: managed_ai disabled (plan={}). Skipping.", ent.plan);
+        return Ok(());
+    }
+
+    // 3) Resolve provider+model from the user's configured AI settings.
+    //    We use the *default* provider so the digest stays consistent
+    //    with what the user picked for chat.
+    let providers = context
+        .ai_provider_service
+        .get_ai_providers()
+        .map_err(|e| format!("get_ai_providers failed: {e}"))?;
+    let default_id = providers
+        .default_provider
+        .clone()
+        .ok_or_else(|| "no default AI provider configured".to_string())?;
+    let provider = providers
+        .providers
+        .iter()
+        .find(|p| p.id == default_id)
+        .ok_or_else(|| format!("default provider {default_id} not in catalog"))?;
+    let provider_id = provider.id.clone();
+    // `selected_model` is the user override; fall back to `default_model`
+    // (the catalog's per-provider ship default — `gpt-4o-mini` for mizan).
+    let model_id = provider
+        .selected_model
+        .clone()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| provider.default_model.clone());
+
+    // 4) Build the typed slice for the digest service.
+    let digest_inputs: Vec<InsightForDigest> = insights
+        .iter()
+        .map(|n| InsightForDigest {
+            title: n.title.clone(),
+            body: n.body.clone(),
+            severity: n.severity.as_str().to_string(),
+        })
+        .collect();
+    let base_currency = context.get_base_currency();
+
+    // 5) Generate. Failures here are noisy at debug level but never
+    //    propagate up — this is best-effort, not a hard dependency.
+    let env = std::sync::Arc::clone(&context.ai_environment);
+    let digest_svc = InsightsDigestService::new(env);
+    let summary = match digest_svc
+        .generate(&digest_inputs, &base_currency, &provider_id, &model_id)
+        .await
+    {
+        Ok(Some(text)) => text,
+        Ok(None) => {
+            debug!("AI digest: provider returned None (no managed key / empty body)");
+            return Ok(());
+        }
+        Err(e) => {
+            debug!("AI digest: provider call failed: {}", e);
+            return Ok(());
+        }
+    };
+
+    // 6) Persist as a single AiDigest notification, dedupe_key gates it
+    //    to one-per-UTC-day. Severity = Info so the OS push doesn't
+    //    fire — we already pushed the highest-severity raw row above;
+    //    the digest is for the in-app bell.
+    let today = chrono::Utc::now().date_naive();
+    let dedupe = format!("ai_digest:{}", today.format("%Y-%m-%d"));
+    let digest_row = Notification {
+        id: uuid::Uuid::new_v4().to_string(),
+        kind: NotificationKind::AiDigest,
+        severity: NotificationSeverity::Info,
+        title: format!("Mizan AI digest — {}", today.format("%b %-d")),
+        body: summary,
+        deep_link: Some("mizan://dashboard".to_string()),
+        payload_json: serde_json::json!({
+            "providerId": provider_id,
+            "modelId": model_id,
+            "sourceInsightIds": insights.iter().map(|n| &n.id).collect::<Vec<_>>(),
+        })
+        .to_string(),
+        dedupe_key: dedupe,
+        created_at_ms: chrono::Utc::now().timestamp_millis(),
+        read_at_ms: None,
+        dismissed_at_ms: None,
+    };
+
+    match context.notification_service().emit(digest_row).await {
+        Ok(true) => {
+            info!("AI digest emitted for {today}");
+            use tauri::Emitter;
+            let _ = handle.emit("notifications:new", 1);
+        }
+        Ok(false) => debug!("AI digest: already exists for {today} (dedupe hit)"),
+        Err(e) => return Err(format!("digest persist failed: {e}")),
+    }
+    Ok(())
 }
 
 /// Send a single native OS notification through tauri-plugin-notification.
