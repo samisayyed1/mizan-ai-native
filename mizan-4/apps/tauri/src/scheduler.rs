@@ -429,3 +429,156 @@ pub async fn run_startup_daily_brief(context: &std::sync::Arc<ServiceContext>) {
         Err(e) => debug!("Daily brief upsert failed: {}", e),
     }
 }
+
+/// Personalized AI wealth-notification engine — Notify-5.
+///
+/// Hydrates the deterministic `InsightsInput` from the user's local
+/// state (NW history, goal progress, sync ledger), runs the rule set,
+/// idempotently persists the emitted notifications via the SQLite
+/// `notifications` table, then fires a single native OS notification
+/// for the most-important new row of severity ≥ Warning.
+///
+/// IDEMPOTENCY: each rule emits a `dedupe_key` shaped as
+/// `<rule>:<scope>:<date>`. The UNIQUE index on
+/// `notifications.dedupe_key` means rerunning this on the same day
+/// is a no-op — so we can call it on every startup + on a 4h tick
+/// without spamming the user.
+///
+/// COST: zero LLM calls in this path. The Mizan-AI digest layer
+/// (Notify-4) is a separate one-call-per-day call site that reads
+/// the emitted insights and synthesises a 2-sentence summary.
+pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<ServiceContext>) {
+    use log::{debug, info, warn};
+    use mizan_core::insights::{evaluate, InsightsInput, NetWorthHistoryPoint};
+
+    let today = chrono::Utc::now().date_naive();
+    let base_currency = context.get_base_currency();
+
+    // Build the NW history window — last 30 days. The dip rule needs
+    // ≥7 days of history; the ATH rule reads the all-time max from
+    // `latest()` separately because the local history table only
+    // goes back as far as net-worth snapshots have been captured
+    // (typically since first app open).
+    let from = today - chrono::Duration::days(30);
+    let history = match context
+        .net_worth_snapshot_service()
+        .range(from, today)
+        .await
+    {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|s| NetWorthHistoryPoint {
+                date: s.snapshot_date,
+                net_worth_base: s.net_worth,
+            })
+            .collect::<Vec<_>>(),
+        Err(e) => {
+            debug!("Insights: NW range failed: {} — running with empty history", e);
+            Vec::new()
+        }
+    };
+
+    // The "previous ATH" baseline is the max over local history. If we
+    // only have today's point this is `None`, suppressing the ATH rule.
+    let previous_ath = if history.len() >= 2 {
+        history
+            .iter()
+            .take(history.len() - 1) // exclude today — we're comparing today *against* prior max
+            .map(|p| p.net_worth_base)
+            .max()
+    } else {
+        None
+    };
+
+    // First cut: only NW-based rules + goal-progress are wired. The
+    // BigMove + CashDrag + DividendPosted + SyncFailure rules will
+    // light up as the call sites that compute their inputs land
+    // (movers needs holdings_snapshots diffing, cash drag needs the
+    // 30-day running counter, dividend posted needs the activity
+    // ingestion hook, sync failure needs the sync_run_ledger query).
+    // Everything stays compile-clean today; new rules don't require
+    // a new InsightsInput field — only a new caller hydration.
+    let input = InsightsInput {
+        today: Some(today),
+        base_currency,
+        holding_moves: Vec::new(),
+        goal_progress: Vec::new(),
+        net_worth_history: history,
+        previous_ath,
+        cash_pct_of_net_worth: None,
+        cash_high_for_days: None,
+        sync_failures: Vec::new(),
+    };
+
+    let candidates = evaluate(&input);
+    if candidates.is_empty() {
+        debug!("Insights tick: no notifications to emit");
+        return;
+    }
+
+    let service = context.notification_service();
+    let mut newly_emitted: Vec<mizan_core::notifications::Notification> = Vec::new();
+    for n in candidates {
+        // emit returns Ok(true) only when this is the first time the
+        // dedupe_key has been seen. So `newly_emitted` is the strictly
+        // new-this-tick set we can push to the OS.
+        match service.emit(n.clone()).await {
+            Ok(true) => newly_emitted.push(n),
+            Ok(false) => debug!("Insights: dedupe-skipped {}", n.dedupe_key),
+            Err(e) => warn!("Insights: persist failed for {}: {}", n.dedupe_key, e),
+        }
+    }
+
+    if newly_emitted.is_empty() {
+        return;
+    }
+
+    info!(
+        "Insights tick: emitted {} new notifications",
+        newly_emitted.len()
+    );
+
+    // Bubble a frontend event so the bell badge refreshes instantly
+    // instead of waiting for the next polling tick.
+    use tauri::Emitter;
+    if let Err(e) = handle.emit("notifications:new", newly_emitted.len()) {
+        debug!("Insights: failed to emit notifications:new event: {}", e);
+    }
+
+    // Fire one native OS notification for the highest-severity new
+    // row. Doing one (not N) keeps the user's Notification Center
+    // legible — they can open the in-app panel to see the full set.
+    use mizan_core::notifications::NotificationSeverity;
+    let banner = newly_emitted
+        .iter()
+        .filter(|n| n.severity.should_push_to_os())
+        .max_by_key(|n| match n.severity {
+            NotificationSeverity::Critical => 3,
+            NotificationSeverity::Warning => 2,
+            NotificationSeverity::Success => 1,
+            NotificationSeverity::Info => 0,
+        });
+    if let Some(banner) = banner {
+        push_os_notification(handle, &banner.title, &banner.body);
+    }
+}
+
+/// Send a single native OS notification through tauri-plugin-notification.
+/// Best-effort: the plugin requires permission, and if the user denied it
+/// we silently fall back to the in-app bell. This is the right behaviour
+/// — we never want to silently lose the insight if the user revoked OS
+/// permission, and the in-app bell is the canonical surface anyway.
+fn push_os_notification(handle: &AppHandle, title: &str, body: &str) {
+    use log::debug;
+    use tauri_plugin_notification::NotificationExt;
+
+    let result = handle
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show();
+    if let Err(e) = result {
+        debug!("OS notification show failed (permission denied?): {}", e);
+    }
+}

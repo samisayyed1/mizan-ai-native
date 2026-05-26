@@ -88,7 +88,7 @@ impl NotificationService for InMemoryNotificationService {
             .filter(|r| r.dismissed_at_ms.is_none())
             .cloned()
             .collect();
-        active.sort_by(|a, b| b.created_at_ms.cmp(&a.created_at_ms));
+        active.sort_by_key(|r| std::cmp::Reverse(r.created_at_ms));
         let unread_count = active.iter().filter(|r| r.read_at_ms.is_none()).count() as i64;
         active.truncate(limit);
         Ok(NotificationsPage {

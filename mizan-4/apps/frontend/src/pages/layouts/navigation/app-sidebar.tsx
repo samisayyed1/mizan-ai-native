@@ -1,6 +1,7 @@
 import { isWeb } from "@/adapters";
 import { useAuth } from "@/context/auth-context";
 import { useAddAsset } from "@/features/add-asset";
+import { NotificationBell } from "@/features/notifications/notification-bell";
 import { isAppleDevice } from "@/lib/device-utils";
 import { cn } from "@/lib/utils";
 import {
@@ -122,6 +123,9 @@ export function AppSidebar({ navigation }: AppSidebarProps) {
                 {navigation?.addons && navigation.addons.length > 0 && (
                   <AddonsMenu addons={navigation.addons} collapsed={collapsed} />
                 )}
+
+                {/* Notify-7: personalized AI wealth-notification bell. */}
+                <NotificationBell collapsed={collapsed} />
               </nav>
             </div>
 

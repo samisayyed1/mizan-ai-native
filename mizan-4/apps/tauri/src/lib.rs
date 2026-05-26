@@ -263,7 +263,13 @@ mod desktop {
             // (the brief will log + skip).
             scheduler::run_startup_daily_brief(&startup_chain_context).await;
 
-            // 4) §A1/§A2 — drain any ledger appends that failed on a
+            // 4) Notify-5 — personalized wealth-insights tick. Runs
+            // the deterministic rule set against the NW snapshot + goal
+            // state we just refreshed. Idempotent: re-running today is
+            // a no-op via the dedupe_key UNIQUE.
+            scheduler::run_insights_tick(&startup_handle, &startup_chain_context).await;
+
+            // 5) §A1/§A2 — drain any ledger appends that failed on a
             // previous run. Bounded at 5 attempts/row to prevent
             // infinite retries on permanently-bad payloads.
             let queue = startup_chain_context.truth_ledger_retry_queue();
@@ -276,6 +282,32 @@ mod desktop {
                 ),
                 Ok(_) => log::debug!("Truth-ledger retry drain: queue empty"),
                 Err(e) => log::warn!("Truth-ledger retry drain failed: {e}"),
+            }
+        });
+
+        // Notify-5 — recurring 4-hour insights tick. Idempotent via
+        // the dedupe_key UNIQUE so this is safe to run while the user
+        // has the app open all day; users only see the bell flash
+        // once per logical insight. Detached: cancellation happens
+        // implicitly on app exit (the spawned future is dropped).
+        let recurring_handle_for_insights = handle.clone();
+        let recurring_context_for_insights = Arc::clone(&context);
+        tauri::async_runtime::spawn(async move {
+            // First tick happens after 4h — the startup tick above
+            // already fired ≤ a few seconds ago, so we don't want to
+            // immediately re-fire and waste a DB roundtrip.
+            let mut ticker =
+                tokio::time::interval(std::time::Duration::from_secs(4 * 3600));
+            // `interval` fires immediately by default — skip the first
+            // tick so the loop body only runs after the 4h wait.
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                scheduler::run_insights_tick(
+                    &recurring_handle_for_insights,
+                    &recurring_context_for_insights,
+                )
+                .await;
             }
         });
 

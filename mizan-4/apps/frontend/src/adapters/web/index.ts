@@ -373,6 +373,7 @@ export {
   listenMarketSyncError,
   listenMarketSyncStart,
   listenNavigateToRoute,
+  listenNotificationsNew,
   listenPortfolioUpdateComplete,
   listenPortfolioUpdateError,
   listenPortfolioUpdateStart,
