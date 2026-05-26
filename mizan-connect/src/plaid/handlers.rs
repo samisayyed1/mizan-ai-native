@@ -459,6 +459,7 @@ async fn sync_investment_transactions(
             user_id,
             item_id,
             &page.investment_transactions,
+            &page.securities,
             end,
         )
         .await?;

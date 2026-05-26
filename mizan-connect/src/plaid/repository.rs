@@ -429,6 +429,11 @@ pub async fn list_investment_transactions(
             subtype,
             name,
             security_id,
+            security_ticker_symbol,
+            security_name,
+            security_type,
+            security_cusip,
+            security_isin,
             amount::text AS amount,
             price::text AS price,
             quantity::text AS quantity,
@@ -464,6 +469,11 @@ pub async fn list_investment_transactions(
             subtype: row.get("subtype"),
             name: row.get("name"),
             security_id: row.get("security_id"),
+            security_ticker_symbol: row.get("security_ticker_symbol"),
+            security_name: row.get("security_name"),
+            security_type: row.get("security_type"),
+            security_cusip: row.get("security_cusip"),
+            security_isin: row.get("security_isin"),
             amount: row.get("amount"),
             price: row.get("price"),
             quantity: row.get("quantity"),
@@ -508,6 +518,11 @@ pub async fn investment_transactions_sync_through(
 /// signal Plaid documents — we keep the row and flip the `cancelled`
 /// flag so the desktop can reconcile against the historic ledger.
 ///
+/// `securities` carries the page's matching securities array; we use
+/// it to denormalize ticker_symbol/name/type/cusip/isin onto the
+/// transaction row so the desktop can resolve to a local asset in a
+/// single GET.
+///
 /// On success, stamp `investment_transactions_sync_through` to the
 /// supplied `synced_through` (typically the end_date the handler used)
 /// so the next incremental sync narrows its window correctly.
@@ -516,11 +531,45 @@ pub async fn store_investment_transactions(
     user_id: Uuid,
     item_id: &str,
     transactions: &[PlaidInvestmentTransaction],
+    securities: &[serde_json::Value],
     synced_through: time::OffsetDateTime,
 ) -> Result<usize, AppError> {
+    // Build a security_id → (ticker, name, type, cusip, isin) lookup so
+    // each transaction's denormalized columns can be filled in O(1).
+    // Done once per batch, not per transaction.
+    let mut sec_index: std::collections::HashMap<
+        &str,
+        (
+            Option<&str>,
+            Option<&str>,
+            Option<&str>,
+            Option<&str>,
+            Option<&str>,
+        ),
+    > = std::collections::HashMap::with_capacity(securities.len());
+    for sec in securities {
+        if let Some(id) = sec.get("security_id").and_then(|v| v.as_str()) {
+            sec_index.insert(
+                id,
+                (
+                    sec.get("ticker_symbol").and_then(|v| v.as_str()),
+                    sec.get("name").and_then(|v| v.as_str()),
+                    sec.get("type").and_then(|v| v.as_str()),
+                    sec.get("cusip").and_then(|v| v.as_str()),
+                    sec.get("isin").and_then(|v| v.as_str()),
+                ),
+            );
+        }
+    }
+
     let mut written = 0usize;
     for txn in transactions {
         let cancelled = txn.cancel_transaction_id.is_some();
+        let (sec_symbol, sec_name, sec_type, sec_cusip, sec_isin) = txn
+            .security_id
+            .as_deref()
+            .and_then(|sid| sec_index.get(sid).copied())
+            .unwrap_or((None, None, None, None, None));
         // PlaidInvestmentTransaction.date is "YYYY-MM-DD"; let Postgres
         // do the cast via $N::DATE rather than parsing in Rust.
         sqlx::query(
@@ -529,11 +578,14 @@ pub async fn store_investment_transactions(
                 user_id, item_id, account_id, investment_transaction_id, type, subtype,
                 name, security_id, amount, price, quantity, fees,
                 iso_currency_code, unofficial_currency_code, transaction_date,
-                cancelled, raw_json
+                cancelled, raw_json,
+                security_ticker_symbol, security_name, security_type,
+                security_cusip, security_isin
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                $13, $14, $15::DATE, $16, $17
+                $13, $14, $15::DATE, $16, $17,
+                $18, $19, $20, $21, $22
             )
             ON CONFLICT (user_id, investment_transaction_id)
             DO UPDATE SET
@@ -552,6 +604,11 @@ pub async fn store_investment_transactions(
                 transaction_date = EXCLUDED.transaction_date,
                 cancelled = EXCLUDED.cancelled,
                 raw_json = EXCLUDED.raw_json,
+                security_ticker_symbol = EXCLUDED.security_ticker_symbol,
+                security_name = EXCLUDED.security_name,
+                security_type = EXCLUDED.security_type,
+                security_cusip = EXCLUDED.security_cusip,
+                security_isin = EXCLUDED.security_isin,
                 updated_at = NOW()
             "#,
         )
@@ -574,6 +631,11 @@ pub async fn store_investment_transactions(
         .bind(&txn.date)
         .bind(cancelled)
         .bind(serde_json::to_value(txn).unwrap_or(serde_json::Value::Null))
+        .bind(sec_symbol)
+        .bind(sec_name)
+        .bind(sec_type)
+        .bind(sec_cusip)
+        .bind(sec_isin)
         .execute(pool)
         .await?;
         written += 1;

@@ -70,6 +70,15 @@ pub struct PlaidInvestmentTransactionDto {
     pub subtype: Option<String>,
     pub name: Option<String>,
     pub security_id: Option<String>,
+    /// Denormalized from the Plaid securities array at sync time so the
+    /// desktop can resolve to a local asset in a single GET (rather than
+    /// per-security round-trips). NULL only on rows from the pre-0010
+    /// schema until the next sync refreshes them.
+    pub security_ticker_symbol: Option<String>,
+    pub security_name: Option<String>,
+    pub security_type: Option<String>,
+    pub security_cusip: Option<String>,
+    pub security_isin: Option<String>,
     /// Decimal-as-string. Empty string would be ambiguous; we emit
     /// `null` for absent values via Option.
     pub amount: Option<String>,
