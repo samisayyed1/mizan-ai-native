@@ -39,9 +39,11 @@ import type { Device } from "@/features/devices-sync/types";
 import type { Account } from "@/lib/types";
 import { hasBrokerSync } from "../lib/plan-capabilities";
 import { NewAccountsFoundModal } from "../components/new-accounts-found-modal";
+import { useUpgradeGate } from "../providers/upgrade-gate-provider";
 
 export default function ConnectPage() {
   const { isEnabled, isConnected, isInitializing, userInfo } = useMizanConnect();
+  const { requestUpgrade } = useUpgradeGate();
   const { status, lastSyncTime, issueCount } = useAggregatedSyncStatus();
   const showBrokerSync = hasBrokerSync(userInfo);
   const { data: brokerAccounts = [] } = useBrokerAccounts({ enabled: showBrokerSync });
@@ -478,19 +480,12 @@ export default function ConnectPage() {
                       Connect your brokerage accounts for automatic portfolio syncing.
                     </p>
                   </div>
-                  {/* Billing portal is parked until Chunk 4 ships the
-                      in-app Stripe checkout. Toast on click instead of
-                      sending the user to a blank page. */}
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      toast({
-                        title: "Billing portal coming soon",
-                        description:
-                          "Stripe checkout is in the final mile — it ships in a coming release. Mizan keeps working offline-first in the meantime.",
-                      })
-                    }
-                  >
+                  {/* Drives the contextual upgrade-gate modal which
+                      routes through openCheckout(plan, interval) → opens
+                      Stripe Checkout in the user's default browser.
+                      Same code path the dashboard's gated-error handler
+                      uses, so the upgrade CTA is consistent everywhere. */}
+                  <Button size="sm" onClick={() => requestUpgrade("broker_sync")}>
                     Upgrade
                     <Icons.ArrowRight className="ml-1 h-3.5 w-3.5" />
                   </Button>

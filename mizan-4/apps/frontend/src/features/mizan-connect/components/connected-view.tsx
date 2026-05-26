@@ -554,6 +554,7 @@ export function ConnectedView() {
     clearError,
     refetchUserInfo,
   } = useMizanConnect();
+  const { requestUpgrade } = useUpgradeGate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
 
@@ -828,17 +829,13 @@ export function ConnectedView() {
                   Connect your brokerage accounts for automatic portfolio syncing.
                 </p>
               </div>
-              {/* In-app Stripe checkout opens here once live billing keys land. */}
-              <Button
-                size="sm"
-                onClick={() =>
-                  toast({
-                    title: "Billing portal coming soon",
-                    description:
-                      "Stripe checkout is in the final mile — it ships in a coming release. Mizan keeps working offline-first in the meantime.",
-                  })
-                }
-              >
+              {/* Routes through the contextual upgrade-gate modal, which
+                  calls openCheckout(plan, interval) on confirm and opens
+                  the Stripe-hosted Checkout in the user's default
+                  browser. Same code path the dashboard's broker-sync
+                  gated-error handler uses, so users get a consistent
+                  CTA wherever they hit the Gold paywall. */}
+              <Button size="sm" onClick={() => requestUpgrade("broker_sync")}>
                 Upgrade
                 <Icons.ArrowRight className="ml-1 h-3.5 w-3.5" />
               </Button>

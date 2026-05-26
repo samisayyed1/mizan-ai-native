@@ -1,6 +1,20 @@
+import { openCheckout } from "@/adapters";
+import { logger } from "@/adapters";
+import { QueryKeys as Keys } from "@/lib/query-keys";
+import { useQueryClient } from "@tanstack/react-query";
 import { getSubscriptionPlans } from "../services/broker-service";
 import { useMizanConnect } from "../providers/mizan-connect-provider";
 import type { BillingPeriod, SubscriptionPlan } from "../types";
+
+// Lazy-load Tauri's shell plugin so web builds don't try to import it.
+async function openExternalUrl(url: string): Promise<void> {
+  try {
+    const mod = await import("@tauri-apps/plugin-shell");
+    await mod.open(url);
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
 import { Badge } from "@mizan/ui/components/ui/badge";
 import { Button } from "@mizan/ui/components/ui/button";
 import {
@@ -87,6 +101,8 @@ function PlanCard({ plan, billingPeriod, isDefault, isComingSoon }: PlanCardProp
   const priceAmount = billingPeriod === "monthly" ? plan.pricing.monthly : plan.pricing.yearly;
   const yearlyPricing = plan.pricing.yearly;
   const monthlyPricing = plan.pricing.monthly;
+  const queryClient = useQueryClient();
+  const [submitting, setSubmitting] = useState(false);
 
   // Use yearlyDiscountPercent from API if available, otherwise calculate
   const yearlySavings =
@@ -104,18 +120,48 @@ function PlanCard({ plan, billingPeriod, isDefault, isComingSoon }: PlanCardProp
     }).format(amount);
   };
 
-  const handleGetStarted = () => {
-    // Billing portal lives at connect.mizan.app/onboarding, but that
-    // domain is parked until the in-app Stripe checkout ships
-    // (tracked: Chunk 4). Opening the parked URL during a demo gives
-    // the user a blank page and zero idea what just happened. Show a
-    // toast so the click is acknowledged honestly — and so we don't
-    // claim a feature that isn't live yet.
-    toast({
-      title: "Billing portal coming soon",
-      description:
-        "Stripe checkout is in the final mile — it ships in a coming release. Mizan keeps working offline-first in the meantime.",
-    });
+  // Wire the "Get Started" CTA to the real Stripe Checkout flow.
+  // The cloud's /api/v1/billing/checkout-session mints a hosted Stripe
+  // URL keyed off the user's Supabase JWT + the chosen plan slug +
+  // interval; we open it in the user's default browser, then
+  // invalidate the entitlements query so the new plan unlocks on
+  // window-focus return without a full reload.
+  //
+  // When the user is on the Free tier (not signed in) the upstream
+  // command returns a 401 — that surfaces via toast so they know
+  // they need to sign into Mizan Connect first.
+  const handleGetStarted = async () => {
+    setSubmitting(true);
+    try {
+      const url = await openCheckout(plan.id, billingPeriod);
+      await openExternalUrl(url);
+      // Mark mid-checkout so a focus listener can refresh entitlements
+      // once they come back. The provider-level upgrade-gate already
+      // wires that listener; we re-invalidate here for the case the
+      // user lands on the plans page directly.
+      const onFocus = () => {
+        queryClient.invalidateQueries({ queryKey: [Keys.ENTITLEMENTS] });
+        queryClient.invalidateQueries({ queryKey: [Keys.USER_INFO] });
+        window.removeEventListener("focus", onFocus);
+      };
+      window.addEventListener("focus", onFocus);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`openCheckout failed: ${msg}`);
+      const isAuth =
+        msg.toLowerCase().includes("unauthorized") ||
+        msg.toLowerCase().includes("sign in") ||
+        msg.toLowerCase().includes("access token");
+      toast({
+        title: isAuth ? "Sign in to Mizan Connect first" : "Couldn't open checkout",
+        description: isAuth
+          ? "Mizan Connect sign-in is required before you can subscribe. Open Settings → Mizan Connect to sign in."
+          : `Stripe checkout couldn't be opened: ${msg}`,
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Use isComingSoon from API if available
@@ -166,9 +212,13 @@ function PlanCard({ plan, billingPeriod, isDefault, isComingSoon }: PlanCardProp
         size="sm"
         variant={isDefault ? "default" : "outline"}
         onClick={handleGetStarted}
-        disabled={showComingSoon || !plan.isAvailable}
+        disabled={showComingSoon || !plan.isAvailable || submitting}
       >
-        {showComingSoon ? "Coming Soon" : "Get Started"}
+        {showComingSoon
+          ? "Coming Soon"
+          : submitting
+            ? "Opening checkout…"
+            : "Get Started"}
       </Button>
     </div>
   );
