@@ -77,6 +77,11 @@ pub struct PlaidSyncResponse {
     pub transactions_removed: usize,
     pub liabilities_synced: usize,
     pub holdings_synced: usize,
+    /// Count of investment_transactions inserted/upserted in this sync run.
+    /// Field name + #[serde(default)] keeps the wire format backward-
+    /// compatible with desktops that haven't been updated yet.
+    #[serde(default)]
+    pub investment_transactions_synced: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -213,6 +218,43 @@ pub struct PlaidInvestmentsHoldingsResponse {
     pub accounts: Vec<PlaidAccount>,
     pub holdings: Vec<serde_json::Value>,
     pub securities: Vec<serde_json::Value>,
+    pub item: PlaidItem,
+}
+
+/// A single investment transaction as returned by /investments/transactions/get.
+/// We keep the raw JSON via `#[serde(flatten)]` so the repository can persist
+/// the full payload — Plaid sometimes adds fields between schema versions and
+/// we don't want to lose those on the cloud side.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PlaidInvestmentTransaction {
+    pub investment_transaction_id: String,
+    pub account_id: String,
+    pub security_id: Option<String>,
+    pub date: String,
+    pub name: Option<String>,
+    pub quantity: Option<f64>,
+    pub amount: Option<f64>,
+    pub price: Option<f64>,
+    pub fees: Option<f64>,
+    pub iso_currency_code: Option<String>,
+    pub unofficial_currency_code: Option<String>,
+    #[serde(rename = "type")]
+    pub transaction_type: Option<String>,
+    pub subtype: Option<String>,
+    /// Plaid uses `cancel_transaction_id` to point at the canceled
+    /// transaction; presence-of-field means this row is the cancellation.
+    #[serde(default)]
+    pub cancel_transaction_id: Option<String>,
+    #[serde(flatten)]
+    pub raw: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlaidInvestmentsTransactionsResponse {
+    pub accounts: Vec<PlaidAccount>,
+    pub investment_transactions: Vec<PlaidInvestmentTransaction>,
+    pub securities: Vec<serde_json::Value>,
+    pub total_investment_transactions: u32,
     pub item: PlaidItem,
 }
 

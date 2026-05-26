@@ -131,12 +131,56 @@ pub async fn disconnect_connection(
     user: AuthenticatedUser,
     Path(item_id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    repository::disconnect_item(state.db(), user.id, item_id.trim()).await?;
+    let item_id_trimmed = item_id.trim();
+
+    // GAP 12: Plaid /item/remove on disconnect so the upstream link is
+    // actually severed, not just our local soft-delete. We try the
+    // Plaid call first; if it fails (token already revoked, network
+    // glitch, Plaid disabled) we log + audit and still proceed with
+    // the local disconnect — the user's intent was to remove the
+    // connection, and leaving them stuck because Plaid is slow would
+    // be the worse failure mode. The audit row captures the outcome.
+    let mut plaid_remove_outcome = "skipped";
+    if let Some(plaid) = state.plaid() {
+        match repository::fetch_item(state.db(), user.id, item_id_trimmed).await {
+            Ok(stored) => match plaid.token_cipher.decrypt(&stored.access_token_encrypted) {
+                Ok(token) => match plaid.client.item_remove(&token).await {
+                    Ok(()) => plaid_remove_outcome = "revoked",
+                    Err(err) => {
+                        tracing::warn!(
+                            error = %err,
+                            item_id = item_id_trimmed,
+                            "Plaid /item/remove failed; proceeding with local disconnect"
+                        );
+                        plaid_remove_outcome = "remove_failed";
+                    }
+                },
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        item_id = item_id_trimmed,
+                        "Plaid token decrypt failed during disconnect"
+                    );
+                    plaid_remove_outcome = "decrypt_failed";
+                }
+            },
+            Err(_) => {
+                // Item not found (or already disconnected) — the local
+                // soft-delete below handles the 404 anyway.
+                plaid_remove_outcome = "not_found";
+            }
+        }
+    }
+
+    repository::disconnect_item(state.db(), user.id, item_id_trimmed).await?;
     audit::record_event(
         state.db(),
         audit::AuditEvent::new("plaid.connect.disconnected")
             .user(user.id)
-            .data(&json!({ "item_id": item_id })),
+            .data(&json!({
+                "item_id": item_id,
+                "plaid_remove": plaid_remove_outcome,
+            })),
     )
     .await
     .map_err(|err| AppError::internal("audit log write failed").with_source(err))?;
@@ -269,6 +313,29 @@ async fn sync_one_item(
         }
     };
 
+    // Plaid-2 / GAP 1: pull the investment-transaction feed so the
+    // desktop has trade-level traceability behind the holdings snapshot.
+    // Window strategy:
+    //   - First sync (no `investment_transactions_sync_through`): 24
+    //     months of backfill — Plaid's documented historical limit
+    //     varies per institution, but 24 months is a reasonable cap
+    //     that won't exhaust per-account API budgets.
+    //   - Incremental: from (prior_synced_through - 7d safety overlap)
+    //     to today. The overlap catches broker-side amendments Plaid
+    //     backdates; the ON CONFLICT upsert handles re-seen rows.
+    let investment_transactions_synced =
+        match sync_investment_transactions(&state, plaid, user_id, item_id, access_token).await {
+            Ok(count) => count,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    item_id = item_id,
+                    "Plaid investment transactions sync skipped"
+                );
+                0
+            }
+        };
+
     Ok(PlaidSyncResponse {
         item_id: item_id.to_string(),
         accounts_synced,
@@ -277,7 +344,108 @@ async fn sync_one_item(
         transactions_removed,
         liabilities_synced,
         holdings_synced,
+        investment_transactions_synced,
     })
+}
+
+/// Per-item investment-transaction sync helper. Decides the date window,
+/// drains pages until `total_investment_transactions` is exhausted, then
+/// stamps `investment_transactions_sync_through` so the next incremental
+/// run narrows its window. We intentionally cap the page loop at a hard
+/// safety limit (PAGE_SAFETY_CAP) so a runaway Plaid response can never
+/// burn through the API budget — if the cap is hit, we log and return
+/// the partial count.
+async fn sync_investment_transactions(
+    state: &AppState,
+    plaid: &super::types::PlaidContext,
+    user_id: uuid::Uuid,
+    item_id: &str,
+    access_token: &secrecy::SecretString,
+) -> Result<usize, AppError> {
+    use time::{macros::format_description, Duration};
+
+    const PAGE_SIZE: u32 = 500;
+    const PAGE_SAFETY_CAP: u32 = 200; // 200 pages × 500 = 100k tx hard ceiling
+    const INITIAL_BACKFILL_DAYS: i64 = 730; // ~24 months
+    const INCREMENTAL_OVERLAP_DAYS: i64 = 7;
+    let ymd = format_description!("[year]-[month]-[day]");
+
+    let now = time::OffsetDateTime::now_utc();
+    let prior_through =
+        repository::investment_transactions_sync_through(state.db(), user_id, item_id).await?;
+
+    let start = match prior_through {
+        // Incremental: rewind 7 days for safety overlap.
+        Some(t) => t - Duration::days(INCREMENTAL_OVERLAP_DAYS),
+        // Initial: 24-month backfill.
+        None => now - Duration::days(INITIAL_BACKFILL_DAYS),
+    };
+    let end = now;
+
+    let start_str = start.format(ymd).map_err(|err| {
+        tracing::error!(error = %err, "Failed to format investment_transactions start_date");
+        AppError::internal("Plaid sync window could not be encoded")
+    })?;
+    let end_str = end.format(ymd).map_err(|err| {
+        tracing::error!(error = %err, "Failed to format investment_transactions end_date");
+        AppError::internal("Plaid sync window could not be encoded")
+    })?;
+
+    tracing::debug!(
+        item_id = item_id,
+        plaid.start_date = %start_str,
+        plaid.end_date = %end_str,
+        plaid.kind = if prior_through.is_some() { "incremental" } else { "initial-backfill" },
+        "Plaid investments/transactions/get window"
+    );
+
+    let mut offset: u32 = 0;
+    let mut total_written = 0usize;
+    let mut pages = 0u32;
+
+    loop {
+        if pages >= PAGE_SAFETY_CAP {
+            tracing::warn!(
+                item_id = item_id,
+                pages_drained = pages,
+                total_written = total_written,
+                "Investment transactions sync hit page safety cap; returning partial result"
+            );
+            break;
+        }
+
+        let page = plaid
+            .client
+            .investments_transactions_get(access_token, &start_str, &end_str, offset, PAGE_SIZE)
+            .await?;
+
+        // Upsert accounts + securities seen in this page so any new
+        // account that landed mid-sync is also reflected in plaid_accounts.
+        repository::upsert_accounts(state.db(), user_id, item_id, &page.accounts).await?;
+
+        let returned = page.investment_transactions.len() as u32;
+        let written = repository::store_investment_transactions(
+            state.db(),
+            user_id,
+            item_id,
+            &page.investment_transactions,
+            end,
+        )
+        .await?;
+        total_written += written;
+
+        offset += returned;
+        pages += 1;
+
+        // Plaid signals the end of the window by either returning fewer
+        // rows than PAGE_SIZE or by having offset >= total. The latter is
+        // authoritative; the former is the early-out for the last page.
+        if returned == 0 || offset >= page.total_investment_transactions {
+            break;
+        }
+    }
+
+    Ok(total_written)
 }
 
 pub async fn webhook(

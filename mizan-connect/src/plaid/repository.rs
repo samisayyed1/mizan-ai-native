@@ -4,8 +4,8 @@ use uuid::Uuid;
 use crate::error::AppError;
 
 use super::types::{
-    PlaidAccount, PlaidAccountDto, PlaidConnectionDto, PlaidTransaction, RemovedTransaction,
-    StoredPlaidItem, UpsertPlaidItem,
+    PlaidAccount, PlaidAccountDto, PlaidConnectionDto, PlaidInvestmentTransaction, PlaidTransaction,
+    RemovedTransaction, StoredPlaidItem, UpsertPlaidItem,
 };
 
 pub async fn upsert_item(pool: &PgPool, item: UpsertPlaidItem<'_>) -> Result<(), AppError> {
@@ -394,6 +394,125 @@ pub async fn replace_holdings(
         .await?;
     }
     Ok(holdings.len())
+}
+
+/// Read the date we last successfully pulled investment transactions
+/// through for this Plaid item. NULL means the item has never been
+/// synced; the handler interprets that as "do an initial backfill".
+pub async fn investment_transactions_sync_through(
+    pool: &PgPool,
+    user_id: Uuid,
+    item_id: &str,
+) -> Result<Option<time::OffsetDateTime>, AppError> {
+    let val: Option<time::OffsetDateTime> = sqlx::query_scalar(
+        r#"
+        SELECT investment_transactions_sync_through
+        FROM plaid_items
+        WHERE user_id = $1 AND item_id = $2 AND status <> 'disconnected'
+        "#,
+    )
+    .bind(user_id)
+    .bind(item_id)
+    .fetch_optional(pool)
+    .await?
+    .flatten();
+    Ok(val)
+}
+
+/// Upsert a batch of Plaid investment transactions.
+///
+/// We treat `cancel_transaction_id IS NOT NULL` as the cancellation
+/// signal Plaid documents — we keep the row and flip the `cancelled`
+/// flag so the desktop can reconcile against the historic ledger.
+///
+/// On success, stamp `investment_transactions_sync_through` to the
+/// supplied `synced_through` (typically the end_date the handler used)
+/// so the next incremental sync narrows its window correctly.
+pub async fn store_investment_transactions(
+    pool: &PgPool,
+    user_id: Uuid,
+    item_id: &str,
+    transactions: &[PlaidInvestmentTransaction],
+    synced_through: time::OffsetDateTime,
+) -> Result<usize, AppError> {
+    let mut written = 0usize;
+    for txn in transactions {
+        let cancelled = txn.cancel_transaction_id.is_some();
+        // PlaidInvestmentTransaction.date is "YYYY-MM-DD"; let Postgres
+        // do the cast via $N::DATE rather than parsing in Rust.
+        sqlx::query(
+            r#"
+            INSERT INTO plaid_investment_transactions (
+                user_id, item_id, account_id, investment_transaction_id, type, subtype,
+                name, security_id, amount, price, quantity, fees,
+                iso_currency_code, unofficial_currency_code, transaction_date,
+                cancelled, raw_json
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                $13, $14, $15::DATE, $16, $17
+            )
+            ON CONFLICT (user_id, investment_transaction_id)
+            DO UPDATE SET
+                item_id = EXCLUDED.item_id,
+                account_id = EXCLUDED.account_id,
+                type = EXCLUDED.type,
+                subtype = EXCLUDED.subtype,
+                name = EXCLUDED.name,
+                security_id = EXCLUDED.security_id,
+                amount = EXCLUDED.amount,
+                price = EXCLUDED.price,
+                quantity = EXCLUDED.quantity,
+                fees = EXCLUDED.fees,
+                iso_currency_code = EXCLUDED.iso_currency_code,
+                unofficial_currency_code = EXCLUDED.unofficial_currency_code,
+                transaction_date = EXCLUDED.transaction_date,
+                cancelled = EXCLUDED.cancelled,
+                raw_json = EXCLUDED.raw_json,
+                updated_at = NOW()
+            "#,
+        )
+        .bind(user_id)
+        .bind(item_id)
+        .bind(&txn.account_id)
+        .bind(&txn.investment_transaction_id)
+        .bind(&txn.transaction_type)
+        .bind(&txn.subtype)
+        .bind(&txn.name)
+        .bind(&txn.security_id)
+        // Plaid returns these as f64; convert to PG NUMERIC via string
+        // round-trip to preserve precision at the storage boundary.
+        .bind(txn.amount.map(|v| v.to_string()))
+        .bind(txn.price.map(|v| v.to_string()))
+        .bind(txn.quantity.map(|v| v.to_string()))
+        .bind(txn.fees.map(|v| v.to_string()))
+        .bind(&txn.iso_currency_code)
+        .bind(&txn.unofficial_currency_code)
+        .bind(&txn.date)
+        .bind(cancelled)
+        .bind(serde_json::to_value(txn).unwrap_or(serde_json::Value::Null))
+        .execute(pool)
+        .await?;
+        written += 1;
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE plaid_items
+           SET investment_transactions_sync_through = $3,
+               last_successful_sync_at = NOW(),
+               last_error = NULL,
+               updated_at = NOW()
+         WHERE user_id = $1 AND item_id = $2
+        "#,
+    )
+    .bind(user_id)
+    .bind(item_id)
+    .bind(synced_through)
+    .execute(pool)
+    .await?;
+
+    Ok(written)
 }
 
 /// Returns the prior `last_sync_attempt_at` for an item (if any), then

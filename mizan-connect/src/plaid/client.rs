@@ -8,8 +8,8 @@ use crate::error::AppError;
 
 use super::types::{
     LinkTokenResponse, PlaidAccountsGetResponse, PlaidErrorBody, PlaidInvestmentsHoldingsResponse,
-    PlaidLiabilitiesResponse, PlaidLinkTokenCreateResponse, PlaidPublicTokenExchangeResponse,
-    PlaidTokenExchange, TransactionsSyncResponse,
+    PlaidInvestmentsTransactionsResponse, PlaidLiabilitiesResponse, PlaidLinkTokenCreateResponse,
+    PlaidPublicTokenExchangeResponse, PlaidTokenExchange, TransactionsSyncResponse,
 };
 use super::webhook_verifier::WebhookKeyResponse;
 
@@ -122,6 +122,51 @@ impl PlaidClient {
     ) -> Result<PlaidInvestmentsHoldingsResponse, AppError> {
         let body = self.access_token_body(access_token);
         self.post("/investments/holdings/get", &body).await
+    }
+
+    /// Fetch a page of investment transactions (buys, sells, dividends,
+    /// fees, splits) for the given date range. Unlike `/transactions/sync`,
+    /// this endpoint is date-window based — the caller picks `start_date`
+    /// and `end_date`, then paginates with `offset` until they've drained
+    /// the window. We cap `count` at Plaid's documented per-page limit
+    /// (500) and let the handler do the offset loop.
+    ///
+    /// `start_date` / `end_date` are ISO `YYYY-MM-DD` strings in the
+    /// institution's local timezone (per Plaid's documentation — Plaid
+    /// normalises this on their side).
+    pub async fn investments_transactions_get(
+        &self,
+        access_token: &SecretString,
+        start_date: &str,
+        end_date: &str,
+        offset: u32,
+        count: u32,
+    ) -> Result<PlaidInvestmentsTransactionsResponse, AppError> {
+        let mut body = self.access_token_body(access_token);
+        body["start_date"] = json!(start_date);
+        body["end_date"] = json!(end_date);
+        body["options"] = json!({
+            "count": count.min(500),
+            "offset": offset,
+        });
+        self.post("/investments/transactions/get", &body).await
+    }
+
+    /// Revoke a Plaid Item on Plaid's side so the access_token stops
+    /// being honoured. Called from the disconnect handler so a user
+    /// hitting "Disconnect" actually severs the upstream link, not
+    /// just our local status flip. Per Plaid docs, success returns
+    /// `{ request_id: "..." }`; we don't need the body, so we drop
+    /// the response.
+    ///
+    /// If Plaid rejects the call (token already revoked, item not
+    /// found, etc.) we surface the AppError so the handler can decide
+    /// whether to proceed with the local soft-delete anyway — the
+    /// user's intent is unambiguous either way.
+    pub async fn item_remove(&self, access_token: &SecretString) -> Result<(), AppError> {
+        let body = self.access_token_body(access_token);
+        let _: serde_json::Value = self.post("/item/remove", &body).await?;
+        Ok(())
     }
 
     pub async fn webhook_verification_key_get(
