@@ -227,6 +227,35 @@ pub async fn mark_trial_will_end(
     Ok(())
 }
 
+/// Count AI chat invocations made by `user_id` in the trailing 24h.
+/// Used by the preflight gate in `ai_proxy` to enforce the daily
+/// per-tier message cap (Silver = 50/day, Gold = unlimited).
+///
+/// Uses `created_at >= NOW() - INTERVAL '24 hours'` rather than a
+/// calendar-day boundary so the cap is a true rolling window — the
+/// user's 51st message at 23:59 doesn't unlock a fresh 50 at midnight
+/// in their server-side wall clock, which would be the obvious abuse
+/// vector. usage_ledger is keyed by `metric = 'ai_chat'` so we can
+/// add other rate-limited metrics later without re-shaping this query.
+pub async fn count_ai_chats_last_24h(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<i64, sqlx::Error> {
+    let n: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM usage_ledger
+        WHERE user_id = $1
+          AND metric = 'ai_chat'
+          AND created_at >= NOW() - INTERVAL '24 hours'
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(n)
+}
+
 /// Append a usage_ledger row.
 pub async fn record_usage(
     tx: &mut PgConnection,

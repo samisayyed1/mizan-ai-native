@@ -52,6 +52,14 @@ const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const UPSTREAM_TIMEOUT_SECS: u64 = 120;
 const SSE_CHANNEL_CAPACITY: usize = 32;
 
+/// Daily AI chat message cap for Silver subscribers. Layered on top of
+/// the monthly credit pool — burst-limits a single user to a sustainable
+/// per-day rate so a runaway client can't drain the monthly bucket in
+/// an hour. Free tier doesn't even reach this gate (managed_ai = false
+/// at the entitlement check above). Gold is unlimited per the entitlement
+/// matrix.
+const SILVER_DAILY_CHAT_CAP: i64 = 50;
+
 #[derive(Debug, Deserialize)]
 pub struct AiChatRequest {
     #[serde(default)]
@@ -119,6 +127,30 @@ pub async fn chat(
             crate::error::ErrorCode::UnprocessableEntity,
             "AI credit cap reached for this billing period",
         ));
+    }
+
+    // AI-Native-2 — Per-tier daily message cap (Silver: 50/day rolling
+    // 24h window). Layered on top of the monthly credit pool so a
+    // runaway client can't drain the entire monthly bucket in one
+    // afternoon. Gold has unlimited monthly credits, so it's
+    // unlimited daily by definition (no point hitting the database).
+    // Free never reaches here (managed_ai = false gate above).
+    if entitlements.plan == "silver" {
+        let today = billing_repo::count_ai_chats_last_24h(state.db(), user.id)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "AI proxy: daily-cap count failed");
+                AppError::internal("billing daily-cap lookup failed")
+            })?;
+        if today >= SILVER_DAILY_CHAT_CAP {
+            return Err(AppError::new(
+                crate::error::ErrorCode::UnprocessableEntity,
+                format!(
+                    "Silver daily Mizan AI cap reached ({}/{}). Resets ~24h after your first message of the day, or upgrade to Gold for unlimited.",
+                    today, SILVER_DAILY_CHAT_CAP
+                ),
+            ));
+        }
     }
 
     // ── Build upstream request body ────────────────────────────────────
