@@ -494,6 +494,56 @@ impl ConnectApiClient {
             .await
     }
 
+    /// Fetch Plaid investment transactions (buys, sells, dividends, fees,
+    /// splits) for the current user. Newest first, server-side capped at
+    /// 1000 per call. `since` is an ISO `YYYY-MM-DD` lower bound on
+    /// `transactionDate`; `account_id` narrows to a single Plaid
+    /// account; `limit` is clamped server-side to [1, 1000].
+    ///
+    /// Returns the raw DTO array; downstream ingestion (mapping into the
+    /// desktop's local `activities` table) is handled by callers.
+    pub async fn list_plaid_investment_transactions(
+        &self,
+        since: Option<&str>,
+        account_id: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let url = format!("{}/api/v1/sync/plaid/investment-transactions", self.base_url);
+        let mut params: Vec<(&str, String)> = Vec::with_capacity(3);
+        if let Some(s) = since {
+            params.push(("since", s.to_string()));
+        }
+        if let Some(a) = account_id {
+            params.push(("accountId", a.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        let response = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .query(&params)
+            .send()
+            .await
+            .map_err(|e| Error::Unexpected(format!("Request failed: {}", e)))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| Error::Unexpected(format!("Failed to read response: {}", e)))?;
+        if !status.is_success() {
+            return Err(Error::Unexpected(format!(
+                "API error {}: {}",
+                status,
+                body.chars().take(200).collect::<String>()
+            )));
+        }
+        serde_json::from_str(&body).map_err(|e| {
+            Error::Unexpected(format!("Failed to parse investment transactions: {}", e))
+        })
+    }
+
     /// Trigger Plaid cursor sync for all connected Items.
     ///
     /// The cloud returns a structured response with per-item counts and any
