@@ -143,6 +143,7 @@ mod tests {
             supabase_url: "https://test.supabase.co".into(),
             supabase_jwt_audience: "authenticated".into(),
             supabase_service_role_key: None,
+            supabase_publishable_key: None,
             cors_allowed_origins: vec![],
             rate_limit_per_minute: 100,
             user_rate_limit_per_minute: None,

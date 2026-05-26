@@ -124,6 +124,12 @@ pub struct Config {
     pub supabase_url: String,
     pub supabase_jwt_audience: String,
     pub supabase_service_role_key: Option<SecretString>,
+    /// Supabase publishable (anon) key. PUBLIC by design — Supabase
+    /// explicitly markets this as the client-embeddable key. Exposed
+    /// to the desktop via GET /v1/config/public so a single Fly
+    /// secret update propagates to every installed client without
+    /// rebuilding the desktop.
+    pub supabase_publishable_key: Option<String>,
 
     pub cors_allowed_origins: Vec<String>,
     pub rate_limit_per_minute: u32,
@@ -216,6 +222,9 @@ struct RawConfig {
     supabase_url: String,
     supabase_jwt_audience: Option<String>,
     supabase_service_role_key: Option<String>,
+    /// Supabase anon/publishable key — PUBLIC. Optional so dev
+    /// builds that don't enable Mizan Connect on desktop can omit it.
+    supabase_publishable_key: Option<String>,
 
     mizan_cors_allowed_origins: Option<String>,
     rate_limit_per_minute: Option<u32>,
@@ -336,6 +345,14 @@ impl Config {
                 .supabase_jwt_audience
                 .unwrap_or_else(|| "authenticated".into()),
             supabase_service_role_key: service_role_key,
+            // PUBLIC anon key, optionally set so /v1/config/public can
+            // hand it back to desktop clients. None → desktop falls back
+            // to its build-time CONNECT_AUTH_PUBLISHABLE_KEY (which may
+            // also be unset → "offline build" message).
+            supabase_publishable_key: raw
+                .supabase_publishable_key
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             cors_allowed_origins,
             rate_limit_per_minute: raw.rate_limit_per_minute.unwrap_or(100).max(1),
             user_rate_limit_per_minute: raw.user_rate_limit_per_minute,

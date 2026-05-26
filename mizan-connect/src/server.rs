@@ -142,6 +142,12 @@ pub fn build_app(state: AppState) -> Router {
         .merge(crate::billing::plans_router())
         .merge(crate::billing::router())
         .merge(crate::plaid::router())
+        // Public self-discovery endpoint for the desktop: returns
+        // Supabase URL + anon key + feature flags so a fresh install
+        // can render the sign-in flow without a build-time .env.
+        // Sits on /api/v1/config/public — unauth'd by design (values
+        // are public).
+        .merge(crate::public_config::router())
         .merge(ai_chat)
         .with_state(state.clone());
 
