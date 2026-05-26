@@ -35,16 +35,21 @@
 //!   - `source_group_id`  = item_id (Plaid Item / broker connection)
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use log::{debug, warn};
-use mizan_core::accounts::Account;
+use log::{debug, info, warn};
+use mizan_core::accounts::{Account, AccountServiceTrait};
 use mizan_core::activities::{
-    ActivityStatus, AssetResolutionInput, NewActivity, ACTIVITY_TYPE_BUY, ACTIVITY_TYPE_DEPOSIT,
-    ACTIVITY_TYPE_DIVIDEND, ACTIVITY_TYPE_FEE, ACTIVITY_TYPE_SELL, ACTIVITY_TYPE_TRANSFER_IN,
-    ACTIVITY_TYPE_TRANSFER_OUT, ACTIVITY_TYPE_UNKNOWN, ACTIVITY_TYPE_WITHDRAWAL,
+    ActivityServiceTrait, ActivityStatus, ActivityUpsert, AssetResolutionInput, NewActivity,
+    ACTIVITY_TYPE_BUY, ACTIVITY_TYPE_DEPOSIT, ACTIVITY_TYPE_DIVIDEND, ACTIVITY_TYPE_FEE,
+    ACTIVITY_TYPE_SELL, ACTIVITY_TYPE_TRANSFER_IN, ACTIVITY_TYPE_TRANSFER_OUT,
+    ACTIVITY_TYPE_UNKNOWN, ACTIVITY_TYPE_WITHDRAWAL,
 };
+use mizan_core::errors::Result;
 use rust_decimal::Decimal;
 use std::str::FromStr;
+
+use crate::client::ConnectApiClient;
 
 /// One mapped Plaid investment transaction, keyed to a resolved local
 /// Mizan `account_id`. The caller groups by account_id, calls
@@ -53,6 +58,30 @@ use std::str::FromStr;
 pub struct MappedPlaidActivity {
     pub local_account_id: String,
     pub activity: NewActivity,
+}
+
+/// End-to-end ingest summary returned by `ingest_plaid_investment_transactions`.
+/// All counts are post-upsert truth — the activity made it into local
+/// SQLite (and therefore participates in TWR + cost basis recalc).
+#[derive(Debug, Default, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaidIngestSummary {
+    pub mapping: PlaidMappingSummary,
+    /// Activities the upsert wrote anew.
+    pub created: usize,
+    /// Activities matched on idempotency / source identity and updated.
+    pub updated: usize,
+    /// Activities skipped (e.g. user-modified rows the bulk-upsert
+    /// guard refuses to overwrite — preserves manual edits).
+    pub skipped: usize,
+    /// Accounts touched (used by the caller for portfolio-recalc
+    /// invalidation).
+    pub accounts_touched: Vec<String>,
+    /// Asset rows ensure_assets had to create on the way in.
+    pub assets_created: u32,
+    /// Per-account error messages, keyed by local account_id. Non-fatal
+    /// — other accounts still complete.
+    pub per_account_errors: std::collections::HashMap<String, String>,
 }
 
 /// Outcome of mapping a batch of Plaid investment transactions.
@@ -127,6 +156,160 @@ pub fn map_plaid_investment_transactions(
     }
 
     (out, summary)
+}
+
+/// End-to-end ingest: fetch from cloud → map → prepare → upsert.
+///
+/// This is the public entry point Tauri commands and schedulers
+/// invoke. It owns the full pipeline so callers don't have to know
+/// about per-account batching, asset resolution, or the upsert
+/// idempotency contract.
+///
+/// Failure mode is per-account: one account that fails preparation
+/// (e.g. an unrecoverable asset-resolution error) won't stop the
+/// other accounts from completing. The `per_account_errors` map
+/// captures what failed; the caller can surface that in a toast.
+///
+/// The bulk upsert emits a single aggregated `ActivitiesChanged`
+/// domain event covering all touched accounts, which drives the
+/// downstream portfolio recalc + FX-pair registration. No additional
+/// fan-out is needed at the call site.
+pub async fn ingest_plaid_investment_transactions(
+    api_client: &ConnectApiClient,
+    activity_service: Arc<dyn ActivityServiceTrait + Send + Sync>,
+    account_service: Arc<dyn AccountServiceTrait + Send + Sync>,
+    since: Option<&str>,
+    limit: Option<u32>,
+) -> Result<PlaidIngestSummary> {
+    let txns = api_client
+        .list_plaid_investment_transactions(since, None, limit)
+        .await?;
+    info!(
+        "Plaid ingest: fetched {} investment transactions from cloud",
+        txns.len()
+    );
+
+    if txns.is_empty() {
+        return Ok(PlaidIngestSummary::default());
+    }
+
+    let accounts = account_service.get_all_accounts()?;
+    let (mapped, mapping_summary) = map_plaid_investment_transactions(&txns, &accounts);
+
+    let mut summary = PlaidIngestSummary {
+        mapping: mapping_summary,
+        ..Default::default()
+    };
+
+    if mapped.is_empty() {
+        info!("Plaid ingest: no rows mapped to local accounts");
+        return Ok(summary);
+    }
+
+    // Group by local_account_id so we can satisfy
+    // prepare_activities_for_sync's per-account contract.
+    let mut by_account: HashMap<String, Vec<NewActivity>> = HashMap::new();
+    for m in mapped {
+        by_account
+            .entry(m.local_account_id)
+            .or_default()
+            .push(m.activity);
+    }
+
+    let account_index: HashMap<&str, &Account> =
+        accounts.iter().map(|a| (a.id.as_str(), a)).collect();
+
+    // Aggregate ActivityUpsert payloads across all accounts so we can
+    // single-shot the bulk upsert at the end. The bulk path emits one
+    // aggregated ActivitiesChanged event regardless of how many
+    // accounts were touched, which is what we want.
+    let mut all_upserts: Vec<ActivityUpsert> = Vec::new();
+
+    for (account_id, account_activities) in by_account {
+        let Some(account) = account_index.get(account_id.as_str()) else {
+            // Account vanished between the map step and now; record + skip.
+            summary
+                .per_account_errors
+                .insert(account_id.clone(), "Account not found".to_string());
+            continue;
+        };
+
+        let prepared = match activity_service
+            .prepare_activities_for_sync(account_activities, account)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                warn!(
+                    "Plaid ingest: prepare_activities_for_sync failed for account {}: {}",
+                    account_id, e
+                );
+                summary.per_account_errors.insert(account_id.clone(), e.to_string());
+                continue;
+            }
+        };
+
+        summary.assets_created += prepared.assets_created;
+        summary.accounts_touched.push(account_id.clone());
+
+        for p in prepared.prepared {
+            let act = p.activity;
+            let asset_id = p.resolved_asset_id;
+            let activity_id = act
+                .id
+                .clone()
+                .unwrap_or_else(|| format!("plaid-{}-{}", account_id, all_upserts.len()));
+
+            all_upserts.push(ActivityUpsert {
+                id: activity_id,
+                account_id: act.account_id,
+                asset_id,
+                activity_type: act.activity_type,
+                subtype: act.subtype,
+                activity_date: act.activity_date,
+                quantity: act.quantity,
+                unit_price: act.unit_price,
+                currency: act.currency,
+                fee: act.fee,
+                amount: act.amount,
+                status: act.status,
+                notes: act.notes,
+                fx_rate: act.fx_rate,
+                metadata: act.metadata,
+                needs_review: act.needs_review,
+                source_system: act.source_system,
+                source_record_id: act.source_record_id,
+                source_group_id: act.source_group_id,
+                idempotency_key: act.idempotency_key,
+                import_run_id: None,
+            });
+        }
+    }
+
+    if all_upserts.is_empty() {
+        info!("Plaid ingest: nothing to upsert after preparation");
+        return Ok(summary);
+    }
+
+    info!(
+        "Plaid ingest: upserting {} activities across {} accounts",
+        all_upserts.len(),
+        summary.accounts_touched.len()
+    );
+
+    let bulk = activity_service
+        .upsert_activities_bulk(all_upserts)
+        .await?;
+    summary.created = bulk.created;
+    summary.updated = bulk.updated;
+    summary.skipped = bulk.skipped;
+
+    info!(
+        "Plaid ingest complete: created={} updated={} skipped={} assets_created={}",
+        summary.created, summary.updated, summary.skipped, summary.assets_created
+    );
+
+    Ok(summary)
 }
 
 fn map_single(

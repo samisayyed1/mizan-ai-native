@@ -160,9 +160,54 @@ pub async fn perform_broker_sync(
     let client = context.connect_service().get_api_client().await?;
     client.sync_plaid_data().await.map_err(|e| e.to_string())?;
 
+    // Plaid-4: after the cloud finishes its Plaid pull, ingest the new
+    // investment transactions into the local activities table. This is
+    // what makes trades show up in the timeline + flow into TWR / cost
+    // basis. Failure is non-fatal: we log + continue, because the cloud
+    // sync itself succeeded and the next ingest attempt will catch up.
+    let ingest_msg = match mizan_connect::plaid_ingest::ingest_plaid_investment_transactions(
+        &client,
+        context.activity_service(),
+        context.account_service(),
+        None, // server-side cursor handles the incremental window
+        Some(1000),
+    )
+    .await
+    {
+        Ok(s) => {
+            info!(
+                "Plaid ingest: created={} updated={} skipped={} accounts={} needs_review={}",
+                s.created,
+                s.updated,
+                s.skipped,
+                s.accounts_touched.len(),
+                s.mapping.needs_review
+            );
+            let mut parts: Vec<String> = Vec::new();
+            if s.created > 0 {
+                parts.push(format!("{} new activities", s.created));
+            }
+            if s.updated > 0 {
+                parts.push(format!("{} updated", s.updated));
+            }
+            if s.mapping.needs_review > 0 {
+                parts.push(format!("{} need review", s.mapping.needs_review));
+            }
+            if parts.is_empty() {
+                "Plaid live sync completed.".to_string()
+            } else {
+                format!("Plaid live sync completed — {}.", parts.join(", "))
+            }
+        }
+        Err(e) => {
+            error!("Plaid ingest failed (non-fatal): {}", e);
+            "Plaid live sync completed (activity ingest will retry on next sync).".to_string()
+        }
+    };
+
     let result = SyncResult {
         success: true,
-        message: "Plaid live sync completed.".to_string(),
+        message: ingest_msg,
         connections_synced: None,
         accounts_synced: None,
         activities_synced: None,
