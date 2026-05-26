@@ -696,6 +696,25 @@ impl<P: SyncProgressReporter> SyncOrchestrator<P> {
             positions_count, option_positions_count, balances_count, account_name
         );
 
+        // GAP 4: emit a mid-sync progress event so the user sees motion
+        // during the (potentially slow) ensure_assets + snapshot save
+        // path inside save_broker_holdings. Big portfolios (10k+
+        // positions) can spend 5-10s here; previously the spinner just
+        // sat there silent and the user wondered if it was stuck.
+        let total_to_save = positions_count + option_positions_count + balances_count;
+        self.progress_reporter.report_progress(
+            SyncProgressPayload::new(account_id, account_name, SyncStatus::Syncing).with_message(
+                format!(
+                    "Resolving {} positions, {} options, {} balances…",
+                    positions_count, option_positions_count, balances_count
+                ),
+            ),
+        );
+        debug!(
+            "save_broker_holdings starting: account={} total_to_save={}",
+            account_id, total_to_save
+        );
+
         // Save holdings as a snapshot
         let (diff, assets_created, new_asset_ids) = self
             .sync_service
@@ -892,6 +911,33 @@ impl<P: SyncProgressReporter> SyncOrchestrator<P> {
     }
 
     /// Compute the activity query window for incremental sync.
+    ///
+    /// Behaviour:
+    ///   - **Incremental sync** (account has prior `last_successful_at`):
+    ///     rewind 1 day for safety overlap and request from there to
+    ///     `end_date`. The 1-day overlap catches broker-side amendments
+    ///     that landed after our last cursor; duplicates are handled at
+    ///     the activities-upsert boundary.
+    ///   - **First sync** (no `last_successful_at`): request a 5-year
+    ///     window so the upstream broker doesn't fall back to its
+    ///     default short rolling window (typically 90 days for Plaid
+    ///     `/transactions/sync` against many institutions, longer for
+    ///     `/investments/transactions/get` which Mizan Connect uses
+    ///     server-side).
+    ///
+    /// **Plaid 90-day caveat (GAP 11):** Plaid's `/transactions/sync`
+    /// endpoint has institution-specific lookback limits. Some support
+    /// 2 years; many only 90 days; a few only 30. If a user goes
+    /// offline for 7 days and the institution's lookback is exactly
+    /// 90 days, this window-computation gives them the right window —
+    /// but Plaid may return fewer activities than we ask for. We
+    /// intentionally don't try to detect this case and warn the user:
+    /// the visible activity gap (or its absence) is itself the signal,
+    /// and second-guessing Plaid's lookback per institution would be a
+    /// brittle moving target. The same caveat applies to broker direct
+    /// integrations behind the Mizan Connect Plaid path. If you ever
+    /// see "missing trades" reports from users who were offline >90
+    /// days, look here first.
     fn compute_activity_query_window(
         &self,
         account_id: &str,
