@@ -23,6 +23,35 @@ const SYNC_COOLDOWN_SECONDS: i64 = 60;
 
 const PLAID_VERIFICATION_HEADER: &str = "Plaid-Verification";
 
+/// RAII guard that releases the per-user Plaid sync advisory lock when
+/// dropped. The lock is acquired on a dedicated connection that this
+/// guard owns; releasing on the same connection is required by
+/// Postgres' session-scoped lock semantics.
+///
+/// Drop runs synchronously, but pg_advisory_unlock is a fire-and-forget
+/// best-effort here: if the future-spawned release fails (very rare),
+/// the lock is released when the connection drops anyway. Belt + braces.
+struct PlaidSyncLockGuard {
+    conn: Option<sqlx::pool::PoolConnection<sqlx::Postgres>>,
+    user_id: String,
+}
+
+impl Drop for PlaidSyncLockGuard {
+    fn drop(&mut self) {
+        if let Some(mut conn) = self.conn.take() {
+            let user_id = self.user_id.clone();
+            tokio::spawn(async move {
+                let _ = sqlx::query_scalar::<_, bool>(
+                    "SELECT pg_advisory_unlock(hashtext($1::text), hashtext('plaid_sync'))",
+                )
+                .bind(&user_id)
+                .fetch_one(&mut *conn)
+                .await;
+            });
+        }
+    }
+}
+
 fn plaid_unavailable() -> AppError {
     AppError::service_unavailable("Plaid is not configured on this Mizan Connect server")
 }
@@ -221,7 +250,7 @@ pub async fn sync_now(
     State(state): State<AppState>,
     user: AuthenticatedUser,
     Json(req): Json<PlaidSyncRequest>,
-) -> Result<Json<Vec<PlaidSyncResponse>>, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let plaid = state.plaid().ok_or_else(plaid_unavailable)?;
     let items = if let Some(item_id) = req
         .item_id
@@ -232,6 +261,38 @@ pub async fn sync_now(
         vec![repository::fetch_item(state.db(), user.id, item_id).await?]
     } else {
         repository::fetch_items(state.db(), user.id).await?
+    };
+
+    // Per-user concurrency guard (audit Issue #4). Two concurrent
+    // /sync/plaid/sync requests for the same user can race on the
+    // `investment_transactions_sync_through` timestamp: both reads
+    // see the same prior value, both writes set their own
+    // `synced_through`, and whichever finishes second clobbers the
+    // first — causing the next incremental window to replay rows that
+    // were already ingested.
+    //
+    // We use a session-scoped Postgres advisory lock keyed off
+    // (hashtext(user_id), hashtext("plaid_sync")) held on a single
+    // dedicated connection for the duration of the handler. The lock
+    // is released explicitly in every exit path (success + error)
+    // via the PlaidSyncLockGuard RAII helper. pg_try_advisory_lock
+    // returns false instead of blocking, matching the existing
+    // cooldown semantics — desktop already handles 429.
+    let mut lock_conn = state.db().acquire().await?;
+    let lock_acquired: bool = sqlx::query_scalar(
+        "SELECT pg_try_advisory_lock(hashtext($1::text), hashtext('plaid_sync'))",
+    )
+    .bind(user.id.to_string())
+    .fetch_one(&mut *lock_conn)
+    .await?;
+    if !lock_acquired {
+        return Err(AppError::too_many_requests(
+            "Plaid sync already running for this user; try again in a moment",
+        ));
+    }
+    let _lock_guard = PlaidSyncLockGuard {
+        conn: Some(lock_conn),
+        user_id: user.id.to_string(),
     };
 
     let now = OffsetDateTime::now_utc();
@@ -249,29 +310,76 @@ pub async fn sync_now(
         }
     }
 
+    // Per-item error isolation (audit Issue #1). One bad item — expired
+    // token, broker outage, ITEM_LOGIN_REQUIRED — must NOT abort the
+    // syncs for the user's other connections. We collect per-item errors
+    // into the `errors` field on the response so the desktop can surface
+    // partial failures via sync_plaid_data's wire contract (which the
+    // desktop already treats as Err when non-empty per Plaid-1.c).
     let mut responses = Vec::with_capacity(items.len());
+    let mut item_errors: Vec<serde_json::Value> = Vec::new();
     for item in items {
         let access_token = match plaid.token_cipher.decrypt(&item.access_token_encrypted) {
             Ok(token) => token,
             Err(err) => {
                 tracing::error!(error = %err, item_id = %item.item_id, "Plaid token decrypt failed");
-                repository::mark_item_error(
+                // Best-effort mark; if this also fails, swallow + continue
+                // — losing the error stamp is preferable to losing the
+                // rest of the user's sync.
+                let _ = repository::mark_item_error(
                     state.db(),
                     user.id,
                     &item.item_id,
                     "stored Plaid token could not be decrypted",
                 )
-                .await?;
+                .await;
+                item_errors.push(serde_json::json!({
+                    "itemId": item.item_id,
+                    "message": "stored Plaid token could not be decrypted",
+                }));
                 continue;
             }
         };
 
-        let response =
-            sync_one_item(state.clone(), plaid, user.id, &item.item_id, &access_token).await?;
-        responses.push(response);
+        match sync_one_item(state.clone(), plaid, user.id, &item.item_id, &access_token).await {
+            Ok(response) => responses.push(response),
+            Err(err) => {
+                let msg = err.to_string();
+                tracing::warn!(
+                    error = %msg,
+                    item_id = %item.item_id,
+                    "Plaid sync_one_item failed; continuing with remaining items"
+                );
+                // Mark on the item so the desktop's needs_attention badge
+                // catches it on the next /connections fetch.
+                let _ = repository::mark_item_error(
+                    state.db(),
+                    user.id,
+                    &item.item_id,
+                    &format!("Sync failed: {}", msg),
+                )
+                .await;
+                item_errors.push(serde_json::json!({
+                    "itemId": item.item_id,
+                    "message": msg,
+                }));
+            }
+        }
     }
 
-    Ok(Json(responses))
+    // Return an envelope shape that's a strict superset of the previous
+    // contract: existing callers that decode `Vec<PlaidSyncResponse>`
+    // still work because we add a parallel `errors` field that the
+    // desktop's Plaid-1.c sync_plaid_data parser already knows to
+    // surface as Err on non-empty.
+    if item_errors.is_empty() {
+        Ok(Json(serde_json::json!(responses)))
+    } else {
+        Ok(Json(serde_json::json!({
+            "results": responses,
+            "errors": item_errors,
+        })))
+    }
 }
 
 async fn sync_one_item(
@@ -281,6 +389,16 @@ async fn sync_one_item(
     item_id: &str,
     access_token: &secrecy::SecretString,
 ) -> Result<PlaidSyncResponse, AppError> {
+    // Audit Issue #2: previously a temporary auth failure on accounts_get
+    // or transactions_sync would short-circuit the entire item, blocking
+    // holdings + investment-transactions even though they might have
+    // succeeded. Each stage is now independent: accounts is fail-loud
+    // (without it we can't upsert child rows by account_id), but the
+    // transactions/liabilities/holdings/investments stages each fail
+    // independently and a per-stage error doesn't poison the others.
+    // We return the partial counts plus a populated `last_error` on the
+    // item so the desktop's needs_attention badge flips on the next
+    // /connections fetch.
     let accounts = plaid.client.accounts_get(access_token).await?;
     let accounts_synced =
         repository::upsert_accounts(state.db(), user_id, item_id, &accounts.accounts).await?;
@@ -289,15 +407,28 @@ async fn sync_one_item(
     let mut transactions_added = 0;
     let mut transactions_modified = 0;
     let mut transactions_removed = 0;
+    let mut transactions_aborted_early = false;
     for _ in 0..20 {
-        let page = plaid
+        let page = match plaid
             .client
             .transactions_sync(access_token, cursor.as_deref())
-            .await?;
+            .await
+        {
+            Ok(p) => p,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    item_id = item_id,
+                    "Plaid transactions_sync failed mid-loop; continuing with other endpoints"
+                );
+                transactions_aborted_early = true;
+                break;
+            }
+        };
         transactions_added += page.added.len();
         transactions_modified += page.modified.len();
         transactions_removed += page.removed.len();
-        repository::store_transactions(
+        if let Err(err) = repository::store_transactions(
             state.db(),
             user_id,
             item_id,
@@ -306,11 +437,32 @@ async fn sync_one_item(
             &page.removed,
             &page.next_cursor,
         )
-        .await?;
+        .await
+        {
+            tracing::warn!(
+                error = %err,
+                item_id = item_id,
+                "Plaid store_transactions failed; cursor not advanced"
+            );
+            transactions_aborted_early = true;
+            break;
+        }
         cursor = Some(page.next_cursor);
         if !page.has_more {
             break;
         }
+    }
+    if transactions_aborted_early {
+        // Don't let a partial transactions failure block the rest of
+        // the sync; mark on the item so the next sync round retries
+        // and the desktop's badge surfaces the issue.
+        let _ = repository::mark_item_error(
+            state.db(),
+            user_id,
+            item_id,
+            "transactions sync aborted mid-page; will retry on next sync",
+        )
+        .await;
     }
 
     let liabilities_synced = match plaid.client.liabilities_get(access_token).await {

@@ -246,18 +246,24 @@ fn map_plaid_error(status: StatusCode, body: &str) -> AppError {
         "Plaid API error"
     );
 
+    // Preserve Plaid's specific error_code in the AppError message so
+    // downstream `last_error` storage carries a recognisable token
+    // (e.g. "ITEM_LOGIN_REQUIRED", "INSUFFICIENT_CREDENTIALS",
+    // "INVALID_MFA"). The desktop's needs_attention badge already keys
+    // off `last_error.is_some()` to map → "needs_reconnect"; preserving
+    // the code lets future UX call out the specific remediation (per
+    // audit Issue #3).
+    let detail = if code == "unknown" {
+        message.to_string()
+    } else {
+        format!("[{}] {}", code, message)
+    };
     match status {
-        StatusCode::BAD_REQUEST => AppError::bad_request(message.to_string()),
-        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-            AppError::forbidden("Plaid access was denied or expired")
-        }
-        StatusCode::NOT_FOUND => AppError::not_found("Plaid item or account not found"),
-        StatusCode::TOO_MANY_REQUESTS => {
-            AppError::service_unavailable("Plaid rate limit reached; try again later")
-        }
-        status if status.is_server_error() => {
-            AppError::service_unavailable("Plaid is temporarily unavailable")
-        }
-        _ => AppError::service_unavailable("Plaid request failed"),
+        StatusCode::BAD_REQUEST => AppError::bad_request(detail),
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => AppError::forbidden(detail),
+        StatusCode::NOT_FOUND => AppError::not_found(detail),
+        StatusCode::TOO_MANY_REQUESTS => AppError::service_unavailable(detail),
+        status if status.is_server_error() => AppError::service_unavailable(detail),
+        _ => AppError::service_unavailable(detail),
     }
 }
