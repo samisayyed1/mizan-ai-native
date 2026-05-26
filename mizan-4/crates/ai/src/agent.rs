@@ -924,10 +924,15 @@ mod tests {
         }
     }
 
+    /// Boxed callback type for the mock's pluggable result builder.
+    /// Factored out for clippy::type_complexity.
+    type MockResultFn =
+        Box<dyn Fn(&str) -> Result<DispatchResult, AgentError> + Send + Sync>;
+
     /// Records every dispatch call and returns a configurable result.
     struct MockDispatcher {
         calls: Arc<Mutex<Vec<(String, serde_json::Value)>>>,
-        result: Arc<Mutex<Box<dyn Fn(&str) -> Result<DispatchResult, AgentError> + Send + Sync>>>,
+        result: Arc<Mutex<MockResultFn>>,
     }
 
     impl MockDispatcher {
@@ -1062,7 +1067,7 @@ mod tests {
         assert!(matches!(events.last(), Some(AgentEvent::RunAborted { .. })));
         // Dispatcher should have been called MAX_STEP_RETRIES+1 attempts
         // per try, plus extra for any re-plans. Just assert >= 1.
-        assert!(dispatcher.calls.lock().await.len() >= 1);
+        assert!(!dispatcher.calls.lock().await.is_empty());
     }
 
     #[tokio::test]

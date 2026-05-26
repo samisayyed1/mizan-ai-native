@@ -337,9 +337,9 @@ pub fn detect_recipe<'a>(
 /// Filter a tool catalog to the subset a given recipe allows. The
 /// chat dispatcher passes the filtered list into [`PromptBasedPlanner`]
 /// so the LLM can't invent calls to tools outside the recipe's scope.
-pub fn filter_tools_for_recipe<'a>(
+pub fn filter_tools_for_recipe(
     recipe: &AgentRecipe,
-    all_tools: &'a [ToolDescriptor],
+    all_tools: &[ToolDescriptor],
 ) -> Vec<ToolDescriptor> {
     all_tools
         .iter()

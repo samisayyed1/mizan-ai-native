@@ -309,11 +309,10 @@ fn extract_fenced(open: &str, close: &str, s: &str) -> Option<String> {
 /// Best-effort JSON pre-cleanup: remove trailing commas in objects /
 /// arrays (a very common LLM mistake) + smart-quote → ascii-quote.
 fn clean_json(s: &str) -> String {
+    // Replace smart quotes in one pass (double + single grouped together).
     let smart_quoted = s
-        .replace('\u{201C}', "\"") // “
-        .replace('\u{201D}', "\"") // ”
-        .replace('\u{2018}', "'") //  ‘
-        .replace('\u{2019}', "'"); // ’
+        .replace(['\u{201C}', '\u{201D}'], "\"") // “ ”
+        .replace(['\u{2018}', '\u{2019}'], "'"); // ‘ ’
 
     // Strip trailing commas before } or ] — tolerant of whitespace.
     // Walks once, O(n).

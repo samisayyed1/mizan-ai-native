@@ -1064,4 +1064,47 @@ mod tests {
             .expect("missing errors field must resolve Ok");
     }
 
+    // Plaid-5/6 regression: the cloud's sync_now now returns either a
+    // bare array (success) or an envelope { results, errors } (partial
+    // failure). The desktop parser must handle BOTH shapes — bare-array
+    // success has been live since the feature shipped; the envelope is
+    // new in Plaid-5. Lock both behaviours in.
+    #[tokio::test]
+    async fn sync_plaid_data_handles_partial_failure_envelope_shape() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "itemId": "item-1", "accountsSynced": 3, "transactionsAdded": 47 }
+                ],
+                "errors": [
+                    { "itemId": "item-2", "message": "[ITEM_LOGIN_REQUIRED] Please re-link" }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
+        let err = client.sync_plaid_data().await.expect_err("envelope errors → Err");
+        assert!(
+            err.to_string().contains("ITEM_LOGIN_REQUIRED"),
+            "should surface Plaid-3 preserved error code; got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_plaid_data_handles_bare_array_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "itemId": "item-1", "accountsSynced": 3, "transactionsAdded": 47 }
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
+        client.sync_plaid_data().await.expect("bare array success path → Ok");
+    }
 }
