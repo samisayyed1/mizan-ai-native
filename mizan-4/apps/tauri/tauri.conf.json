@@ -24,7 +24,14 @@
     "longDescription": "Mizan is a private investment portfolio tracker. All data lives on your device. End-to-end encrypted broker connections via Mizan Connect.",
     "macOS": {
       "bundleVersion": "20260301.1",
-      "minimumSystemVersion": "10.13"
+      "minimumSystemVersion": "10.13",
+      "entitlements": "Entitlements.plist",
+      "signingIdentity": null,
+      "providerShortName": null
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com"
     }
   },
   "productName": "Mizan AI",

@@ -175,6 +175,58 @@ pub async fn reset_ai_credits(
     Ok(())
 }
 
+/// Stamp `last_payment_failure_at = NOW()` on the subscription so the
+/// desktop can surface "card declined — update payment method" UX even
+/// before Stripe's smart-retry policy ages the subscription out to
+/// `past_due`. Idempotent: re-stamping is fine, Stripe sends multiple
+/// `invoice.payment_failed` during the retry window.
+///
+/// Returns Ok(()) when the row exists; if there's no matching
+/// subscription locally (out-of-order webhook delivery, race with
+/// checkout.session.completed) the UPDATE simply matches 0 rows and
+/// the caller logs + continues.
+pub async fn mark_payment_failed(
+    tx: &mut PgConnection,
+    stripe_subscription_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE subscriptions
+           SET last_payment_failure_at = NOW(),
+               updated_at = NOW()
+         WHERE stripe_subscription_id = $1
+        "#,
+    )
+    .bind(stripe_subscription_id)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
+/// Stamp `trial_end_at` from the `customer.subscription.trial_will_end`
+/// 7-day-warning webhook so the desktop can render a "Your trial ends
+/// on YYYY-MM-DD" banner. No tier mutation here — the subscription is
+/// still on trial; we just surface the deadline.
+pub async fn mark_trial_will_end(
+    tx: &mut PgConnection,
+    stripe_subscription_id: &str,
+    trial_end: Option<OffsetDateTime>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE subscriptions
+           SET trial_end_at = $2,
+               updated_at = NOW()
+         WHERE stripe_subscription_id = $1
+        "#,
+    )
+    .bind(stripe_subscription_id)
+    .bind(trial_end)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
 /// Append a usage_ledger row.
 pub async fn record_usage(
     tx: &mut PgConnection,
