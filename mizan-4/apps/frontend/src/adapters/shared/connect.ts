@@ -404,3 +404,53 @@ export const storeSyncSession = async (refreshToken: string): Promise<void> => {
 export const clearSyncSession = async (): Promise<void> => {
   return invoke<void>("clear_sync_session");
 };
+
+// ─── SnapTrade brokerage integration ────────────────────────────────────────
+
+export interface SnapTradeHealthResponse {
+  configured: boolean;
+  environment: string | null;
+  message: string;
+}
+
+export interface SnapTradeLoginPortalResponse {
+  redirectUri: string;
+  sessionId: string | null;
+}
+
+export interface SnapTradeConnection {
+  authorizationId: string;
+  brokerageName: string;
+  displayName: string | null;
+  connectedAtMs: number | null;
+  disabled: boolean;
+  disabledAtMs: number | null;
+}
+
+export interface SnapTradeSyncSummary {
+  accountsSynced: number;
+  positionsSynced: number;
+  activitiesSynced: number;
+}
+
+export async function snaptradeHealth(): Promise<SnapTradeHealthResponse> {
+  return invoke<SnapTradeHealthResponse>("snaptrade_health");
+}
+
+export async function createSnapTradeLoginPortal(): Promise<SnapTradeLoginPortalResponse> {
+  return invoke<SnapTradeLoginPortalResponse>("create_snaptrade_login_portal");
+}
+
+export async function listSnapTradeConnections(): Promise<SnapTradeConnection[]> {
+  return invoke<SnapTradeConnection[]>("list_snaptrade_connections");
+}
+
+export async function disconnectSnapTradeAuthorization(
+  authorizationId: string,
+): Promise<void> {
+  return invoke<void>("disconnect_snaptrade_authorization", { authorizationId });
+}
+
+export async function snaptradeSyncNow(): Promise<SnapTradeSyncSummary> {
+  return invoke<SnapTradeSyncSummary>("snaptrade_sync_now");
+}

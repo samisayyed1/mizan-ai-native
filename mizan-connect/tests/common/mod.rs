@@ -92,6 +92,7 @@ impl TestApp {
             supabase_url: "https://test.supabase.co".into(),
             supabase_jwt_audience: "authenticated".into(),
             supabase_service_role_key: None,
+            supabase_publishable_key: None,
             cors_allowed_origins: vec!["http://localhost:1420".into()],
             rate_limit_per_minute: 600,
             user_rate_limit_per_minute: None,
@@ -116,6 +117,9 @@ impl TestApp {
             // Billing left unconfigured by default — tests that need Stripe
             // wire a `BillingContext` directly into `AppState`.
             billing: None,
+            // SnapTrade left unconfigured by default — tests that need it
+            // wire a `SnapTradeConfig` directly via a config override.
+            snaptrade: None,
         };
 
         let jwks = JwksCache::new(config.jwks_url());

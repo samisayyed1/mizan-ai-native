@@ -149,6 +149,12 @@ pub struct Config {
     /// in local/test so development builds can boot without real credentials.
     pub plaid: Option<PlaidConfig>,
 
+    /// SnapTrade brokerage integration — independent of Plaid. Either,
+    /// neither, or both providers can be configured per environment.
+    /// `None` collapses `/v1/sync/snaptrade/*` to a `service_unavailable`
+    /// response.
+    pub snaptrade: Option<SnapTradeConfig>,
+
     /// Stripe + AI billing (Chunk 4). `None` collapses billing endpoints to a
     /// clean `not_implemented` response — useful for local dev without Stripe
     /// keys configured.
@@ -193,6 +199,57 @@ pub struct PlaidConfig {
     pub token_encryption_key: Vec<u8>,
 }
 
+/// SnapTrade API environment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SnapTradeEnv {
+    Sandbox,
+    Production,
+}
+
+impl SnapTradeEnv {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sandbox => "sandbox",
+            Self::Production => "production",
+        }
+    }
+    /// Public API base. SnapTrade uses the same host for sandbox + prod;
+    /// the environment is selected by the `clientId` (each client id is
+    /// scoped to one env). We still record the variant for telemetry
+    /// + health reporting + the desktop "you're on sandbox" badge.
+    pub fn api_base(self) -> &'static str {
+        "https://api.snaptrade.com"
+    }
+}
+
+impl FromStr for SnapTradeEnv {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "sandbox" => Ok(Self::Sandbox),
+            "production" | "prod" => Ok(Self::Production),
+            other => Err(format!("invalid SNAPTRADE_ENV: {other}")),
+        }
+    }
+}
+
+/// SnapTrade configuration. The per-user `userSecret` returned by
+/// `/snapTrade/registerUser` is encrypted with the AES-256 key in
+/// `MIZAN_SNAPTRADE_TOKEN_ENCRYPTION_KEY` before storage.
+#[derive(Debug, Clone)]
+pub struct SnapTradeConfig {
+    pub client_id: String,
+    pub consumer_key: SecretString,
+    pub environment: SnapTradeEnv,
+    pub api_base: String,
+    /// Where SnapTrade should redirect the user after they complete the
+    /// connection portal flow. Typically a deep link back into the
+    /// desktop app (e.g. `mizan://snaptrade/return`).
+    pub custom_redirect: Option<String>,
+    pub token_encryption_key: Vec<u8>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("missing required env var: {0}")]
@@ -203,6 +260,8 @@ pub enum ConfigError {
     CorsWildcardWithAuth,
     #[error("MIZAN_PLAID_TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes (got {0})")]
     BadPlaidTokenKeyLength(usize),
+    #[error("MIZAN_SNAPTRADE_TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes (got {0})")]
+    BadSnapTradeTokenKeyLength(usize),
     #[error("figment: {0}")]
     Figment(#[from] figment::Error),
 }
@@ -245,6 +304,14 @@ struct RawConfig {
     plaid_redirect_uri: Option<String>,
     plaid_webhook_url: Option<String>,
     mizan_plaid_token_encryption_key: Option<String>,
+
+    // SnapTrade — Gold brokerage sync (second live boundary after Plaid)
+    snaptrade_client_id: Option<String>,
+    snaptrade_consumer_key: Option<String>,
+    snaptrade_env: Option<String>,
+    snaptrade_api_base: Option<String>,
+    snaptrade_custom_redirect: Option<String>,
+    mizan_snaptrade_token_encryption_key: Option<String>,
 
     // Stripe billing (Chunk 4)
     stripe_secret_key: Option<String>,
@@ -306,6 +373,7 @@ impl Config {
         )?;
 
         let plaid = build_plaid_config(&raw, app_env)?;
+        let snaptrade = build_snaptrade_config(&raw)?;
         let billing = build_billing_config(&raw);
 
         let test_jwt_secret = if app_env.is_production() {
@@ -360,6 +428,7 @@ impl Config {
             sentry,
             test_jwt_secret,
             plaid,
+            snaptrade,
             billing,
         })
     }
@@ -464,6 +533,98 @@ fn build_plaid_config(
         redirect_uri,
         webhook_url: raw
             .plaid_webhook_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned),
+        token_encryption_key,
+    }))
+}
+
+/// Build the SnapTrade block. Mirrors `build_plaid_config` exactly: any
+/// non-empty SnapTrade env var opts the operator in and we then require
+/// the full set. Empty across the board → `Ok(None)` and the SnapTrade
+/// router returns 503 from the health endpoint, every other endpoint
+/// returns `service_unavailable`.
+fn build_snaptrade_config(raw: &RawConfig) -> Result<Option<SnapTradeConfig>, ConfigError> {
+    use base64::Engine;
+
+    let any_configured = [
+        raw.snaptrade_client_id.as_deref(),
+        raw.snaptrade_consumer_key.as_deref(),
+        raw.snaptrade_env.as_deref(),
+        raw.snaptrade_api_base.as_deref(),
+        raw.snaptrade_custom_redirect.as_deref(),
+        raw.mizan_snaptrade_token_encryption_key.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|s| !s.trim().is_empty());
+
+    let production_explicit = raw
+        .snaptrade_env
+        .as_deref()
+        .map(str::trim)
+        .map(|s| s.eq_ignore_ascii_case("production"))
+        .unwrap_or(false);
+
+    let required = production_explicit || any_configured;
+    if !required {
+        return Ok(None);
+    }
+
+    let environment = parse_required::<SnapTradeEnv>(
+        "SNAPTRADE_ENV",
+        raw.snaptrade_env.as_deref(),
+        Some("sandbox"),
+    )?;
+
+    let api_base = raw
+        .snaptrade_api_base
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| environment.api_base().to_string());
+
+    let client_id =
+        pick_required("SNAPTRADE_CLIENT_ID", raw.snaptrade_client_id.as_deref(), true)?
+            .unwrap_or_default();
+    let consumer_key = pick_required(
+        "SNAPTRADE_CONSUMER_KEY",
+        raw.snaptrade_consumer_key.as_deref(),
+        true,
+    )?
+    .unwrap_or_default();
+
+    let enc_key_b64 = pick_required(
+        "MIZAN_SNAPTRADE_TOKEN_ENCRYPTION_KEY",
+        raw.mizan_snaptrade_token_encryption_key.as_deref(),
+        true,
+    )?;
+    let token_encryption_key = match enc_key_b64 {
+        Some(s) => {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(s.trim())
+                .map_err(|e| ConfigError::Invalid {
+                    var: "MIZAN_SNAPTRADE_TOKEN_ENCRYPTION_KEY",
+                    reason: format!("base64 decode: {e}"),
+                })?;
+            if bytes.len() != 32 {
+                return Err(ConfigError::BadSnapTradeTokenKeyLength(bytes.len()));
+            }
+            bytes
+        }
+        None => Vec::new(),
+    };
+
+    Ok(Some(SnapTradeConfig {
+        client_id,
+        consumer_key: SecretString::from(consumer_key),
+        environment,
+        api_base,
+        custom_redirect: raw
+            .snaptrade_custom_redirect
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())

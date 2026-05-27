@@ -778,6 +778,17 @@ pub fn run() {
             commands::brokers_sync::exchange_plaid_public_token,
             #[cfg(feature = "connect-sync")]
             commands::brokers_sync::delete_broker_connection,
+            // SnapTrade brokerage integration (Gold)
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::snaptrade_health,
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::create_snaptrade_login_portal,
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::list_snaptrade_connections,
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::disconnect_snaptrade_authorization,
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::snaptrade_sync_now,
             #[cfg(feature = "connect-sync")]
             commands::brokers_sync::get_subscription_plans,
             #[cfg(feature = "connect-sync")]

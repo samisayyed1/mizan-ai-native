@@ -101,6 +101,52 @@ pub struct PlaidExchangePublicTokenResponse {
     pub accounts_synced: usize,
 }
 
+// ─── SnapTrade DTOs (mirror the cloud's snaptrade::types envelopes) ────
+
+/// Response of `POST /api/v1/sync/snaptrade/login-portal`. The desktop
+/// opens `redirect_uri` in the system browser; SnapTrade handles the
+/// brokerage OAuth then redirects back to our custom URL.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapTradeLoginPortalResponse {
+    pub redirect_uri: String,
+    pub session_id: Option<String>,
+}
+
+/// One active brokerage authorization. Mirrors the cloud's
+/// `ConnectionEnvelope`. The desktop renders these in the connected-
+/// brokerages card alongside Plaid items.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapTradeConnection {
+    pub authorization_id: String,
+    pub brokerage_name: String,
+    pub display_name: Option<String>,
+    pub connected_at_ms: Option<i64>,
+    pub disabled: bool,
+    pub disabled_at_ms: Option<i64>,
+}
+
+/// Summary of one sync run (read-only). Returned by `POST /v1/sync/snaptrade/sync`.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapTradeSyncSummary {
+    pub accounts_synced: u32,
+    pub positions_synced: u32,
+    pub activities_synced: u32,
+}
+
+/// Health envelope returned by `GET /v1/sync/snaptrade/health` so the
+/// desktop can light up the "Connect a brokerage" button only when the
+/// cloud is configured. Same shape as Plaid's.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapTradeHealthResponse {
+    pub configured: bool,
+    pub environment: Option<String>,
+    pub message: String,
+}
+
 /// Stored Plaid connection returned by Mizan Connect.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -232,6 +278,32 @@ impl ConnectApiClient {
             .post(&url)
             .headers(self.headers())
             .json(body)
+            .send()
+            .await
+            .map_err(|e| Error::Unexpected(format!("Request failed: {}", e)))?;
+        self.parse_response(response).await
+    }
+
+    /// Typed GET helper.
+    async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await
+            .map_err(|e| Error::Unexpected(format!("Request failed: {}", e)))?;
+        self.parse_response(response).await
+    }
+
+    /// Typed DELETE helper.
+    async fn delete_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
             .send()
             .await
             .map_err(|e| Error::Unexpected(format!("Request failed: {}", e)))?;
@@ -542,6 +614,46 @@ impl ConnectApiClient {
         serde_json::from_str(&body).map_err(|e| {
             Error::Unexpected(format!("Failed to parse investment transactions: {}", e))
         })
+    }
+
+    // ─── SnapTrade ──────────────────────────────────────────────────────
+    //
+    // Mirror of the Plaid family above. The cloud handles HMAC signing of
+    // the upstream SnapTrade API; the desktop just talks JSON to our own
+    // /v1/sync/snaptrade/* endpoints with the user's Supabase JWT.
+
+    pub async fn snaptrade_health(&self) -> Result<SnapTradeHealthResponse> {
+        self.get_json("/api/v1/sync/snaptrade/health").await
+    }
+
+    /// Open the SnapTrade connection portal. On success the desktop opens
+    /// `redirect_uri` in the system browser; SnapTrade redirects back via
+    /// the deep link configured on the cloud (`SNAPTRADE_CUSTOM_REDIRECT`).
+    pub async fn create_snaptrade_login_portal(&self) -> Result<SnapTradeLoginPortalResponse> {
+        self.post_json("/api/v1/sync/snaptrade/login-portal", &serde_json::json!({}))
+            .await
+    }
+
+    pub async fn list_snaptrade_connections(&self) -> Result<Vec<SnapTradeConnection>> {
+        self.get_json("/api/v1/sync/snaptrade/connections").await
+    }
+
+    pub async fn disconnect_snaptrade_authorization(
+        &self,
+        authorization_id: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!(
+            "/api/v1/sync/snaptrade/connections/{}",
+            urlencoding::encode(authorization_id)
+        );
+        self.delete_json(&path).await
+    }
+
+    /// Read-only sync — list accounts → per-account positions + activities.
+    /// Returns a typed summary the desktop can render as a toast.
+    pub async fn snaptrade_sync_now(&self) -> Result<SnapTradeSyncSummary> {
+        self.post_json("/api/v1/sync/snaptrade/sync", &serde_json::json!({}))
+            .await
     }
 
     /// Trigger Plaid cursor sync for all connected Items.

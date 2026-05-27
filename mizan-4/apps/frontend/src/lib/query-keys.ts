@@ -98,6 +98,8 @@ export const QueryKeys = {
   // Cloud Sync
   BROKER_CONNECTIONS: "brokerConnections",
   BROKER_ACCOUNTS: "brokerAccounts",
+  SNAPTRADE_HEALTH: "snaptradeHealth",
+  SNAPTRADE_CONNECTIONS: "snaptradeConnections",
   PLATFORMS: "platforms",
   SYNCED_ACCOUNTS: "syncedAccounts",
   SUBSCRIPTION_PLANS: "subscriptionPlans",

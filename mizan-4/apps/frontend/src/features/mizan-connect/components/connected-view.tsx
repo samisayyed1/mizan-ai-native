@@ -17,6 +17,7 @@ import { toast } from "@mizan/ui/components/ui/use-toast";
 import { formatDate } from "@/lib/utils";
 import { useCallback, useMemo, useState } from "react";
 import { useCreateBrokerLoginPortal } from "../hooks";
+import { SnapTradeConnectionsCard } from "./snaptrade-connections-card";
 import { useEntitlements } from "../hooks/use-entitlements";
 import { useIsBrokerSyncRunning, useSyncBrokerData } from "../hooks/use-sync-broker-data";
 import { useMizanConnect } from "../providers/mizan-connect-provider";
@@ -754,6 +755,13 @@ export function ConnectedView() {
           isRefreshing={connectionsQuery.isFetching}
         />
       )}
+
+      {/* SnapTrade brokerage card — sister surface to the Plaid card.
+          Both providers feed into the same downstream holdings +
+          activities pipeline. The card self-gates on the cloud's
+          /v1/sync/snaptrade/health.configured boolean so it degrades
+          cleanly when SnapTrade isn't wired on a given deployment. */}
+      {showBrokerSync && <SnapTradeConnectionsCard />}
 
       {/* Accounts Card - Only show if user has broker sync */}
       {showBrokerSync && (

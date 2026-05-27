@@ -18,6 +18,7 @@ pub mod middleware;
 pub mod plaid;
 pub mod public_config;
 pub mod secret_crypto;
+pub mod snaptrade;
 pub mod server;
 pub mod shutdown;
 pub mod state;

@@ -90,6 +90,7 @@ bytes = "1"
 parking_lot = "0.12"
 secrecy = "0.10"
 base64 = "0.22"
+urlencoding = "2"
 
 # Plaid token encryption
 aes-gcm = "0.10"

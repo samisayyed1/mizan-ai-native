@@ -155,6 +155,7 @@ mod tests {
             },
             test_jwt_secret: Some(SecretString::from(String::from("test-secret"))),
             plaid: None,
+            snaptrade: None,
             billing: None,
         }
     }

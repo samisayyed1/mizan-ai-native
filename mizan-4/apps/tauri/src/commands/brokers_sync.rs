@@ -489,3 +489,80 @@ pub async fn save_broker_sync_profile_rules(
 // ─────────────────────────────────────────────────────────────────────────────
 // Foreground Sync Command
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SnapTrade brokerage integration commands
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Mirror of the Plaid family above. The cloud handles all SnapTrade
+// auth (HMAC signing, per-user registration, encrypted userSecret
+// storage). The desktop just calls our own /api/v1/sync/snaptrade/*.
+
+use mizan_connect::client::{
+    SnapTradeConnection, SnapTradeHealthResponse, SnapTradeLoginPortalResponse,
+    SnapTradeSyncSummary,
+};
+
+/// Health check for the SnapTrade integration. Returns `configured: true`
+/// only when the cloud has SNAPTRADE_CLIENT_ID + CONSUMER_KEY + TOKEN
+/// encryption key set. Desktop lights up the "Connect a brokerage"
+/// button based on this.
+#[tauri::command]
+pub async fn snaptrade_health(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<SnapTradeHealthResponse, String> {
+    let client = state.connect_service().get_api_client().await?;
+    client.snaptrade_health().await.map_err(|e| e.to_string())
+}
+
+/// Generate a one-time login portal URL the user opens in the system
+/// browser to pick a brokerage and complete OAuth. SnapTrade redirects
+/// back to our deep link on completion.
+#[tauri::command]
+pub async fn create_snaptrade_login_portal(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<SnapTradeLoginPortalResponse, String> {
+    info!("Creating SnapTrade login portal");
+    let client = state.connect_service().get_api_client().await?;
+    client
+        .create_snaptrade_login_portal()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_snaptrade_connections(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<Vec<SnapTradeConnection>, String> {
+    let client = state.connect_service().get_api_client().await?;
+    client
+        .list_snaptrade_connections()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn disconnect_snaptrade_authorization(
+    authorization_id: String,
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<(), String> {
+    info!("Disconnecting SnapTrade authorization: {}", authorization_id);
+    let client = state.connect_service().get_api_client().await?;
+    let _ = client
+        .disconnect_snaptrade_authorization(&authorization_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Run a read-only sync against SnapTrade. Returns a typed summary the
+/// frontend renders as a toast (synced N accounts / M positions /
+/// K activities).
+#[tauri::command]
+pub async fn snaptrade_sync_now(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<SnapTradeSyncSummary, String> {
+    info!("Triggering SnapTrade sync");
+    let client = state.connect_service().get_api_client().await?;
+    client.snaptrade_sync_now().await.map_err(|e| e.to_string())
+}
