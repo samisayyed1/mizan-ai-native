@@ -310,8 +310,21 @@ struct RawConfig {
     snaptrade_consumer_key: Option<String>,
     snaptrade_env: Option<String>,
     snaptrade_api_base: Option<String>,
-    snaptrade_custom_redirect: Option<String>,
+    /// Where SnapTrade should redirect the user after the connection
+    /// portal flow completes. Conventionally a deep link the desktop
+    /// app handles (e.g. `mizan://snaptrade/return`). The env var is
+    /// `SNAPTRADE_REDIRECT_URI` to match the SnapTrade docs naming.
+    snaptrade_redirect_uri: Option<String>,
     mizan_snaptrade_token_encryption_key: Option<String>,
+    /// HS256 secret used to sign the state nonce SnapTrade echoes back
+    /// on the OAuth-style return so we can defend against replay. Not
+    /// strictly required for the read-only flow but required when the
+    /// callback handler is wired (future slice). Tracked here so the
+    /// existing `MIZAN_SNAPTRADE_STATE_SECRET` Fly secret doesn't
+    /// surface as "unused-but-set" in the audit log.
+    #[serde(default)]
+    #[allow(dead_code)]
+    mizan_snaptrade_state_secret: Option<String>,
 
     // Stripe billing (Chunk 4)
     stripe_secret_key: Option<String>,
@@ -554,7 +567,7 @@ fn build_snaptrade_config(raw: &RawConfig) -> Result<Option<SnapTradeConfig>, Co
         raw.snaptrade_consumer_key.as_deref(),
         raw.snaptrade_env.as_deref(),
         raw.snaptrade_api_base.as_deref(),
-        raw.snaptrade_custom_redirect.as_deref(),
+        raw.snaptrade_redirect_uri.as_deref(),
         raw.mizan_snaptrade_token_encryption_key.as_deref(),
     ]
     .into_iter()
@@ -624,7 +637,7 @@ fn build_snaptrade_config(raw: &RawConfig) -> Result<Option<SnapTradeConfig>, Co
         environment,
         api_base,
         custom_redirect: raw
-            .snaptrade_custom_redirect
+            .snaptrade_redirect_uri
             .as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
