@@ -120,6 +120,11 @@ impl TestApp {
             // SnapTrade left unconfigured by default — tests that need it
             // wire a `SnapTradeConfig` directly via a config override.
             snaptrade: None,
+            // Admin surface disabled by default — every test runs with a
+            // hermetic config that has no QA break-glass. Tests that need
+            // to exercise the admin endpoints set this to Some(...) via
+            // a config override.
+            admin_token: None,
         };
 
         let jwks = JwksCache::new(config.jwks_url());

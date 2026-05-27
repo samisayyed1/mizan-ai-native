@@ -137,7 +137,27 @@ impl StripeClient {
     /// HMAC-SHA256 over `<t>.<raw_body>` with the webhook secret and
     /// constant-time compare against `v1`. Tolerance window: 5 minutes.
     ///
+    /// `whsec` may be either a single secret OR a comma-separated list
+    /// of secrets to try in order. The multi-secret form is an
+    /// enterprise-grade affordance for two situations operators hit:
+    ///
+    ///   1. **Rotation without downtime.** Deploy with `OLD,NEW`,
+    ///      switch the Stripe Dashboard endpoint signing secret to
+    ///      `NEW`, then deploy with just `NEW`. No webhook is ever
+    ///      rejected during the cutover.
+    ///   2. **Duplicate dashboard endpoints.** If the cloud URL is
+    ///      registered as a webhook target by more than one source
+    ///      (e.g. the live Stripe Dashboard endpoint AND a long-lived
+    ///      `stripe listen` CLI session sharing the same URL), each
+    ///      delivery carries a signature from a different secret.
+    ///      Listing both here lets either pass — without this, the
+    ///      live install hits a ~75% 401 rate on Stripe events with
+    ///      no visible cause.
+    ///
     /// Returns the unix timestamp on success so the caller can audit it.
+    /// The error returned on total mismatch is identical to the
+    /// single-secret case, so a leak of "which" of N secrets failed
+    /// isn't a side channel.
     pub fn verify_webhook(
         whsec: &str,
         signature_header: &str,
@@ -164,20 +184,107 @@ impl StripeClient {
             return Err(StripeError::Signature("timestamp outside tolerance"));
         }
 
-        let mut mac = Hmac::<Sha256>::new_from_slice(whsec.as_bytes())
-            .map_err(|_| StripeError::Signature("bad webhook secret"))?;
-        mac.update(format!("{}.", ts).as_bytes());
-        mac.update(body);
-        let expected = mac.finalize().into_bytes();
+        // Try each (trimmed, non-empty) secret. Whitespace forgiving
+        // because operators copy-paste from Stripe Dashboard with
+        // trailing spaces routinely.
+        let mut tried_any = false;
+        for secret in whsec.split(',') {
+            let secret = secret.trim();
+            if secret.is_empty() {
+                continue;
+            }
+            tried_any = true;
+            let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret.as_bytes()) else {
+                continue; // Unreachable in practice but defend against
+                          // any future HMAC backend that errors on
+                          // zero-length keys — fall through to try the
+                          // next secret instead of crashing here.
+            };
+            mac.update(format!("{}.", ts).as_bytes());
+            mac.update(body);
+            let expected = mac.finalize().into_bytes();
 
-        for sig_hex in sigs {
-            if let Ok(bytes) = hex::decode(sig_hex) {
-                if bool::from(subtle_eq(&expected, &bytes)) {
-                    return Ok(ts);
+            for sig_hex in &sigs {
+                if let Ok(bytes) = hex::decode(sig_hex) {
+                    if bool::from(subtle_eq(&expected, &bytes)) {
+                        return Ok(ts);
+                    }
                 }
             }
         }
+
+        if !tried_any {
+            return Err(StripeError::Signature("bad webhook secret"));
+        }
         Err(StripeError::Signature("no matching signature"))
+    }
+}
+
+#[cfg(test)]
+mod webhook_verify_tests {
+    use super::*;
+    // Mac trait is brought in via the top-of-file `use hmac::{Hmac, Mac};`
+    // and inherited by this nested module via super::*.
+
+    fn sign(secret: &str, ts: i64, body: &[u8]) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(format!("{ts}.").as_bytes());
+        mac.update(body);
+        let bytes = mac.finalize().into_bytes();
+        let hex = hex::encode(bytes);
+        format!("t={ts},v1={hex}")
+    }
+
+    #[test]
+    fn single_secret_passes() {
+        let now = 1_700_000_000;
+        let hdr = sign("whsec_test", now, b"{}");
+        assert!(StripeClient::verify_webhook("whsec_test", &hdr, b"{}", now).is_ok());
+    }
+
+    #[test]
+    fn rotation_pair_both_pass() {
+        let now = 1_700_000_000;
+        let hdr_old = sign("whsec_old", now, b"{}");
+        let hdr_new = sign("whsec_new", now, b"{}");
+        // Either delivery passes when both secrets are listed.
+        assert!(StripeClient::verify_webhook("whsec_old,whsec_new", &hdr_old, b"{}", now).is_ok());
+        assert!(StripeClient::verify_webhook("whsec_old,whsec_new", &hdr_new, b"{}", now).is_ok());
+    }
+
+    #[test]
+    fn neither_secret_matches_returns_error() {
+        let now = 1_700_000_000;
+        let hdr = sign("whsec_mystery", now, b"{}");
+        assert!(StripeClient::verify_webhook("whsec_a,whsec_b", &hdr, b"{}", now).is_err());
+    }
+
+    #[test]
+    fn whitespace_around_commas_is_tolerated() {
+        let now = 1_700_000_000;
+        let hdr = sign("whsec_new", now, b"{}");
+        assert!(
+            StripeClient::verify_webhook("  whsec_old , whsec_new ", &hdr, b"{}", now).is_ok()
+        );
+    }
+
+    #[test]
+    fn empty_entries_are_skipped() {
+        let now = 1_700_000_000;
+        let hdr = sign("whsec_a", now, b"{}");
+        assert!(StripeClient::verify_webhook(",,whsec_a,,", &hdr, b"{}", now).is_ok());
+    }
+
+    #[test]
+    fn timestamp_outside_tolerance_rejected() {
+        let now = 1_700_000_000;
+        // Signed at now, verified at now + 6 minutes
+        let hdr = sign("whsec_test", now, b"{}");
+        let res = StripeClient::verify_webhook("whsec_test", &hdr, b"{}", now + 360);
+        assert!(matches!(
+            res,
+            Err(StripeError::Signature("timestamp outside tolerance"))
+        ));
     }
 }
 
