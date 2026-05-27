@@ -62,10 +62,29 @@ fn extract_screenshots(raw_json: &serde_json::Value) -> Option<Vec<String>> {
 /// Check for updates and return update info if available.
 /// Returns `Ok(Some(UpdateInfo))` if an update is available,
 /// `Ok(None)` if already up-to-date.
+///
+/// In `cfg(debug_assertions)` builds — i.e. `cargo run` / `pnpm tauri
+/// dev` — the configured updater endpoint typically points at a
+/// staging URL or doesn't resolve at all, so `.check().await` hangs
+/// until Tauri's IPC layer times out (~30s) and the user sees a
+/// misleading "Command 'check_for_updates' timed out" error toast.
+/// Short-circuit to Ok(None) — "no update available" — which matches
+/// the expectation that a developer running from source doesn't
+/// want to update themselves to a CDN release in the middle of
+/// `tauri dev`.
 pub async fn check_for_update(
     app_handle: AppHandle,
     instance_id: &str,
 ) -> Result<Option<UpdateInfo>, String> {
+    #[cfg(debug_assertions)]
+    {
+        let _ = (app_handle, instance_id); // silence unused-var warning in dev
+        info!("Update check skipped: debug build (cargo run / tauri dev)");
+        return Ok(None);
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
     let is_appstore = is_app_store_build();
 
     let update = app_handle
@@ -110,6 +129,7 @@ pub async fn check_for_update(
         }
         None => Ok(None),
     }
+    } // close cfg(not(debug_assertions))
 }
 
 /// Progress payload emitted during update download/install.
