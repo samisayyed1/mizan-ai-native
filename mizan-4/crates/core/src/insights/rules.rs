@@ -13,7 +13,7 @@ use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use serde_json::json;
 
-use super::input::{GoalProgress, InsightsInput, SyncFailureInput};
+use super::input::{DividendEvent, GoalProgress, InsightsInput, SyncFailureInput};
 use crate::notifications::{Notification, NotificationKind, NotificationSeverity};
 
 /// Threshold for the BigMove rule: any holding moving > this in absolute
@@ -317,6 +317,51 @@ fn eval_sync_failures(input: &InsightsInput) -> Vec<Notification> {
         .collect()
 }
 
+fn eval_dividend_events(input: &InsightsInput) -> Vec<Notification> {
+    input
+        .dividend_events
+        .iter()
+        .map(|e| dividend_notification(e, input))
+        .collect()
+}
+
+fn dividend_notification(e: &DividendEvent, input: &InsightsInput) -> Notification {
+    // Title is short — "Dividend posted • PLTR".
+    // Body carries the amount in base currency.
+    let kind_label = match e.kind.as_str() {
+        "INTEREST" => "Interest",
+        _ => "Dividend",
+    };
+    let title = format!("{kind_label} posted • {}", e.symbol);
+    let body = format!(
+        "{} of {} {:.2} from {} on {}.",
+        kind_label,
+        input.base_currency,
+        dec_to_f64(e.amount_base),
+        e.symbol,
+        e.posted_on,
+    );
+    let payload = json!({
+        "activityId": e.activity_id,
+        "kind": e.kind,
+        "symbol": e.symbol,
+        "amountBase": e.amount_base,
+        "postedOn": e.posted_on.to_string(),
+    });
+    // Dedupe on the activity id — re-running the engine for the same
+    // payment is a no-op (the UNIQUE on the storage layer enforces it).
+    let dedupe = format!("dividend:{}", e.activity_id);
+    fresh(
+        NotificationKind::DividendPosted,
+        NotificationSeverity::Success,
+        title,
+        body,
+        Some(format!("mizan://holding/{}", e.symbol)),
+        payload.to_string(),
+        dedupe,
+    )
+}
+
 fn sync_failure_notification(f: &SyncFailureInput, input: &InsightsInput) -> Notification {
     let payload = json!({
         "provider": f.provider,
@@ -338,9 +383,9 @@ fn sync_failure_notification(f: &SyncFailureInput, input: &InsightsInput) -> Not
 }
 
 /// Run every rule against the input and return the union, in a stable
-/// order (BigMove → GoalMilestone → ATH/Dip → CashDrag → SyncFailure).
-/// Order matters because the bell panel renders the result list as-is
-/// for batches emitted in the same tick.
+/// order (BigMove → GoalMilestone → ATH/Dip → CashDrag → DividendPosted
+/// → SyncFailure). Order matters because the bell panel renders the
+/// result list as-is for batches emitted in the same tick.
 pub fn evaluate(input: &InsightsInput) -> Vec<Notification> {
     let mut out = Vec::new();
     if let Some(n) = eval_big_move(input) {
@@ -351,6 +396,7 @@ pub fn evaluate(input: &InsightsInput) -> Vec<Notification> {
     if let Some(n) = eval_cash_drag(input) {
         out.push(n);
     }
+    out.extend(eval_dividend_events(input));
     out.extend(eval_sync_failures(input));
     out
 }

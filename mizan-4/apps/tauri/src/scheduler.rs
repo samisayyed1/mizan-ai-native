@@ -454,11 +454,10 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
     let today = chrono::Utc::now().date_naive();
     let base_currency = context.get_base_currency();
 
-    // Build the NW history window — last 30 days. The dip rule needs
-    // ≥7 days of history; the ATH rule reads the all-time max from
-    // `latest()` separately because the local history table only
-    // goes back as far as net-worth snapshots have been captured
-    // (typically since first app open).
+    // ── 1) Net-worth history (30d) for NetWorthDip + ATH ──────────────
+    // The dip rule needs ≥7 days of history; the ATH baseline is
+    // computed from this window's prior max (today excluded so we
+    // never compare today vs. itself).
     let from = today - chrono::Duration::days(30);
     let history = match context
         .net_worth_snapshot_service()
@@ -477,37 +476,42 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
             Vec::new()
         }
     };
-
-    // The "previous ATH" baseline is the max over local history. If we
-    // only have today's point this is `None`, suppressing the ATH rule.
     let previous_ath = if history.len() >= 2 {
         history
             .iter()
-            .take(history.len() - 1) // exclude today — we're comparing today *against* prior max
+            .take(history.len() - 1)
             .map(|p| p.net_worth_base)
             .max()
     } else {
         None
     };
 
-    // First cut: only NW-based rules + goal-progress are wired. The
-    // BigMove + CashDrag + DividendPosted + SyncFailure rules will
-    // light up as the call sites that compute their inputs land
-    // (movers needs holdings_snapshots diffing, cash drag needs the
-    // 30-day running counter, dividend posted needs the activity
-    // ingestion hook, sync failure needs the sync_run_ledger query).
-    // Everything stays compile-clean today; new rules don't require
-    // a new InsightsInput field — only a new caller hydration.
+    // ── 2) BigMove — per-holding day-over-day moves ───────────────────
+    let holding_moves = hydrate_holding_moves(context, &base_currency).await;
+
+    // ── 3) CashDrag — cash % of net worth + consecutive days above ────
+    let (cash_pct_of_net_worth, cash_high_for_days) = hydrate_cash_drag(context).await;
+
+    // ── 4) DividendPosted — activities in the last 24h ────────────────
+    let dividend_events = hydrate_dividend_events(context);
+
+    // ── 5) SyncFailure — failed runs in the last 24h, one per provider─
+    let sync_failures = hydrate_sync_failures(context).await;
+
+    // ── 6) GoalMilestone — current progress per goal ──────────────────
+    let goal_progress = hydrate_goal_progress(context);
+
     let input = InsightsInput {
         today: Some(today),
         base_currency,
-        holding_moves: Vec::new(),
-        goal_progress: Vec::new(),
+        holding_moves,
+        goal_progress,
         net_worth_history: history,
         previous_ath,
-        cash_pct_of_net_worth: None,
-        cash_high_for_days: None,
-        sync_failures: Vec::new(),
+        cash_pct_of_net_worth,
+        cash_high_for_days,
+        sync_failures,
+        dividend_events,
     };
 
     let candidates = evaluate(&input);
@@ -733,4 +737,378 @@ fn push_os_notification(handle: &AppHandle, title: &str, body: &str) {
     if let Err(e) = result {
         debug!("OS notification show failed (permission denied?): {}", e);
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Notify track — hydration helpers for the 4 deterministic rule
+// families that need data outside the NW snapshot service.
+// ─────────────────────────────────────────────────────────────────────
+
+/// BigMove — fetch holdings for every active account, populate the
+/// rule input with per-holding day-over-day move data.
+///
+/// Strategy:
+///   - Iterate active, non-archived accounts (filters out the synthetic
+///     TOTAL row + archived/closed accounts so we don't double-count or
+///     surface stale notifications about positions the user has closed).
+///   - For each, call `holdings_service.get_holdings(account_id, base)`.
+///     That call resolves prices via the valuation service so each
+///     returned Holding already has `day_change_pct`, `market_value.base`,
+///     and `prev_close_value.base` set when a quote was available.
+///   - Skip alt-asset holdings (Property / Vehicle / Collectible) since
+///     they don't have daily quotes.
+///   - The rule engine filters again on threshold + position size, so
+///     we pass everything we have.
+async fn hydrate_holding_moves(
+    context: &std::sync::Arc<ServiceContext>,
+    base_currency: &str,
+) -> Vec<mizan_core::insights::HoldingDayMove> {
+    use log::debug;
+    use mizan_core::insights::HoldingDayMove;
+    use rust_decimal::Decimal;
+
+    let accounts = match context
+        .account_service()
+        .get_active_non_archived_accounts()
+    {
+        Ok(a) => a,
+        Err(e) => {
+            debug!("Insights/BigMove: get_active_accounts failed: {} — skipping", e);
+            return Vec::new();
+        }
+    };
+
+    let mut out = Vec::new();
+    for account in &accounts {
+        // The TOTAL synthetic account isn't a real account; even though
+        // the active-non-archived filter usually excludes it, defensive
+        // skip in case of catalog drift.
+        if account.id == "TOTAL" {
+            continue;
+        }
+        let holdings = match context
+            .holdings_service()
+            .get_holdings(&account.id, base_currency)
+            .await
+        {
+            Ok(h) => h,
+            Err(e) => {
+                debug!(
+                    "Insights/BigMove: get_holdings({}) failed: {} — skipping account",
+                    account.id, e
+                );
+                continue;
+            }
+        };
+        for h in holdings {
+            // Skip alt assets — their daily change is meaningless
+            // because we don't fetch live quotes for them.
+            use mizan_core::assets::AssetKind;
+            if matches!(
+                h.asset_kind,
+                Some(AssetKind::Property)
+                    | Some(AssetKind::Vehicle)
+                    | Some(AssetKind::Collectible)
+                    | Some(AssetKind::Other)
+            ) {
+                continue;
+            }
+            // Need a known change_pct + a positive prev close to compute
+            // the move meaningfully. If either is missing, skip — the
+            // engine would reject anyway.
+            let Some(change_pct) = h.day_change_pct else {
+                continue;
+            };
+            let prev_close_base = h
+                .prev_close_value
+                .as_ref()
+                .map(|m| m.base)
+                .unwrap_or(Decimal::ZERO);
+            if prev_close_base <= Decimal::ZERO {
+                continue;
+            }
+            let symbol = h
+                .instrument
+                .as_ref()
+                .map(|i| i.symbol.clone())
+                .unwrap_or_else(|| h.id.clone());
+            let asset_name = h.instrument.as_ref().and_then(|i| i.name.clone());
+
+            // We don't have asset_id directly on Holding, but `id` IS
+            // the position id, which serves as the deep-link target.
+            // The frontend's deepLinkToRoute routes `mizan://holding/<id>`
+            // to /holdings/<id>.
+            out.push(HoldingDayMove {
+                symbol,
+                asset_name,
+                asset_id: Some(h.id.clone()),
+                prev_price_base: prev_close_base,
+                curr_price_base: h.market_value.base,
+                change_pct,
+                current_value_base: h.market_value.base,
+            });
+        }
+    }
+    out
+}
+
+/// CashDrag — full hydration: hits the NW snapshot service for a 60-day
+/// window, reads each row's breakdown_json for the "CASH" bucket,
+/// derives today's cash% and walks back to find the consecutive run of
+/// days where cash% > 10%.
+///
+/// We use a 60-day window (not the same 30-day window the engine uses
+/// for ATH / dip) so we can detect runs longer than 30 days — the
+/// rule's threshold is "30+ days above" and we don't want a run-length
+/// truncated artificially by the window.
+async fn hydrate_cash_drag(
+    context: &std::sync::Arc<ServiceContext>,
+) -> (Option<rust_decimal::Decimal>, Option<u32>) {
+    use log::debug;
+    use rust_decimal::Decimal;
+
+    let today = chrono::Utc::now().date_naive();
+    let from = today - chrono::Duration::days(60); // 60d window so we can detect runs >30d.
+
+    let snapshots = match context
+        .net_worth_snapshot_service()
+        .range(from, today)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            debug!("Insights/CashDrag: NW range failed: {} — skipping", e);
+            return (None, None);
+        }
+    };
+    if snapshots.is_empty() {
+        return (None, None);
+    }
+
+    // Compute cash% per point. Snapshots are ASC by date.
+    let pcts: Vec<(chrono::NaiveDate, Decimal)> = snapshots
+        .iter()
+        .filter_map(|s| {
+            if s.net_worth <= Decimal::ZERO {
+                return None;
+            }
+            let cash = s
+                .breakdown
+                .iter()
+                .find(|e| e.key == "CASH")
+                .map(|e| e.value)
+                .unwrap_or(Decimal::ZERO);
+            Some((s.snapshot_date, cash / s.net_worth))
+        })
+        .collect();
+
+    let Some((_, today_pct)) = pcts.last().copied() else {
+        return (None, None);
+    };
+
+    // Consecutive trailing days above the 10% threshold, anchored at today.
+    // Walking from newest backwards, count while > 0.10; stop when not.
+    let threshold = Decimal::new(10, 2); // 0.10
+    let mut run: u32 = 0;
+    for (_, pct) in pcts.iter().rev() {
+        if *pct > threshold {
+            run += 1;
+        } else {
+            break;
+        }
+    }
+    (Some(today_pct), Some(run))
+}
+
+/// DividendPosted — query activities for DIVIDEND / INTEREST entries
+/// with `activity_date` in the last 24 hours.
+///
+/// Notes on the dedupe semantics:
+///   - The rule engine's `dedupe_key = "dividend:<activity_id>"` is
+///     stable across runs — calling this multiple times a day re-emits
+///     the same set, but only the first persists (UNIQUE on the
+///     storage layer).
+///   - Conversion to base currency: the activity service returns the
+///     amount in activity currency. We translate using the activity's
+///     stored `fx_rate` when available, falling back to the amount as
+///     stated (no silent FX fabrication). If neither path yields a
+///     base-currency amount, we still emit but the body will show the
+///     activity's local currency — better than nothing for the user.
+fn hydrate_dividend_events(
+    context: &std::sync::Arc<ServiceContext>,
+) -> Vec<mizan_core::insights::DividendEvent> {
+    use log::debug;
+    use mizan_core::insights::DividendEvent;
+    use rust_decimal::Decimal;
+    // Activity-type strings are stable in `activities_constants` but the
+    // module is private to the core crate. Hardcoding the canonical
+    // labels here is safe — they're part of the persisted schema and
+    // never change.
+    const ACTIVITY_TYPE_DIVIDEND: &str = "DIVIDEND";
+    const ACTIVITY_TYPE_INTEREST: &str = "INTEREST";
+
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(24);
+
+    let activities = match context.activity_service().get_income_activities() {
+        Ok(a) => a,
+        Err(e) => {
+            debug!("Insights/Dividend: get_income_activities failed: {} — skipping", e);
+            return Vec::new();
+        }
+    };
+
+    activities
+        .into_iter()
+        .filter(|a| a.activity_date >= cutoff)
+        .filter(|a| {
+            a.activity_type == ACTIVITY_TYPE_DIVIDEND
+                || a.activity_type == ACTIVITY_TYPE_INTEREST
+        })
+        .filter_map(|a| {
+            let amount_local = a.amount.unwrap_or(Decimal::ZERO);
+            if amount_local <= Decimal::ZERO {
+                return None;
+            }
+            // Convert to base if we have a stored fx_rate; else leave
+            // as the local amount (the rule body will still render).
+            let amount_base = match a.fx_rate {
+                Some(rate) if rate > Decimal::ZERO => amount_local * rate,
+                _ => amount_local,
+            };
+            // The symbol is the source ID if available; otherwise
+            // fall back to the asset_id placeholder or "Cash".
+            let symbol = a
+                .asset_id
+                .clone()
+                .unwrap_or_else(|| "Cash".to_string());
+            Some(DividendEvent {
+                activity_id: a.id,
+                kind: a.activity_type,
+                symbol,
+                posted_on: a.activity_date.date_naive(),
+                amount_base,
+            })
+        })
+        .collect()
+}
+
+/// SyncFailure — last-24h failed runs from the §A4 sync ledger,
+/// reduced to one row per distinct provider (the most recent failure).
+///
+/// Why dedupe by provider: if Plaid fails three times in an hour we
+/// still want exactly one user-visible notification per day per
+/// provider. The engine's dedupe_key already enforces "once per
+/// provider per day" at the storage layer; we trim earlier here so
+/// the digest doesn't list the same provider three times.
+async fn hydrate_sync_failures(
+    context: &std::sync::Arc<ServiceContext>,
+) -> Vec<mizan_core::insights::SyncFailureInput> {
+    use log::debug;
+    use mizan_core::insights::SyncFailureInput;
+    use mizan_core::sync_ledger::SyncRunOutcome;
+    use std::collections::HashMap;
+
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(24);
+    // 200 is enough to capture every recent failure on even a chatty
+    // setup — the ledger is bounded to 10k by the in-memory impl.
+    let recent = match context.sync_ledger().recent(200).await {
+        Ok(r) => r,
+        Err(e) => {
+            debug!("Insights/SyncFailure: recent() failed: {} — skipping", e);
+            return Vec::new();
+        }
+    };
+
+    let mut latest_per_provider: HashMap<&'static str, SyncFailureInput> = HashMap::new();
+    for entry in &recent {
+        if entry.outcome != SyncRunOutcome::Failed {
+            continue;
+        }
+        let when = entry.finished_at.unwrap_or(entry.started_at);
+        if when < cutoff {
+            continue;
+        }
+        let provider = entry.provider.as_str();
+        // The error column carries a serialised §A24 MizanError JSON.
+        // Surface the raw string (already redacted upstream); the rule
+        // engine doesn't try to parse it — the body shows it verbatim.
+        let reason = entry
+            .error
+            .clone()
+            .unwrap_or_else(|| "sync failed without a structured reason".to_string());
+        let when_ms = when.timestamp_millis();
+
+        // Keep only the most-recent failure per provider in this window.
+        let candidate = SyncFailureInput {
+            provider: provider.to_string(),
+            reason,
+            last_success_at_ms: Some(when_ms),
+        };
+        latest_per_provider
+            .entry(provider)
+            .and_modify(|existing| {
+                if when_ms > existing.last_success_at_ms.unwrap_or(0) {
+                    *existing = candidate.clone();
+                }
+            })
+            .or_insert(candidate);
+    }
+    latest_per_provider.into_values().collect()
+}
+
+/// GoalMilestone — read current goals and surface progress fractions.
+///
+/// PREVIOUS-PROGRESS GAP: the rule engine wants the prior tick's
+/// progress so it can detect "newly crossed" milestones. We don't
+/// currently snapshot per-goal progress between ticks, so we pass
+/// `previous_progress = 0` here. That means the engine fires the
+/// HIGHEST milestone the goal has currently crossed on the first
+/// run — and subsequent runs on the same day are dedupe'd by the
+/// storage layer (`goal_milestone:<id>:<label>:<date>`). The user
+/// will see one notification per goal per milestone per day. A
+/// future slice can persist last-seen progress in a small table and
+/// pass it here for the true delta semantics.
+fn hydrate_goal_progress(
+    context: &std::sync::Arc<ServiceContext>,
+) -> Vec<mizan_core::insights::GoalProgress> {
+    use log::debug;
+    use mizan_core::insights::GoalProgress;
+    use rust_decimal::Decimal;
+
+    let goals = match context.goal_service().get_goals() {
+        Ok(g) => g,
+        Err(e) => {
+            debug!("Insights/Goal: get_goals failed: {} — skipping", e);
+            return Vec::new();
+        }
+    };
+
+    goals
+        .into_iter()
+        .filter_map(|g| {
+            // Need both summary progress and current value to emit.
+            let current_progress = g.summary_progress?;
+            // Skip goals already marked complete in lifecycle so we
+            // don't re-celebrate them. `status_lifecycle` is a free-
+            // form text column; "COMPLETED" / "ARCHIVED" are the
+            // taxonomy entries our UI sets.
+            let lifecycle = g.status_lifecycle.to_ascii_uppercase();
+            if lifecycle == "COMPLETED" || lifecycle == "ARCHIVED" {
+                return None;
+            }
+            let current_value_base = g.summary_current_value.unwrap_or(0.0);
+            let target_value_base = g.summary_target_amount.or(g.target_amount);
+            Some(GoalProgress {
+                goal_id: g.id,
+                title: g.title,
+                previous_progress: Decimal::ZERO,
+                current_progress: Decimal::from_f64_retain(current_progress)
+                    .unwrap_or(Decimal::ZERO),
+                current_value_base: Decimal::from_f64_retain(current_value_base)
+                    .unwrap_or(Decimal::ZERO),
+                target_value_base: target_value_base
+                    .and_then(Decimal::from_f64_retain),
+            })
+        })
+        .collect()
 }

@@ -63,6 +63,28 @@ pub struct NetWorthHistoryPoint {
     pub net_worth_base: Decimal,
 }
 
+/// One dividend or interest payment posted since the last insights tick.
+///
+/// Caller responsibilities:
+///   - de-duplicate by `activity_id` across runs (the engine emits a
+///     dedupe_key keyed on it, so re-feeding the same activity is a
+///     no-op at the storage layer too),
+///   - convert `amount_base` to the user's base currency *before*
+///     passing it in — the engine does no FX (it stays pure).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DividendEvent {
+    /// Source `activities.id` — used in the dedupe_key.
+    pub activity_id: String,
+    /// "DIVIDEND" or "INTEREST".
+    pub kind: String,
+    /// Display symbol or asset name; falls back to "Cash" for portfolio-
+    /// level income with no asset_id.
+    pub symbol: String,
+    /// Settled-date in the user's local timezone, used in copy.
+    pub posted_on: NaiveDate,
+    pub amount_base: Decimal,
+}
+
 /// A sync that failed and is degrading data quality the user can see.
 /// Source includes the provider slug for the deep-link target.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -105,4 +127,8 @@ pub struct InsightsInput {
     pub cash_high_for_days: Option<u32>,
     /// Any active sync failures the user hasn't yet seen.
     pub sync_failures: Vec<SyncFailureInput>,
+    /// Dividend / interest payments posted since the last tick. One
+    /// notification emitted per event so the user gets credit for each
+    /// individual payment in the activity history.
+    pub dividend_events: Vec<DividendEvent>,
 }

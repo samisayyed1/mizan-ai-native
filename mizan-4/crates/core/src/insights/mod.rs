@@ -29,6 +29,7 @@ mod rules;
 mod tests;
 
 pub use input::{
-    GoalProgress, HoldingDayMove, InsightsInput, NetWorthHistoryPoint, SyncFailureInput,
+    DividendEvent, GoalProgress, HoldingDayMove, InsightsInput, NetWorthHistoryPoint,
+    SyncFailureInput,
 };
 pub use rules::evaluate;

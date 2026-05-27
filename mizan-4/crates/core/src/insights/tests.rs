@@ -9,7 +9,8 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 
 use super::input::{
-    GoalProgress, HoldingDayMove, InsightsInput, NetWorthHistoryPoint, SyncFailureInput,
+    DividendEvent, GoalProgress, HoldingDayMove, InsightsInput, NetWorthHistoryPoint,
+    SyncFailureInput,
 };
 use super::rules::evaluate;
 use crate::notifications::{NotificationKind, NotificationSeverity};
@@ -25,6 +26,7 @@ fn base_input() -> InsightsInput {
         cash_pct_of_net_worth: None,
         cash_high_for_days: None,
         sync_failures: vec![],
+        dividend_events: vec![],
     }
 }
 
@@ -232,6 +234,48 @@ fn cash_drag_silent_under_days_threshold() {
 // ─────────────────────────────────────────────────────────────────────
 // Sync failure
 // ─────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────
+// DividendPosted
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn dividend_event_emits_per_activity() {
+    let mut i = base_input();
+    i.dividend_events.push(DividendEvent {
+        activity_id: "act_abc".into(),
+        kind: "DIVIDEND".into(),
+        symbol: "PLTR".into(),
+        posted_on: NaiveDate::from_ymd_opt(2026, 5, 27).unwrap(),
+        amount_base: dec!(42.50),
+    });
+    let out = evaluate(&i);
+    let div = out.iter().find(|n| n.kind == NotificationKind::DividendPosted);
+    assert!(div.is_some(), "expected dividend notification");
+    let div = div.unwrap();
+    assert_eq!(div.severity, NotificationSeverity::Success);
+    assert!(div.title.contains("PLTR"));
+    assert!(div.dedupe_key == "dividend:act_abc");
+}
+
+#[test]
+fn interest_event_uses_interest_label() {
+    let mut i = base_input();
+    i.dividend_events.push(DividendEvent {
+        activity_id: "act_int_1".into(),
+        kind: "INTEREST".into(),
+        symbol: "AAPL Bond".into(),
+        posted_on: NaiveDate::from_ymd_opt(2026, 5, 27).unwrap(),
+        amount_base: dec!(12.00),
+    });
+    let out = evaluate(&i);
+    let div = out.iter().find(|n| n.kind == NotificationKind::DividendPosted);
+    assert!(div.is_some());
+    assert!(
+        div.unwrap().title.starts_with("Interest"),
+        "expected Interest prefix"
+    );
+}
 
 #[test]
 fn sync_failure_emits_per_provider() {
