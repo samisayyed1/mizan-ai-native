@@ -50,6 +50,19 @@ pub async fn create_checkout_session(
     let customer_id = match repository::fetch_customer_id(state.db(), user.id).await? {
         Some(id) => id,
         None => {
+            // Users signed up via Supabase JWT after migration 0005 ran
+            // don't have a team row, but the subscriptions table requires
+            // NOT NULL team_id. Lazy-create the solo team using the
+            // migration's `team_id == user_id` invariant before inserting
+            // the customer stub. Idempotent so retries are safe.
+            let team_display_name = user
+                .email
+                .split('@')
+                .next()
+                .unwrap_or("Personal")
+                .to_string();
+            repository::ensure_solo_team(state.db(), user.id, &team_display_name).await?;
+
             let customer = billing
                 .stripe
                 .create_customer(&user.email, user.id)

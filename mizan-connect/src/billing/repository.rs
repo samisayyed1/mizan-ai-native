@@ -57,20 +57,66 @@ pub async fn fetch_active(
     .await
 }
 
+/// Ensure the user has a solo team. Migration 0005 backfilled existing
+/// users with `team_id == user_id`, but users that sign up via Supabase
+/// JWT *after* the migration ran don't have a team row yet — so the very
+/// first subscription INSERT (which requires NOT NULL `team_id`) would
+/// fail with a constraint violation. This lazy-create reuses the
+/// migration's UUID invariant so the team is fully interchangeable with
+/// a backfilled one, and is idempotent across reruns.
+pub async fn ensure_solo_team(
+    pool: &PgPool,
+    user_id: Uuid,
+    display_name: &str,
+) -> Result<(), sqlx::Error> {
+    let name = if display_name.trim().is_empty() {
+        "Personal".to_string()
+    } else {
+        display_name.trim().to_string()
+    };
+    sqlx::query(
+        r#"
+        INSERT INTO teams (id, name, owner_user_id, created_at, updated_at)
+        VALUES ($1, $2, $1, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .bind(&name)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO team_members (team_id, user_id, role, joined_at)
+        VALUES ($1, $1, 'owner', NOW())
+        ON CONFLICT (team_id, user_id) DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Persist or update the user's Stripe customer id at checkout-create time
 /// (before any subscription row exists).
+///
+/// Inserts a placeholder subscription row in `incomplete` status so the FK
+/// from later webhook upserts has somewhere to land even before checkout
+/// completes. The webhook then promotes status/tier/period_end.
+///
+/// **Pre-condition:** the user must already have a `teams` row (with
+/// id == user_id) — call [`ensure_solo_team`] in the handler before this.
+/// Without it the INSERT trips the NOT NULL constraint on `team_id`.
 pub async fn upsert_customer_stub(
     pool: &PgPool,
     user_id: Uuid,
     stripe_customer_id: &str,
 ) -> Result<(), sqlx::Error> {
-    // We create a placeholder subscription row in 'incomplete' status so
-    // the FK from later webhook upserts has somewhere to land, even before
-    // checkout completes. The webhook then promotes status/tier/period_end.
     sqlx::query(
         r#"
-        INSERT INTO subscriptions (user_id, stripe_customer_id, tier, status)
-        VALUES ($1, $2, 'silver', 'incomplete')
+        INSERT INTO subscriptions (user_id, team_id, stripe_customer_id, tier, status)
+        VALUES ($1, $1, $2, 'silver', 'incomplete')
         ON CONFLICT (stripe_customer_id) DO UPDATE
           SET updated_at = NOW()
         "#,
