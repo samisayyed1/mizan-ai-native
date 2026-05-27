@@ -18,6 +18,7 @@ import { formatDate } from "@/lib/utils";
 import { useCallback, useMemo, useState } from "react";
 import { useCreateBrokerLoginPortal } from "../hooks";
 import { SnapTradeConnectionsCard } from "./snaptrade-connections-card";
+import { SubscriptionPlans } from "./subscription-plans";
 import { useEntitlements } from "../hooks/use-entitlements";
 import { useIsBrokerSyncRunning, useSyncBrokerData } from "../hooks/use-sync-broker-data";
 import { useMizanConnect } from "../providers/mizan-connect-provider";
@@ -722,14 +723,24 @@ export function ConnectedView() {
         <ServiceUnavailableCard onRetry={handleRetry} isRetrying={isRetrying} />
       )}
 
-      {/* Subscription plans backend (/api/v1/subscription/plans) is not in
-          Chunk 1 of Mizan Connect. Replaces upstream's <SubscriptionPlans/>
-          render with a quiet placeholder until billing ships in Chunk 2. */}
+      {/* Subscription plans — Stripe Checkout is fully wired on the
+          cloud (/v1/billing/checkout-session) and the `SubscriptionPlans`
+          component already calls `openCheckout(plan, interval)` and
+          opens the resulting URL in the user's default browser. The
+          previous "COMING SOON" placeholder blocked the only path for
+          a Free-tier user to reach Gold, which in turn blocked Plaid
+          + SnapTrade testing because both broker cards self-gate on
+          `hasBrokerSync`. With this mounted, signed-in users see the
+          real plan grid; Stripe test mode lets us validate the full
+          upgrade → entitlements-bump → broker-card-appears loop. */}
       {!isServiceUnavailable && !hasSubscription && !!userInfo && (
-        <ComingSoonCard
-          title="Plans & billing"
-          message="Subscriptions and plan upgrades arrive with the next Mizan Connect release."
-          detail="You're signed in — that's all that's needed for Chunk 2."
+        <SubscriptionPlans
+          onRefresh={() => {
+            // After checkout completes the Stripe webhook updates the
+            // cloud-side subscription; nudge /v1/me to re-fetch so the
+            // tier badge + showBrokerSync flip without a page reload.
+            void refetchUserInfo();
+          }}
         />
       )}
 
