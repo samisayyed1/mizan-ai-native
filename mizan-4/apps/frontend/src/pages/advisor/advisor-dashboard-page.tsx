@@ -11,7 +11,9 @@ import { Skeleton } from "@mizan/ui/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 
 import { listMyTeams } from "@/adapters";
-import type { MyTeamsResponse } from "@/adapters/shared/teams";
+// Relative path to bypass the BUILD_TARGET-conditional `@/adapters`
+// alias in vite.config — same rationale as broker-service.ts.
+import type { MyTeamsResponse } from "../../adapters/shared/teams";
 import { useEntitlements, useUpgradeGate } from "@/features/mizan-connect";
 import { QueryKeys } from "@/lib/query-keys";
 

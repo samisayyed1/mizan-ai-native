@@ -4,14 +4,14 @@
 // the user can tell which integration owns which connection (and so
 // each card can degrade independently if its cloud side is missing).
 
-import { openUrlInBrowser } from "@/adapters";
 import {
   createSnapTradeLoginPortal,
   disconnectSnapTradeAuthorization,
   listSnapTradeConnections,
+  openUrlInBrowser,
   snaptradeHealth,
   snaptradeSyncNow,
-} from "@/adapters/shared/connect";
+} from "@/adapters";
 import { QueryKeys } from "@/lib/query-keys";
 import { Button } from "@mizan/ui/components/ui/button";
 import {

@@ -18,10 +18,14 @@ import {
   getBrokerSyncStates as getBrokerSyncStatesAdapter,
   getImportRuns as getImportRunsAdapter,
 } from "@/adapters";
+// Type-only import via relative path — see note in
+// `use-create-broker-login-portal.ts`. The `@/adapters` alias is
+// remapped per build target so `@/adapters/shared/connect` doesn't
+// resolve under web; the relative path bypasses the alias.
 import type {
   PlaidExchangePublicTokenResponse,
   PlaidLinkTokenResponse,
-} from "@/adapters/shared/connect";
+} from "../../../adapters/shared/connect";
 import type { Account, Platform } from "@/lib/types";
 import type {
   BrokerConnection,

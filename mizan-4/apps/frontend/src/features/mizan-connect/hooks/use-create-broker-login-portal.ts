@@ -7,7 +7,12 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "@mizan/ui/components/ui/use-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PlaidLinkTokenResponse } from "@/adapters/shared/connect";
+// Relative path so the import resolves to the actual `shared/connect`
+// module regardless of build target. Using `@/adapters/shared/connect`
+// would get caught by the BUILD_TARGET-conditional `@/adapters` alias
+// in vite.config and re-routed into `./web/shared/connect` (which
+// doesn't exist).
+import type { PlaidLinkTokenResponse } from "../../../adapters/shared/connect";
 import {
   createPlaidLinkToken,
   exchangePlaidPublicToken,
