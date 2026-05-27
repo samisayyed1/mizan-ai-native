@@ -81,8 +81,32 @@ export function SnapTradeConnectionsCard() {
       };
       window.addEventListener("focus", onFocus);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not open SnapTrade";
-      toast.error(msg);
+      // Map SnapTrade-side failures to actionable messages so the user
+      // sees a useful hint instead of a raw "API error 500 …" dump:
+      //   • 405 Method Not Allowed → SnapTrade hasn't enabled the
+      //     `/snapTrade/login` endpoint for this client_id (account
+      //     config in their Developer Dashboard, not a Mizan bug).
+      //   • 401 / signature → our HMAC didn't match — usually means
+      //     SNAPTRADE_CONSUMER_KEY rotated on Fly without redeploying.
+      //   • 503 / cloud "not configured" → the operator hasn't set
+      //     the SnapTrade env vars on this deployment.
+      //   • Anything else → surface the raw detail so power-users can
+      //     still triage from the toast itself.
+      const raw = err instanceof Error ? err.message : String(err);
+      const lower = raw.toLowerCase();
+      let friendly: string;
+      if (lower.includes("method") && lower.includes("not allowed")) {
+        friendly =
+          "Brokerage portal isn't enabled for this account yet. Open dashboard.snaptrade.com → your app → enable the Connection Portal endpoint, then try again.";
+      } else if (lower.includes("not configured") || lower.includes("service unavailable")) {
+        friendly = "SnapTrade isn't wired on this Mizan Connect deployment.";
+      } else if (lower.includes("unauthorized") || lower.includes("signature")) {
+        friendly =
+          "SnapTrade rejected our credentials. Verify SNAPTRADE_CONSUMER_KEY + SNAPTRADE_CLIENT_ID on the server.";
+      } else {
+        friendly = `Couldn't open SnapTrade: ${raw}`;
+      }
+      toast.error(friendly);
     } finally {
       setOpeningPortal(false);
     }

@@ -17,6 +17,7 @@ import { toast } from "@mizan/ui/components/ui/use-toast";
 import { formatDate } from "@/lib/utils";
 import { useCallback, useMemo, useState } from "react";
 import { useCreateBrokerLoginPortal } from "../hooks";
+import { CurrentPlanCard } from "./current-plan-card";
 import { SnapTradeConnectionsCard } from "./snaptrade-connections-card";
 import { SubscriptionPlans } from "./subscription-plans";
 import { useEntitlements } from "../hooks/use-entitlements";
@@ -563,11 +564,32 @@ export function ConnectedView() {
   // Check if there's a service unavailable error (failed to fetch user info)
   const isServiceUnavailable = !!error && !isLoadingUserInfo && !userInfo;
 
-  // Gold-tier Plaid sync gating: only show the broker UI when the user's
-  // team plan + subscription unlocks `plaidSync`. Silver users see the
-  // upgrade-CTA empty state from the parent ConnectPage.
-  const hasSubscription = hasBrokerSync(userInfo);
-  const showBrokerSync = !!userInfo && hasSubscription;
+  // Two distinct gates on this page that previously got conflated:
+  //
+  //   hasActiveSubscription — the user is on ANY paid plan with an
+  //     active/trialing Stripe status. Drives whether we hide the
+  //     SubscriptionPlans "upgrade now" grid; a Silver user has
+  //     paid and should see "Current plan" + the Manage button,
+  //     not the upgrade pitch.
+  //
+  //   showBrokerSync       — the active plan includes the `plaidSync`
+  //     entitlement (Gold+ today). Drives the Plaid + SnapTrade
+  //     cards. Silver users have paid but don't get broker sync,
+  //     so they see "Upgrade to Gold to add broker connections".
+  //
+  // The previous code aliased `hasSubscription = hasBrokerSync(userInfo)`,
+  // which made Silver users render IDENTICALLY to Free users (plans
+  // grid still showing, no acknowledgement of payment, no path to
+  // Gold from inside the Silver state). The two gates need to live
+  // independently.
+  const subscriptionStatus = userInfo?.team?.subscription_status;
+  const hasActiveSubscription =
+    subscriptionStatus === "active" || subscriptionStatus === "trialing";
+  const showBrokerSync = !!userInfo && hasBrokerSync(userInfo);
+  // Backwards-compat alias for the rest of this file's existing
+  // references — anything that asked "do they have a sub" now gets
+  // the *correct* answer (any active sub, not just Gold).
+  const hasSubscription = hasActiveSubscription;
 
   // Hooks - only fetch broker connections and accounts if user has broker sync
   const connectionsQuery = useBrokerConnections(showBrokerSync);
@@ -723,17 +745,12 @@ export function ConnectedView() {
         <ServiceUnavailableCard onRetry={handleRetry} isRetrying={isRetrying} />
       )}
 
-      {/* Subscription plans — Stripe Checkout is fully wired on the
-          cloud (/v1/billing/checkout-session) and the `SubscriptionPlans`
+      {/* Subscription plans grid — only for users WITHOUT an active
+          subscription. Stripe Checkout is fully wired on the cloud
+          (/v1/billing/checkout-session) and the `SubscriptionPlans`
           component already calls `openCheckout(plan, interval)` and
-          opens the resulting URL in the user's default browser. The
-          previous "COMING SOON" placeholder blocked the only path for
-          a Free-tier user to reach Gold, which in turn blocked Plaid
-          + SnapTrade testing because both broker cards self-gate on
-          `hasBrokerSync`. With this mounted, signed-in users see the
-          real plan grid; Stripe test mode lets us validate the full
-          upgrade → entitlements-bump → broker-card-appears loop. */}
-      {!isServiceUnavailable && !hasSubscription && !!userInfo && (
+          opens the resulting URL in the user's default browser. */}
+      {!isServiceUnavailable && !hasActiveSubscription && !!userInfo && (
         <SubscriptionPlans
           onRefresh={() => {
             // After checkout completes the Stripe webhook updates the
@@ -741,6 +758,20 @@ export function ConnectedView() {
             // tier badge + showBrokerSync flip without a page reload.
             void refetchUserInfo();
           }}
+        />
+      )}
+
+      {/* Current plan card — for users WITH an active subscription.
+          Acknowledges the payment, surfaces the tier badge, and
+          offers either an "Upgrade to Gold" CTA (Silver users need
+          this to unlock broker sync) or "Manage subscription"
+          (Stripe Customer Portal, for downgrade/cancel/payment-update). */}
+      {!isServiceUnavailable && hasActiveSubscription && !!userInfo && (
+        <CurrentPlanCard
+          plan={userInfo.team?.plan ?? "silver"}
+          status={subscriptionStatus ?? "active"}
+          canUpgradeToGold={!showBrokerSync}
+          onRefresh={() => void refetchUserInfo()}
         />
       )}
 
