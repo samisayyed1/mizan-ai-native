@@ -188,13 +188,21 @@ pub struct BillingPrices {
 
 /// Plaid configuration. Access tokens are encrypted with
 /// `MIZAN_PLAID_TOKEN_ENCRYPTION_KEY` before storage.
+///
+/// `redirect_uri` is `Option<String>` because Plaid only requires
+/// it for **OAuth-required institutions**. Non-OAuth sandbox banks
+/// (First Platypus, Tartan etc.) accept `/link/token/create` without
+/// a `redirect_uri` field. Forcing the env var at boot crashed the
+/// cloud whenever the operator deployed without setting it; the
+/// optional shape lets sandbox-only postures ship without any
+/// redirect URL while real OAuth banks still get one when configured.
 #[derive(Debug, Clone)]
 pub struct PlaidConfig {
     pub client_id: String,
     pub secret: SecretString,
     pub environment: PlaidEnv,
     pub api_base: String,
-    pub redirect_uri: String,
+    pub redirect_uri: Option<String>,
     pub webhook_url: Option<String>,
     pub token_encryption_key: Vec<u8>,
 }
@@ -510,12 +518,18 @@ fn build_plaid_config(
         .unwrap_or_default();
     let secret =
         pick_required("PLAID_SECRET", raw.plaid_secret.as_deref(), required)?.unwrap_or_default();
-    let redirect_uri = pick_required(
-        "PLAID_REDIRECT_URI",
-        raw.plaid_redirect_uri.as_deref(),
-        required,
-    )?
-    .unwrap_or_default();
+    // PLAID_REDIRECT_URI is OPTIONAL even when Plaid as a whole is
+    // required — see PlaidConfig docs above. Same pattern as
+    // `webhook_url`: empty / unset → None, anything trimmed-non-empty
+    // → Some(uri). When None the client omits the `redirect_uri`
+    // field from /link/token/create, which sandbox non-OAuth banks
+    // accept.
+    let redirect_uri = raw
+        .plaid_redirect_uri
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
 
     let enc_key_b64 = pick_required(
         "MIZAN_PLAID_TOKEN_ENCRYPTION_KEY",

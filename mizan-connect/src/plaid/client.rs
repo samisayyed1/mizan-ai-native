@@ -33,7 +33,11 @@ impl PlaidClient {
             environment: config.environment,
             base_url: config.api_base.clone(),
             webhook_url: config.webhook_url.clone(),
-            redirect_uri: Some(config.redirect_uri.clone()),
+            // `config.redirect_uri` is already Option<String>; clone
+            // through verbatim. The request-time create_link_token
+            // call can still pass an override via its `redirect_uri`
+            // arg if a specific institution needs one.
+            redirect_uri: config.redirect_uri.clone(),
         }
     }
 
