@@ -91,6 +91,8 @@ parking_lot = "0.12"
 secrecy = "0.10"
 base64 = "0.22"
 urlencoding = "2"
+# Constant-time bearer-token compare for the /v1/admin/* surface.
+subtle = "2.6"
 
 # Plaid token encryption
 aes-gcm = "0.10"

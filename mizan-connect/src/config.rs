@@ -124,6 +124,13 @@ pub struct Config {
     pub supabase_url: String,
     pub supabase_jwt_audience: String,
     pub supabase_service_role_key: Option<SecretString>,
+    /// One-shot admin bearer token (env: `MIZAN_ADMIN_TOKEN`). When set,
+    /// unlocks `/v1/admin/*` endpoints for QA + emergency operator use
+    /// (e.g. reading a user's subscription state, force-granting a
+    /// tier when the Stripe webhook can't reach us). Unset → admin
+    /// router is mounted with a 503 stub so the routes don't accidentally
+    /// no-op in production.
+    pub admin_token: Option<SecretString>,
     /// Supabase publishable (anon) key. PUBLIC by design — Supabase
     /// explicitly markets this as the client-embeddable key. Exposed
     /// to the desktop via GET /v1/config/public so a single Fly
@@ -289,6 +296,8 @@ struct RawConfig {
     supabase_url: String,
     supabase_jwt_audience: Option<String>,
     supabase_service_role_key: Option<String>,
+    /// Optional admin bearer token — see `AppConfig::admin_token` docs.
+    mizan_admin_token: Option<String>,
     /// Supabase anon/publishable key — PUBLIC. Optional so dev
     /// builds that don't enable Mizan Connect on desktop can omit it.
     supabase_publishable_key: Option<String>,
@@ -410,6 +419,11 @@ impl Config {
             .filter(|s| !s.trim().is_empty())
             .map(SecretString::from);
 
+        let admin_token = raw
+            .mizan_admin_token
+            .filter(|s| !s.trim().is_empty())
+            .map(SecretString::from);
+
         let sentry = SentryConfig {
             dsn: raw.sentry_dsn.filter(|s| !s.trim().is_empty()),
             environment: raw.sentry_environment.unwrap_or_else(|| match app_env {
@@ -434,6 +448,7 @@ impl Config {
                 .supabase_jwt_audience
                 .unwrap_or_else(|| "authenticated".into()),
             supabase_service_role_key: service_role_key,
+            admin_token,
             // PUBLIC anon key, optionally set so /v1/config/public can
             // hand it back to desktop clients. None → desktop falls back
             // to its build-time CONNECT_AUTH_PUBLISHABLE_KEY (which may

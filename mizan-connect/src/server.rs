@@ -105,6 +105,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(crate::users::router())
         .merge(crate::teams::router())
         .merge(crate::billing::router())
+        .merge(crate::admin::router())
         .merge(v1_ai_chat)
         .with_state(state.clone());
 
@@ -149,6 +150,7 @@ pub fn build_app(state: AppState) -> Router {
         // Sits on /api/v1/config/public — unauth'd by design (values
         // are public).
         .merge(crate::public_config::router())
+        .merge(crate::admin::router())
         .merge(ai_chat)
         .with_state(state.clone());
 

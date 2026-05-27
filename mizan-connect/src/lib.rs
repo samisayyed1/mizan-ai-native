@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms)]
 
+pub mod admin;
 pub mod audit;
 pub mod auth;
 pub mod billing;
