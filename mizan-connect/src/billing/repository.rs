@@ -164,18 +164,50 @@ pub struct WebhookSubscriptionUpsert<'a> {
 /// Upsert by `stripe_subscription_id`. Called from the webhook handler;
 /// caller is responsible for opening the tx (so the `stripe_events`
 /// idempotency row + this write commit together).
+///
+/// Inserts `team_id = user_id` so the NOT NULL constraint (added by
+/// migration 0005) is satisfied. This matches the invariant
+/// [`ensure_solo_team`] establishes — the webhook handler can also
+/// hit this path for users who created a Stripe subscription via
+/// some external flow without going through `create_checkout_session`
+/// first, so the upsert idempotently re-asserts the same shape.
 pub async fn upsert_from_webhook(
     tx: &mut PgConnection,
     p: WebhookSubscriptionUpsert<'_>,
 ) -> Result<(), sqlx::Error> {
+    // Belt-and-braces: ensure the solo team exists *inside* the same tx
+    // as the subscription upsert so the FK is satisfied even if the
+    // webhook beat the checkout-session call (Stripe retries can land
+    // events out of order under load).
+    sqlx::query(
+        r#"
+        INSERT INTO teams (id, name, owner_user_id, created_at, updated_at)
+        VALUES ($1, 'Personal', $1, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING
+        "#,
+    )
+    .bind(p.user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO team_members (team_id, user_id, role, joined_at)
+        VALUES ($1, $1, 'owner', NOW())
+        ON CONFLICT (team_id, user_id) DO NOTHING
+        "#,
+    )
+    .bind(p.user_id)
+    .execute(&mut *tx)
+    .await?;
+
     sqlx::query(
         r#"
         INSERT INTO subscriptions (
-            user_id, stripe_customer_id, stripe_subscription_id,
+            user_id, team_id, stripe_customer_id, stripe_subscription_id,
             tier, status,
             current_period_start, current_period_end,
             cancel_at_period_end
-        ) VALUES ($1, $2, $3, $4, $5::subscription_status, $6, $7, $8)
+        ) VALUES ($1, $1, $2, $3, $4, $5::subscription_status, $6, $7, $8)
         ON CONFLICT (stripe_subscription_id) DO UPDATE
           SET status               = EXCLUDED.status,
               tier                 = EXCLUDED.tier,
