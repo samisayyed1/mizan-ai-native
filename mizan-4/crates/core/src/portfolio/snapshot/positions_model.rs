@@ -573,3 +573,173 @@ impl Position {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod fifo_golden_tests {
+    //! Hand-computed scenarios proving FIFO + realized-gain math.
+    //!
+    //! These are RECONCILED with paper-math expected values. If any
+    //! refactor changes Position::reduce_lots_fifo, these tests
+    //! catch it before users see drift in their realized gains.
+
+    use super::*;
+    use chrono::TimeZone;
+    use rust_decimal_macros::dec;
+
+    fn iso(y: i32, m: u32, d: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(y, m, d, 12, 0, 0).single().unwrap()
+    }
+
+    fn fresh_position() -> Position {
+        Position {
+            id: "pos-test".to_string(),
+            account_id: "acct-test".to_string(),
+            asset_id: "asset-test".to_string(),
+            currency: "USD".to_string(),
+            ..Position::default()
+        }
+    }
+
+    /// Scenario A — two lots, partial sell drains lot 1 + dips into lot 2.
+    /// BUY 10 @ $100 (lot 1, jan), BUY 5 @ $120 (lot 2, feb), SELL 12.
+    /// FIFO: take 10 @ $100 = $1000 cost basis, then 2 @ $120 = $240.
+    /// Total cost basis removed = $1240. Remaining = 3 @ $120 = $360.
+    #[test]
+    fn two_lot_partial_drain() {
+        let mut pos = fresh_position();
+        pos.add_lot_values(
+            "lot-1".into(),
+            dec!(10),
+            dec!(100),
+            dec!(0),
+            iso(2026, 1, 15),
+            None,
+        )
+        .unwrap();
+        pos.add_lot_values(
+            "lot-2".into(),
+            dec!(5),
+            dec!(120),
+            dec!(0),
+            iso(2026, 2, 15),
+            None,
+        )
+        .unwrap();
+
+        let result = pos.reduce_lots_fifo(dec!(12)).unwrap();
+        assert_eq!(result.quantity_reduced, dec!(12));
+        assert_eq!(result.cost_basis_removed, dec!(1240));
+
+        // Remaining: 1 lot of 3 @ $120 = $360 cost basis
+        assert_eq!(pos.lots.len(), 1);
+        let remaining = &pos.lots[0];
+        assert_eq!(remaining.quantity, dec!(3));
+        assert_eq!(remaining.cost_basis, dec!(360));
+    }
+
+    /// Scenario B — exact lot exhaustion.
+    /// BUY 10 @ $50 + BUY 10 @ $75, SELL exactly 10. Lot 1 vanishes,
+    /// lot 2 intact.
+    #[test]
+    fn exact_lot_exhaustion_leaves_second_lot_untouched() {
+        let mut pos = fresh_position();
+        pos.add_lot_values(
+            "lot-1".into(),
+            dec!(10),
+            dec!(50),
+            dec!(0),
+            iso(2026, 1, 1),
+            None,
+        )
+        .unwrap();
+        pos.add_lot_values(
+            "lot-2".into(),
+            dec!(10),
+            dec!(75),
+            dec!(0),
+            iso(2026, 2, 1),
+            None,
+        )
+        .unwrap();
+
+        let result = pos.reduce_lots_fifo(dec!(10)).unwrap();
+        assert_eq!(result.cost_basis_removed, dec!(500));
+        assert_eq!(pos.lots.len(), 1);
+        assert_eq!(pos.lots[0].quantity, dec!(10));
+        assert_eq!(pos.lots[0].cost_basis, dec!(750));
+    }
+
+    /// Scenario C — over-sell warning path.
+    /// Only 5 shares available, request 10. Should reduce by 5 only,
+    /// not panic, and return that exact quantity.
+    #[test]
+    fn oversell_clamps_to_available() {
+        let mut pos = fresh_position();
+        pos.add_lot_values(
+            "lot-1".into(),
+            dec!(5),
+            dec!(100),
+            dec!(0),
+            iso(2026, 1, 1),
+            None,
+        )
+        .unwrap();
+        let result = pos.reduce_lots_fifo(dec!(10)).unwrap();
+        assert_eq!(result.quantity_reduced, dec!(5));
+        assert_eq!(result.cost_basis_removed, dec!(500));
+        assert_eq!(pos.lots.len(), 0);
+    }
+
+    /// Scenario D — fees baked into cost basis are removed proportionally.
+    /// BUY 10 @ $100 + $5 fee → cost basis = $1005, then SELL 4.
+    /// Proportional cost basis removed = 1005 * 4 / 10 = $402.
+    /// Proportional fee removed = 5 * 4 / 10 = $2.
+    /// Remaining: 6 qty, $603 cost basis, $3 fee.
+    #[test]
+    fn fees_split_proportionally_on_partial_sell() {
+        let mut pos = fresh_position();
+        pos.add_lot_values(
+            "lot-1".into(),
+            dec!(10),
+            dec!(100),
+            dec!(5),
+            iso(2026, 1, 1),
+            None,
+        )
+        .unwrap();
+        let result = pos.reduce_lots_fifo(dec!(4)).unwrap();
+        assert_eq!(result.cost_basis_removed, dec!(402));
+        assert_eq!(pos.lots.len(), 1);
+        assert_eq!(pos.lots[0].quantity, dec!(6));
+        assert_eq!(pos.lots[0].cost_basis, dec!(603));
+        assert_eq!(pos.lots[0].acquisition_fees, dec!(3));
+    }
+
+    /// Scenario E — split applies BEFORE next sell.
+    /// BUY 10 @ $100 ($1000 basis), 2:1 split → 20 qty, $50 apprice,
+    /// cost basis UNCHANGED at $1000. Then SELL 10 → 50% of basis
+    /// removed = $500, leaving 10 qty @ $500 cost basis.
+    #[test]
+    fn split_then_sell_preserves_total_basis() {
+        let mut pos = fresh_position();
+        pos.add_lot_values(
+            "lot-1".into(),
+            dec!(10),
+            dec!(100),
+            dec!(0),
+            iso(2026, 1, 1),
+            None,
+        )
+        .unwrap();
+        pos.apply_split(dec!(2), "split-1").unwrap();
+        assert_eq!(pos.lots[0].quantity, dec!(20));
+        assert_eq!(pos.lots[0].acquisition_price, dec!(50));
+        // Cost basis preserved across split.
+        assert_eq!(pos.lots[0].cost_basis, dec!(1000));
+
+        let result = pos.reduce_lots_fifo(dec!(10)).unwrap();
+        assert_eq!(result.cost_basis_removed, dec!(500));
+        assert_eq!(pos.lots[0].quantity, dec!(10));
+        assert_eq!(pos.lots[0].cost_basis, dec!(500));
+    }
+}

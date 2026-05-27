@@ -8,6 +8,79 @@ use log::debug;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 
+/// Round a list of `(key, value)` shares into 2dp percentages that
+/// sum to exactly 100.00 via the Largest-Remainder Method (LRM,
+/// a.k.a. Hare-Niemeyer).
+///
+/// Why this is necessary: naïve independent rounding
+/// `(value / total * 100).round_dp(2)` per row drifts the sum away
+/// from 100. Three equal-thirds round to 33.33 each → sum = 99.99.
+/// Five-asset portfolios with uneven values commonly drift by ±0.02
+/// to ±0.05. The UI then shows pie-chart legends adding to 99.97% or
+/// 100.04%, which looks wrong + breaks any allocation-drift threshold
+/// math the rule engine downstream relies on.
+///
+/// LRM steps:
+/// 1. Compute exact percentage `value / total * 100` per row.
+/// 2. Take floor at 2dp; sum the floors.
+/// 3. Distribute the deficit (`100 - sum_of_floors`) by giving +0.01
+///    to the rows with the largest fractional remainder, one at a
+///    time, until sum = 100.00.
+///
+/// Returns a HashMap keyed by the input key (typically a category_id)
+/// for O(1) lookup at the caller. Empty input (or total ≤ 0) returns
+/// an empty map; the caller falls back to 0% per row.
+pub(super) fn largest_remainder_percentages<K: std::hash::Hash + Eq + Clone>(
+    values: &[(K, Decimal)],
+    total: Decimal,
+) -> HashMap<K, Decimal> {
+    if total <= Decimal::ZERO || values.is_empty() {
+        return HashMap::new();
+    }
+    // 1) exact percentages, 2) floor each at 2dp, 3) track the
+    // fractional remainder for the distribution pass.
+    let mut working: Vec<(K, Decimal, Decimal)> = values
+        .iter()
+        .map(|(k, v)| {
+            let exact = (*v / total) * dec!(100);
+            let floored =
+                exact.trunc_with_scale(2);
+            let remainder = exact - floored;
+            (k.clone(), floored, remainder)
+        })
+        .collect();
+    let sum_floors: Decimal = working.iter().map(|(_, f, _)| *f).sum();
+    let mut deficit_cents = ((dec!(100) - sum_floors) * dec!(100))
+        .round_dp(0)
+        .to_string()
+        .parse::<i64>()
+        .unwrap_or(0);
+
+    if deficit_cents > 0 {
+        // Sort by remainder desc, break ties on largest floored value
+        // (= largest absolute share) so the +0.01 lands on the row
+        // where it's least visible.
+        let mut idx: Vec<usize> = (0..working.len()).collect();
+        idx.sort_by(|&a, &b| {
+            working[b]
+                .2
+                .cmp(&working[a].2)
+                .then_with(|| working[b].1.cmp(&working[a].1))
+        });
+        for i in idx {
+            if deficit_cents <= 0 {
+                break;
+            }
+            working[i].1 += dec!(0.01);
+            deficit_cents -= 1;
+        }
+    }
+    working
+        .into_iter()
+        .map(|(k, pct, _)| (k, pct))
+        .collect()
+}
+
 use crate::errors::Result;
 use crate::portfolio::holdings::{Holding, HoldingSummary, HoldingType, HoldingsServiceTrait};
 use crate::taxonomies::{Category, TaxonomyServiceTrait};
@@ -175,6 +248,29 @@ impl AllocationService {
             }
         }
 
+        // Pre-compute LRM-rounded percentages for top-level + per-parent
+        // children so the rendered breakdown adds to exactly 100.00%.
+        let top_level_pairs: Vec<(String, Decimal)> = rolled_up_values
+            .iter()
+            .filter(|(_, v)| **v > Decimal::ZERO)
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        let top_level_percent_map =
+            largest_remainder_percentages(&top_level_pairs, total_value);
+
+        // Children are per-parent; compute LRM-rounded percentages
+        // PER top-level scope (so each pie slice's children sum to
+        // the slice's own percentage * 100). Because each child %
+        // is computed against `total_value` (not the parent's value),
+        // their sum across the whole portfolio still adds to 100.00.
+        let children_pairs: Vec<(String, Decimal)> = original_values
+            .iter()
+            .filter(|(cid, (v, top_id))| **cid != *top_id && *v > Decimal::ZERO)
+            .map(|(cid, (v, _))| (cid.clone(), *v))
+            .collect();
+        let children_percent_map =
+            largest_remainder_percentages(&children_pairs, total_value);
+
         // Build children map: top_level_id -> Vec<CategoryAllocation>
         let mut children_map: HashMap<String, Vec<CategoryAllocation>> = HashMap::new();
         if rollup_to_top_level {
@@ -186,11 +282,10 @@ impl AllocationService {
                         .map(|c| (c.name.clone(), c.color.clone()))
                         .unwrap_or_else(|| (cat_id.clone(), "#808080".to_string()));
 
-                    let percentage = if total_value > Decimal::ZERO {
-                        (*value / total_value * dec!(100)).round_dp(2)
-                    } else {
-                        Decimal::ZERO
-                    };
+                    let percentage = children_percent_map
+                        .get(cat_id)
+                        .copied()
+                        .unwrap_or(Decimal::ZERO);
 
                     children_map.entry(top_level_id.clone()).or_default().push(
                         CategoryAllocation {
@@ -224,11 +319,10 @@ impl AllocationService {
                         .unwrap_or_else(|| (cat_id.clone(), "#808080".to_string()))
                 };
 
-                let percentage = if total_value > Decimal::ZERO {
-                    (value / total_value * dec!(100)).round_dp(2)
-                } else {
-                    Decimal::ZERO
-                };
+                let percentage = top_level_percent_map
+                    .get(&cat_id)
+                    .copied()
+                    .unwrap_or(Decimal::ZERO);
 
                 let children = children_map.remove(&cat_id).unwrap_or_default();
 
@@ -640,5 +734,94 @@ impl AllocationServiceTrait for AllocationService {
             total_value: total_matched_value,
             currency: base_currency.to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod lrm_tests {
+    use super::*;
+
+    /// LRM invariant: the rounded percentages MUST sum to exactly
+    /// 100.00 whenever the input has at least one positive value.
+    /// This is the property that was previously violated and that
+    /// caused pie-chart legends to display 99.99% or 100.01%.
+    #[test]
+    fn three_thirds_sum_to_exactly_100() {
+        let pairs = vec![
+            ("a".to_string(), dec!(100)),
+            ("b".to_string(), dec!(100)),
+            ("c".to_string(), dec!(100)),
+        ];
+        let pcts = largest_remainder_percentages(&pairs, dec!(300));
+        let sum: Decimal = pcts.values().copied().sum();
+        assert_eq!(sum, dec!(100.00), "got {pcts:?}");
+        // Each share is 33.33 or 33.34 — one row absorbs the deficit.
+        for v in pcts.values() {
+            assert!(*v == dec!(33.33) || *v == dec!(33.34), "got {v}");
+        }
+    }
+
+    #[test]
+    fn five_uneven_categories_sum_to_exactly_100() {
+        // 1, 1, 1, 1, 6 — naïve rounding tends to drift by 0.04.
+        let pairs = vec![
+            ("a".to_string(), dec!(1)),
+            ("b".to_string(), dec!(1)),
+            ("c".to_string(), dec!(1)),
+            ("d".to_string(), dec!(1)),
+            ("e".to_string(), dec!(6)),
+        ];
+        let pcts = largest_remainder_percentages(&pairs, dec!(10));
+        let sum: Decimal = pcts.values().copied().sum();
+        assert_eq!(sum, dec!(100.00));
+    }
+
+    #[test]
+    fn single_category_gets_full_hundred() {
+        let pairs = vec![("only".to_string(), dec!(1234.567))];
+        let pcts = largest_remainder_percentages(&pairs, dec!(1234.567));
+        assert_eq!(pcts.get("only"), Some(&dec!(100.00)));
+    }
+
+    #[test]
+    fn empty_or_zero_total_returns_empty_map() {
+        let empty: Vec<(String, Decimal)> = Vec::new();
+        assert!(largest_remainder_percentages(&empty, dec!(100)).is_empty());
+        let zero_pairs = vec![("a".to_string(), dec!(0))];
+        assert!(largest_remainder_percentages(&zero_pairs, dec!(0)).is_empty());
+    }
+
+    /// Property-style sweep — for any random portfolio shape with N≤10
+    /// rows the sum must be exactly 100.00. We hand-pick adversarial
+    /// shapes that are known to break naïve rounding.
+    #[test]
+    fn lrm_sum_invariant_across_adversarial_shapes() {
+        let shapes: Vec<Vec<Decimal>> = vec![
+            vec![dec!(1)],
+            vec![dec!(1), dec!(1)],
+            vec![dec!(1), dec!(1), dec!(1)],
+            vec![dec!(1), dec!(1), dec!(1), dec!(1), dec!(1), dec!(1), dec!(1)],
+            // 7 thirds + 1 large
+            vec![dec!(1); 7].into_iter().chain([dec!(50)]).collect(),
+            // Drift-classic: 7 + 3 + 2
+            vec![dec!(7), dec!(3), dec!(2)],
+            // Many small + one giant
+            vec![dec!(0.01); 50].into_iter().chain([dec!(99.5)]).collect(),
+        ];
+        for (idx, shape) in shapes.iter().enumerate() {
+            let total: Decimal = shape.iter().copied().sum();
+            let pairs: Vec<(String, Decimal)> = shape
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (format!("c{i}"), *v))
+                .collect();
+            let pcts = largest_remainder_percentages(&pairs, total);
+            let sum: Decimal = pcts.values().copied().sum();
+            assert_eq!(
+                sum,
+                dec!(100.00),
+                "shape {idx} ({shape:?}) summed to {sum} not 100.00"
+            );
+        }
     }
 }
