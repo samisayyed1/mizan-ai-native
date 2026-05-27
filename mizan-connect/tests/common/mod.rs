@@ -110,7 +110,10 @@ impl TestApp {
                 api_base: plaid_api_base
                     .unwrap_or("https://sandbox.plaid.invalid")
                     .to_string(),
-                redirect_uri: "http://127.0.0.1/api/v1/sync/plaid/callback".into(),
+                // PlaidConfig.redirect_uri became Option<String> in the
+                // Plaid-fix commit so deployments without an OAuth
+                // redirect (sandbox-only postures) don't crash at boot.
+                redirect_uri: Some("http://127.0.0.1/api/v1/sync/plaid/callback".into()),
                 webhook_url: Some("http://127.0.0.1/api/v1/sync/plaid/webhook".into()),
                 token_encryption_key: TEST_ENCRYPTION_KEY.to_vec(),
             }),
