@@ -37,6 +37,11 @@ pub mod cache_policy;
 pub mod db;
 pub mod errors;
 pub mod schema;
+// Track I PR-I4 — pre-update DB snapshot + 30-day retention janitor.
+// Consumed by `apps/tauri/src/updater.rs::install_update` (snapshot before
+// download) and `apps/tauri/src/context/providers.rs::initialize_context`
+// (prune on app launch).
+pub mod updater_snapshot;
 pub mod utils;
 
 // Repository implementations
