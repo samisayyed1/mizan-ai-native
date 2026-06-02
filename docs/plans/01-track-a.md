@@ -32,8 +32,42 @@
 
 ## ADRs (planned)
 
-- 0013 — Dashboard Information Architecture
-- 0014 — Charting Vocabulary (donut/bar/heatmap/sparkline/Sankey)
+ADR numbers 0013 + 0014 from the original plan got reassigned during Track H
+(0013 — API deprecation default per memory note `project-api-deprecation-default`;
+0014 — MCP defaults per memory note `project-mcp-defaults`). Track A's ADRs
+shift to:
+
+- **0018 — Dashboard Information Architecture** (planned — lands with PR-A2 / PR-A5 cluster)
+- **0019 — Charting Vocabulary (donut/bar/heatmap/sparkline/Sankey)** (planned — lands with PR-A3)
+
+## PR-A2 audit — existing Net Worth page vs spec §12
+
+Existing surface (as of 2026-06-03, audited in PR-A2):
+
+| File | Lines | Role |
+|---|---|---|
+| `mizan-4/apps/frontend/src/pages/net-worth/net-worth-content.tsx` | 661 | Page composition: hero balance + category list + timeframe selector |
+| `mizan-4/apps/frontend/src/pages/net-worth/net-worth-chart.tsx` | 288 | Historical line/area chart (Recharts) |
+
+Coverage against spec §12 (Net Worth Page requirements):
+
+| Spec §12 requirement | Status | Notes / gap |
+|---|---|---|
+| Large historical chart with timeframe selector (24h/7d/30d/YTD/All) | ✅ Present | `net-worth-chart.tsx` + `IntervalSelector` from `@mizan/ui` |
+| Stacked area by asset class | ⏸️ Gap (PR-A3 prerequisite) | Current chart is single-series line. Stacked area needs the donut+bar primitive vocabulary shipped in PR-A3 |
+| Sankey cash-flow diagram | ⏸️ Gap (PR-A2.b) | Not present. Per spec §4 it's optional in v1 — slipped to A2.b |
+| Liabilities section | 🟡 Partial | `CATEGORY_COLORS.liabilities` exists but rendering is grouped with assets; spec wants a separate liabilities row with explicit total |
+| Percentile / global comparison | ⏸️ Gap | Not present. Spec §12 calls for a small "you're in the Nth percentile globally" chip — needs a cloud endpoint (Mizan Connect) for the global distribution. Slipped to A2.c (needs cloud work) |
+| "Composition" section (renamed from "Break Down") | ✅ Present | PR-A1 fix held |
+| Vehicles toggle (exclude from net worth) | ✅ Present | `excludeVehiclesFromNetWorth` helper consumed |
+
+**Recommendation:** PR-A2 ships as the AUDIT-ONLY PR (this PR). Code changes for the gaps land as:
+
+- **PR-A2.a** — Liabilities separation (small): split the category list into Assets + Liabilities sections with explicit subtotals
+- **PR-A2.b** — Sankey cash-flow primitive (depends on PR-A3 chart vocabulary)
+- **PR-A2.c** — Percentile chip (depends on Mizan Connect `/v1/insights/global-percentile/:metric` endpoint — slipped to Track D adjacent work)
+
+Existing perf budget verification (cold-start < 1.2s, chart paint < 200ms cached) — measured: ✅ within budget. To be re-measured at PR-A2.a ship.
 
 ## Definition of Done
 
@@ -44,6 +78,16 @@
 - Notification panel matches spec §9 layout
 - Sentry post-rollout error rate ≤ pre-rollout
 
-## What's done this session (2026-06-02)
+## What's done
+
+### 2026-06-02
 
 - PR-A1 — Single H2 "Breakdown" → "Composition" rename in `net-worth-content.tsx`
+
+### 2026-06-03
+
+- PR-A2 — Net Worth page audit against spec §12 (this PR). Findings in the
+  "PR-A2 audit" section above. Identifies 3 follow-up PRs (A2.a, A2.b, A2.c)
+  + the dependency on PR-A3 (chart primitives) before stacked-area can ship.
+- ADR-numbering correction: 0013/0014 → 0018/0019 (originals reassigned to
+  API deprecation + MCP defaults during Track H).
