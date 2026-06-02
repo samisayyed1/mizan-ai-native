@@ -1,0 +1,21 @@
+[package]
+name = "mizan-ipc-schema"
+version.workspace = true
+edition.workspace = true
+description = "Versioned Tauri command request/response schemas (Rust source of truth; TS bindings via ts-rs codegen)"
+authors = ["Sami Sayyed"]
+license = "AGPL-3.0"
+
+[features]
+# Enabled in the `apps/frontend` build chain to emit TypeScript bindings
+# alongside the Rust types. Off by default so production builds don't
+# pull in the codegen dependencies.
+ts-export = ["dep:ts-rs"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+ts-rs = { version = "11", optional = true }
+
+[lints]
+workspace = true

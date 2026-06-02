@@ -31,6 +31,8 @@
 //!              SQLite DB
 //! ```
 
+pub mod cache_eviction;
+pub mod cache_policy;
 pub mod db;
 pub mod errors;
 pub mod schema;
@@ -42,16 +44,16 @@ pub mod activities;
 pub mod ai_chat;
 pub mod assets;
 pub mod custom_provider;
+pub mod daily_brief;
 pub mod fx;
 pub mod goals;
 pub mod health;
 pub mod limits;
 pub mod market_data;
-pub mod news;
-pub mod portfolio;
-pub mod daily_brief;
 pub mod net_worth_snapshot;
+pub mod news;
 pub mod notifications;
+pub mod portfolio;
 pub mod settings;
 pub mod sync;
 pub mod sync_run_ledger;
