@@ -4,6 +4,8 @@
 //! and assets with legacy classification data needing migration.
 
 use async_trait::async_trait;
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 
 use crate::assets::AssetServiceTrait;
 use crate::errors::Result;
@@ -23,8 +25,8 @@ pub struct UnclassifiedAssetInfo {
     pub symbol: String,
     /// Asset name (if available)
     pub name: Option<String>,
-    /// Market value in base currency
-    pub market_value: f64,
+    /// Market value in base currency (Decimal — Track H PR-H10 / Finding 3.1.2).
+    pub market_value: Decimal,
     /// Which taxonomy is missing (e.g., "asset_class")
     pub missing_taxonomy: String,
 }
@@ -187,9 +189,12 @@ impl ClassificationCheck {
 
         // Emit issue for each taxonomy type
         for (taxonomy, assets) in by_taxonomy {
-            let total_mv: f64 = assets.iter().map(|a| a.market_value).sum();
+            // Track H PR-H10 / audit Finding 3.1.2 — accumulating sum stays
+            // Decimal so it doesn't drift. mv_pct stays f64 (Finding 3.1.1
+            // Informational: threshold ratio) — only the accumulator changed.
+            let total_mv: Decimal = assets.iter().map(|a| a.market_value).sum();
             let mv_pct = if ctx.total_portfolio_value > 0.0 {
-                total_mv / ctx.total_portfolio_value
+                total_mv.to_f64().unwrap_or(0.0) / ctx.total_portfolio_value
             } else {
                 0.0
             };
@@ -377,7 +382,7 @@ mod tests {
             asset_id: "SEC:AAPL:XNAS".to_string(),
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
-            market_value: 1_000.0, // 1% of portfolio
+            market_value: Decimal::from(1_000), // 1% of portfolio
             missing_taxonomy: "asset_class".to_string(),
         }];
 
@@ -395,7 +400,7 @@ mod tests {
             asset_id: "SEC:AAPL:XNAS".to_string(),
             symbol: "AAPL".to_string(),
             name: None,
-            market_value: 10_000.0, // 10% of portfolio (> 5% threshold)
+            market_value: Decimal::from(10_000), // 10% of portfolio (> 5% threshold)
             missing_taxonomy: "asset_class".to_string(),
         }];
 
@@ -413,7 +418,7 @@ mod tests {
             asset_id: "SEC:AAPL:XNAS".to_string(),
             symbol: "AAPL".to_string(),
             name: None,
-            market_value: 35_000.0, // 35% of portfolio (> 30% threshold)
+            market_value: Decimal::from(35_000), // 35% of portfolio (> 30% threshold)
             missing_taxonomy: "asset_class".to_string(),
         }];
 

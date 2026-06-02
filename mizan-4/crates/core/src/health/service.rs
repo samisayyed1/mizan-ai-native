@@ -6,6 +6,8 @@
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use log::{debug, info, warn};
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -234,9 +236,14 @@ impl HealthService {
         // Use a map to consolidate holdings by asset_id (same asset in multiple accounts)
         let mut holdings_map: HashMap<String, AssetHoldingInfo> = HashMap::new();
         let mut latest_quote_times: HashMap<String, chrono::DateTime<chrono::Utc>> = HashMap::new();
-        let mut total_portfolio_value = 0.0;
-        // Track FX pairs needed: (from_currency, to_currency) → affected market value
-        let mut fx_pair_mv: HashMap<(String, String), f64> = HashMap::new();
+        // Track H PR-H10 / audit Finding 3.1.2 — totals are Decimal so the
+        // sum doesn't drift. Boundary conversion to f64 happens once below
+        // when populating the HealthContext (which carries f64 because the
+        // threshold-ratio surface is Informational per Finding 3.1.1).
+        let mut total_portfolio_value: Decimal = Decimal::ZERO;
+        // Track FX pairs needed: (from_currency, to_currency) → affected
+        // market value (Decimal sums).
+        let mut fx_pair_mv: HashMap<(String, String), Decimal> = HashMap::new();
 
         for account in &accounts {
             let holdings = holdings_service
@@ -244,15 +251,12 @@ impl HealthService {
                 .await?;
 
             for holding in holdings {
-                // Collect FX pair info before filtering to instrument-only
+                // Collect FX pair info before filtering to instrument-only.
+                // Track H PR-H10 — accumulator is Decimal (per audit Finding
+                // 3.1.2). The legacy path used `.to_string().parse::<f64>()`
+                // which dropped precision before summing.
                 if holding.local_currency != holding.base_currency {
-                    let mv = holding
-                        .market_value
-                        .base
-                        .to_string()
-                        .parse::<f64>()
-                        .unwrap_or(0.0)
-                        .abs();
+                    let mv = holding.market_value.base.abs();
                     *fx_pair_mv
                         .entry((
                             holding.local_currency.clone(),
@@ -262,13 +266,8 @@ impl HealthService {
                 }
 
                 if let Some(ref instrument) = holding.instrument {
-                    let market_value_f64 = holding
-                        .market_value
-                        .base
-                        .to_string()
-                        .parse::<f64>()
-                        .unwrap_or(0.0);
-                    total_portfolio_value += market_value_f64;
+                    let market_value = holding.market_value.base;
+                    total_portfolio_value += market_value;
 
                     // Determine if uses market pricing
                     let uses_market_pricing = instrument.pricing_mode.to_uppercase() == "MARKET";
@@ -278,14 +277,14 @@ impl HealthService {
                     holdings_map
                         .entry(instrument.id.clone())
                         .and_modify(|existing| {
-                            existing.market_value += market_value_f64;
+                            existing.market_value += market_value;
                         })
                         .or_insert(AssetHoldingInfo {
                             asset_id: instrument.id.clone(),
                             symbol: instrument.symbol.clone(),
                             name: instrument.name.clone(),
                             exchange_mic: instrument.exchange_mic.clone(),
-                            market_value: market_value_f64,
+                            market_value,
                             uses_market_pricing,
                         });
                 }
@@ -310,8 +309,10 @@ impl HealthService {
             taxonomy_service.as_ref(),
         );
 
-        // Gather quote sync errors
-        let holding_mv_map: HashMap<String, f64> = all_holdings
+        // Gather quote sync errors.
+        // Track H PR-H10 — Decimal end-to-end so the precision the aggregator
+        // computed survives into the downstream check.
+        let holding_mv_map: HashMap<String, Decimal> = all_holdings
             .iter()
             .map(|h| (h.asset_id.clone(), h.market_value))
             .collect();
@@ -446,10 +447,14 @@ impl HealthService {
             })
             .collect();
 
-        // Run checks with gathered data
+        // Run checks with gathered data.
+        // Boundary conversion: total_portfolio_value is Decimal upstream
+        // (PR-H10), but the HealthContext (run_checks_with_data param) carries
+        // f64 because threshold ratios + display percentages stay f64 per
+        // audit Finding 3.1.1 (Informational reclassification).
         self.run_checks_with_data(
             base_currency,
-            total_portfolio_value,
+            total_portfolio_value.to_f64().unwrap_or(0.0),
             &all_holdings,
             &latest_quote_times,
             &quote_sync_errors,
@@ -819,7 +824,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
 
@@ -859,7 +864,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
         let quote_times = HashMap::new();
