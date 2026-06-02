@@ -194,7 +194,7 @@ pub async fn initialize_context(
         retry_queue: truth_ledger_retry_queue,
     } = crate::context::registry::build_v31_foundation_defaults(pool.clone(), writer.clone());
 
-    let truth_ledger_retry_queue_trait: Arc<dyn mizan_core::truth_engine::TruthLedgerRetryQueue> =
+    let truth_ledger_retry_queue_trait: Arc<dyn mizan_financial_truth::TruthLedgerRetryQueue> =
         Arc::clone(&truth_ledger_retry_queue) as _;
 
     let activity_service = Arc::new(

@@ -16,7 +16,9 @@ use crate::errors::StorageError;
 use crate::schema::truth_ledger_retry_queue::dsl as q_dsl;
 use async_trait::async_trait;
 use mizan_core::errors::{Error, Result};
-use mizan_core::truth_engine::{AppendInput, LedgerEntryKind, TruthLedger, TruthLedgerRetryQueue};
+use mizan_financial_truth::{
+    AppendInput, FinancialTruthError, LedgerEntryKind, TruthLedger, TruthLedgerRetryQueue,
+};
 use rust_decimal::Decimal;
 
 /// JSON-friendly mirror of AppendInput so it can be serialised to the
@@ -252,7 +254,20 @@ pub struct DrainStats {
 
 #[async_trait]
 impl TruthLedgerRetryQueue for SqliteTruthLedgerRetryQueue {
-    async fn enqueue(&self, input: &AppendInput, reason: &str) -> Result<()> {
-        self.enqueue_impl(input, reason).await
+    async fn enqueue(
+        &self,
+        input: &AppendInput,
+        reason: &str,
+    ) -> std::result::Result<(), FinancialTruthError> {
+        // Internal pipeline returns mizan-core Error for storage failures;
+        // convert at the trait boundary (Track H PR-H3.a — financial-truth
+        // owns its own error type per working-agreement "each crate owns
+        // its types" principle).
+        self.enqueue_impl(input, reason).await.map_err(|e| match e {
+            Error::Validation(mizan_core::errors::ValidationError::InvalidInput(msg)) => {
+                FinancialTruthError::InvalidInput(msg)
+            }
+            other => FinancialTruthError::InvalidInput(format!("storage: {other}")),
+        })
     }
 }

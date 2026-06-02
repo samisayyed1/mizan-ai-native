@@ -77,3 +77,7 @@ mizan-connect = { path = "crates/connect" }
 mizan-storage-sqlite = { path = "crates/storage-sqlite" }
 mizan-device-sync = { path = "crates/device-sync" }
 mizan-ai = { path = "crates/ai" }
+# Track H PR-H3.a — Truth Engine extracted out of mizan-core into its
+# own crate so the 95% coverage floor + mutation-testing rules can be
+# enforced per crate (working-agreement §6).
+mizan-financial-truth = { path = "crates/financial-truth" }

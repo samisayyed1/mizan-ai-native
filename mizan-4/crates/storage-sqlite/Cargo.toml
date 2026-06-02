@@ -15,6 +15,9 @@ mizan-core = { workspace = true }
 mizan-ai = { workspace = true }
 mizan-connect = { workspace = true }
 mizan-device-sync = { workspace = true }
+# Track H PR-H3.a — Truth Engine repository implements the trait that
+# lives in mizan-financial-truth.
+mizan-financial-truth = { workspace = true }
 
 # Workspace dependencies
 tokio = { workspace = true }

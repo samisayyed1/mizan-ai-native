@@ -94,7 +94,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use mizan_core::errors::Error as CoreError;
-use mizan_core::truth_engine::{AppendInput, LedgerEntryKind, TruthLedger};
+use mizan_financial_truth::{AppendInput, LedgerEntryKind, TruthLedger};
 
 // ─── Configuration constants ────────────────────────────────────────
 
@@ -872,7 +872,7 @@ async fn execute_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mizan_core::truth_engine::InMemoryTruthLedger;
+    use mizan_financial_truth::InMemoryTruthLedger;
 
     /// Returns a canned plan no matter the input. Useful for testing
     /// the loop without an LLM.

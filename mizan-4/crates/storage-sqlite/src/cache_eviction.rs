@@ -199,7 +199,10 @@ pub fn delete_sql_for(policy: &CachePolicy) -> String {
     let column = age_column_for(policy);
     // Note: table + column are static `&'static str` from the const registry —
     // never user input. SQL injection is structurally impossible here.
-    format!("DELETE FROM {table} WHERE {column} < ?", table = policy.table)
+    format!(
+        "DELETE FROM {table} WHERE {column} < ?",
+        table = policy.table
+    )
 }
 
 /// Build the SELECT statement that fetches expired rows for archival
@@ -260,19 +263,13 @@ async fn evict_table(policy: &CachePolicy, _ctx: &dyn EvictionContext) -> Evicti
             // PR-I2.b: invoke registered `Rollup` trait impl (e.g.
             // `projection_snapshots` rolls monthly aggregates). Then delete
             // the original rows. Each rollup-needing table registers an impl.
-            EvictionOutcome::skipped(
-                policy.table,
-                "PR-I2.b RollupThenDelete strategy pending",
-            )
+            EvictionOutcome::skipped(policy.table, "PR-I2.b RollupThenDelete strategy pending")
         }
         EvictionStrategy::ArchiveThenDelete => {
             // PR-I2.c: upload expired rows to Mizan Connect cold-storage
             // endpoint (`POST /v1/admin/archive`), verify ack, then delete
             // locally. Archive failure → DO NOT delete (data preservation).
-            EvictionOutcome::skipped(
-                policy.table,
-                "PR-I2.c ArchiveThenDelete strategy pending",
-            )
+            EvictionOutcome::skipped(policy.table, "PR-I2.c ArchiveThenDelete strategy pending")
         }
         EvictionStrategy::KeepMarkStale => {
             // No worker action. Staleness surfaces via the Mizan Badge
@@ -407,8 +404,7 @@ mod tests {
     #[test]
     fn delete_sql_for_uses_custom_column_when_age_from_custom() {
         // market_news uses `published_at` as its custom age column
-        let p = crate::cache_policy::policy_for("market_news")
-            .expect("market_news is registered");
+        let p = crate::cache_policy::policy_for("market_news").expect("market_news is registered");
         let sql = delete_sql_for(p);
         assert_eq!(sql, "DELETE FROM market_news WHERE published_at < ?");
     }
@@ -449,8 +445,7 @@ mod tests {
     #[test]
     fn select_expired_rows_sql_for_custom_age_column() {
         // market_news has a custom age column (`published_at`).
-        let p = crate::cache_policy::policy_for("market_news")
-            .expect("market_news is registered");
+        let p = crate::cache_policy::policy_for("market_news").expect("market_news is registered");
         let sql = select_expired_rows_sql_for(p);
         assert_eq!(
             sql,

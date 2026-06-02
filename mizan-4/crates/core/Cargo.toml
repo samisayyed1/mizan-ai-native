@@ -31,6 +31,10 @@ reqwest = { workspace = true, features = ["cookies"] }
 
 # Sibling crates
 mizan-market-data = { path = "../market-data" }
+# Track H PR-H3.a — truth_engine extracted out of mizan-core into its own
+# crate. activities_service depends on the public traits (TruthLedger,
+# TruthLedgerRetryQueue) + types.
+mizan-financial-truth = { workspace = true }
 
 # Additional dependencies not in workspace
 yahoo_finance_api = "4.1"
@@ -53,3 +57,7 @@ url = "2"
 [dev-dependencies]
 tempfile = "3"
 proptest = "1.4"
+# Tests in activities_service_tests wire a fake `InMemoryTruthLedger`,
+# which is feature-gated in mizan-financial-truth so production binaries
+# don't link it (working-agreement §17 — no test scaffolding in prod).
+mizan-financial-truth = { workspace = true, features = ["test-utils"] }

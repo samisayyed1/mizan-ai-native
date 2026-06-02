@@ -33,7 +33,9 @@ pub mod settings;
 pub mod sync;
 pub mod sync_ledger;
 pub mod taxonomies;
-pub mod truth_engine;
+// Track H PR-H3.a — truth_engine moved out of mizan-core into the new
+// `mizan-financial-truth` crate. Consumers import directly:
+//   use mizan_financial_truth::{TruthLedger, AppendInput, LedgerEntryKind, ...};
 pub mod utils;
 
 // Re-export common types from asset and portfolio modules

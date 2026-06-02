@@ -1,5 +1,6 @@
 //! Truth Engine ledger trait + in-memory implementation.
 
+#[cfg(any(test, feature = "test-utils"))]
 use std::sync::RwLock;
 
 use async_trait::async_trait;
@@ -10,9 +11,9 @@ use std::collections::BTreeMap;
 
 #[cfg(test)]
 use super::model::canonical_payload;
-use super::model::{
-    derive_entry_hash, LedgerEntry, LedgerEntryKind, LedgerIntegrityError, GENESIS_PREV_HASH,
-};
+#[cfg(any(test, feature = "test-utils"))]
+use super::model::{derive_entry_hash, GENESIS_PREV_HASH};
+use super::model::{LedgerEntry, LedgerEntryKind, LedgerIntegrityError};
 use crate::Result;
 
 /// Builder-style input for appending — the service computes sequence,
@@ -64,10 +65,16 @@ pub trait TruthLedger: Send + Sync {
     async fn by_account(&self, account_id: &str) -> Result<Vec<LedgerEntry>>;
 }
 
+/// In-memory `TruthLedger` impl — gated behind `#[cfg(any(test, feature = "test-utils"))]`
+/// so production binaries don't link this scaffolding. Consumers that need the
+/// fake ledger for tests opt in via `mizan-financial-truth = { workspace = true,
+/// features = ["test-utils"] }`. Pattern mirrors tokio's `test-util` feature.
+#[cfg(any(test, feature = "test-utils"))]
 pub struct InMemoryTruthLedger {
     entries: RwLock<Vec<LedgerEntry>>,
 }
 
+#[cfg(any(test, feature = "test-utils"))]
 impl InMemoryTruthLedger {
     pub fn new() -> Self {
         Self {
@@ -84,25 +91,23 @@ impl InMemoryTruthLedger {
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
 impl Default for InMemoryTruthLedger {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(any(test, feature = "test-utils"))]
 #[async_trait]
 impl TruthLedger for InMemoryTruthLedger {
     async fn append(&self, input: AppendInput) -> Result<LedgerEntry> {
         let kind = input.kind.ok_or_else(|| {
-            crate::Error::Validation(crate::errors::ValidationError::InvalidInput(
-                "LedgerEntry kind is required".to_string(),
-            ))
+            crate::FinancialTruthError::InvalidInput("LedgerEntry kind is required".to_string())
         })?;
         if input.id.trim().is_empty() {
-            return Err(crate::Error::Validation(
-                crate::errors::ValidationError::InvalidInput(
-                    "LedgerEntry id cannot be empty".to_string(),
-                ),
+            return Err(crate::FinancialTruthError::InvalidInput(
+                "LedgerEntry id cannot be empty".to_string(),
             ));
         }
 
@@ -110,12 +115,10 @@ impl TruthLedger for InMemoryTruthLedger {
 
         // Hard reject of id reuse — every entry must have a unique id.
         if entries.iter().any(|e| e.id == input.id) {
-            return Err(crate::Error::Validation(
-                crate::errors::ValidationError::InvalidInput(format!(
-                    "LedgerEntry id {} already exists; ledger is append-only",
-                    input.id
-                )),
-            ));
+            return Err(crate::FinancialTruthError::InvalidInput(format!(
+                "LedgerEntry id {} already exists; ledger is append-only",
+                input.id
+            )));
         }
 
         let sequence = entries.len() as u64;
@@ -184,8 +187,9 @@ impl TruthLedger for InMemoryTruthLedger {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
-    use crate::truth_engine::model::LedgerEntryKind;
+    use crate::model::LedgerEntryKind;
     use rust_decimal_macros::dec;
 
     fn input(id: &str, kind: LedgerEntryKind) -> AppendInput {

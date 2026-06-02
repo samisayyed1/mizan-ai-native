@@ -5762,9 +5762,9 @@ mod tests {
     //   5. Activity write succeeds even if both ledger + queue fail (chain
     //      may have a gap but the row persists)
 
-    use crate::truth_engine::{
-        AppendInput, InMemoryTruthLedger, LedgerEntry, LedgerEntryKind, LedgerIntegrityError,
-        TruthLedger, TruthLedgerRetryQueue,
+    use mizan_financial_truth::{
+        AppendInput, FinancialTruthError, InMemoryTruthLedger, LedgerEntry, LedgerEntryKind,
+        LedgerIntegrityError, TruthLedger, TruthLedgerRetryQueue,
     };
 
     /// Always-fails ledger — used to exercise the retry-queue path.
@@ -5772,18 +5772,27 @@ mod tests {
 
     #[async_trait]
     impl TruthLedger for FailingTruthLedger {
-        async fn append(&self, _input: AppendInput) -> Result<LedgerEntry> {
-            Err(Error::Unexpected(
+        async fn append(
+            &self,
+            _input: AppendInput,
+        ) -> std::result::Result<LedgerEntry, FinancialTruthError> {
+            Err(FinancialTruthError::InvalidInput(
                 "simulated ledger backend failure".to_string(),
             ))
         }
         async fn verify(&self) -> std::result::Result<(), LedgerIntegrityError> {
             Ok(())
         }
-        async fn all(&self, _limit: Option<usize>) -> Result<Vec<LedgerEntry>> {
+        async fn all(
+            &self,
+            _limit: Option<usize>,
+        ) -> std::result::Result<Vec<LedgerEntry>, FinancialTruthError> {
             Ok(vec![])
         }
-        async fn by_account(&self, _account_id: &str) -> Result<Vec<LedgerEntry>> {
+        async fn by_account(
+            &self,
+            _account_id: &str,
+        ) -> std::result::Result<Vec<LedgerEntry>, FinancialTruthError> {
             Ok(vec![])
         }
     }
@@ -5802,7 +5811,11 @@ mod tests {
 
     #[async_trait]
     impl TruthLedgerRetryQueue for RecordingRetryQueue {
-        async fn enqueue(&self, input: &AppendInput, reason: &str) -> Result<()> {
+        async fn enqueue(
+            &self,
+            input: &AppendInput,
+            reason: &str,
+        ) -> std::result::Result<(), FinancialTruthError> {
             self.inner
                 .lock()
                 .unwrap()
@@ -5983,8 +5996,12 @@ mod tests {
         struct FailingQueue;
         #[async_trait]
         impl TruthLedgerRetryQueue for FailingQueue {
-            async fn enqueue(&self, _input: &AppendInput, _reason: &str) -> Result<()> {
-                Err(Error::Unexpected("queue disk full".into()))
+            async fn enqueue(
+                &self,
+                _input: &AppendInput,
+                _reason: &str,
+            ) -> std::result::Result<(), FinancialTruthError> {
+                Err(FinancialTruthError::InvalidInput("queue disk full".into()))
             }
         }
 
