@@ -123,9 +123,7 @@ async fn ready(State(state): State<AppState>) -> impl IntoResponse {
     } else {
         ComponentStatus {
             healthy: true,
-            detail: Some(
-                "not configured (STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET unset)".into(),
-            ),
+            detail: Some("not configured (STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET unset)".into()),
         }
     };
 

@@ -108,3 +108,15 @@ export const listenDeepLink = async <T>(handler: EventCallback<T>): Promise<Unli
   const unlisten = await listen<T>("deep-link-received", adaptCallback(handler));
   return adaptUnlisten(unlisten);
 };
+
+/**
+ * Notify-5: scheduler emits this whenever new notifications land in the
+ * SQLite table so the bell badge can refresh instantly instead of waiting
+ * for the next polling tick. Payload = count of new rows in this batch.
+ */
+export async function listenNotificationsNew<T>(
+  handler: EventCallback<T>,
+): Promise<UnlistenFn> {
+  const unlisten = await listen<T>("notifications:new", adaptCallback(handler));
+  return adaptUnlisten(unlisten);
+}

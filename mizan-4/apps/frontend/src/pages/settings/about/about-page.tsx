@@ -112,8 +112,10 @@ export default function AboutSettingsPage() {
         <CardContent className="space-y-6">
           <div className="space-y-4">
             <p className="text-muted-foreground text-sm">
-              A beautiful, simple, and secure personal finance and investment tracker that helps you
-              take control of your wealth.
+              The AI-native private wealth operating layer. Mizan organises your
+              accounts, holdings, alternative assets, liabilities, and zakat
+              context with dignity and privacy — everything on this device first,
+              cloud sync optional and end-to-end encrypted.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {!isMobile && (

@@ -30,7 +30,7 @@ const COPY: Record<GatedFeature, UpgradeCopy> = {
   },
   managed_ai: {
     title: "Meet Mizan AI",
-    body: "Mizan AI is part of Silver and Gold. Configure your provider to use the assistant privately.",
+    body: "Sign in with Mizan to enable the AI assistant — 50 messages a day on Silver, autonomous agent mode on Gold. Power users can plug in their own provider under Settings → AI → Advanced.",
     suggestedTier: "silver",
   },
   device_sync: {

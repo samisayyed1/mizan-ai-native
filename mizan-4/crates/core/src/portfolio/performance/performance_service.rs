@@ -1194,6 +1194,90 @@ mod tests {
         }
     }
 
+    /// Known-answer TWR + MWR test, locked against a hand-computed
+    /// 4-day scenario:
+    ///
+    ///   Day 0: value $1000, net contribution $1000 (initial deposit)
+    ///   Day 1: value $1200, contrib $1000 (market +20%)
+    ///   Day 2: value $2200, contrib $2000 (deposit $1000, market flat)
+    ///   Day 3: value $2310, contrib $2000 (market +5%)
+    ///
+    /// Per-day TWR (excludes new flow from denominator):
+    ///   Day 0→1: 1200/1000 − 1 = 0.20
+    ///   Day 1→2: 2200/(1200+1000) − 1 = 0.00
+    ///   Day 2→3: 2310/2200 − 1 = 0.05
+    /// Cumulative TWR = 1.20 × 1.00 × 1.05 − 1 = 0.2600 = 26.00%
+    ///
+    /// Per-day Modified Dietz (weights flow at half-day):
+    ///   Day 0→1: (1200−1000−0)/(1000+0) = 0.20
+    ///   Day 1→2: (2200−1200−1000)/(1200+500) = 0.00
+    ///   Day 2→3: (2310−2200−0)/(2200+0) = 0.05
+    /// Cumulative MWR (daily-compounded) = same 26.00%
+    ///
+    /// This test pins both formulas against the paper-math so any
+    /// future refactor of compute_compounded_daily_returns can't
+    /// silently drift the user-facing return.
+    #[test]
+    fn perf_known_answer_4day_twr_mwr() {
+        let history = vec![
+            valuation("2026-01-01", dec!(1000), dec!(1000), dec!(1000), dec!(1000)),
+            valuation("2026-01-02", dec!(1200), dec!(1000), dec!(1200), dec!(1000)),
+            valuation("2026-01-03", dec!(2200), dec!(2000), dec!(2200), dec!(2000)),
+            valuation("2026-01-04", dec!(2310), dec!(2000), dec!(2310), dec!(2000)),
+        ];
+
+        let (twr, mwr) =
+            PerformanceService::compute_compounded_daily_returns(&history, |_, _, _| {})
+                .expect("3 windows");
+
+        assert_eq!(
+            twr.round_dp(4),
+            dec!(0.26),
+            "cumulative TWR drift — paper math says 26.00%"
+        );
+        assert_eq!(
+            mwr.round_dp(4),
+            dec!(0.26),
+            "cumulative MWR drift — paper math says 26.00%"
+        );
+    }
+
+    /// TWR + MWR diverge when a large flow lands mid-period at an
+    /// inflection point. This locks the EXCLUDE-flow-from-denominator
+    /// rule on TWR vs. the WEIGHT-flow-by-half rule on MWR.
+    ///
+    /// Day 0: $1000 value, $1000 contribution (initial deposit)
+    /// Day 1: $500 value, $1000 contribution (market −50%, no flow)
+    /// Day 2: $1500 value, $2000 contribution (deposit $1000 at bottom,
+    ///        market flat after)
+    /// Day 3: $1575 value, $2000 contribution (market +5%)
+    ///
+    /// Per-day TWR (denominator EXCLUDES today's flow):
+    ///   1→2: 500/(1000+0) − 1 = −0.50
+    ///   2→3: 1500/(500+1000) − 1 = 0.00
+    ///   3→4: 1575/1500 − 1 = 0.05
+    /// Cumulative = 0.5 × 1.0 × 1.05 − 1 = −0.475 = −47.50%
+    ///
+    /// Per-day Modified Dietz (flow weighted at half):
+    ///   1→2: (500−1000−0)/(1000+0) = −0.50
+    ///   2→3: (1500−500−1000)/(500+500) = 0.00
+    ///   3→4: (1575−1500−0)/(1500+0) = 0.05
+    /// Cumulative = same −47.50% (daily windows → equal)
+    #[test]
+    fn perf_twr_excludes_new_flow_from_denominator() {
+        let history = vec![
+            valuation("2026-01-01", dec!(1000), dec!(1000), dec!(1000), dec!(1000)),
+            valuation("2026-01-02", dec!(500), dec!(1000), dec!(500), dec!(1000)),
+            valuation("2026-01-03", dec!(1500), dec!(2000), dec!(1500), dec!(2000)),
+            valuation("2026-01-04", dec!(1575), dec!(2000), dec!(1575), dec!(2000)),
+        ];
+        let (twr, mwr) =
+            PerformanceService::compute_compounded_daily_returns(&history, |_, _, _| {})
+                .expect("3 windows");
+        assert_eq!(twr.round_dp(4), dec!(-0.475));
+        assert_eq!(mwr.round_dp(4), dec!(-0.475));
+    }
+
     /// HOLDINGS mode uses the cost-basis formula in both paths. TWR/MWR are
     /// returned as `None` because they aren't meaningful without per-transaction
     /// cash-flow tracking.

@@ -138,8 +138,24 @@ impl AccountRepositoryTrait for AccountRepository {
             query = query.filter(is_archived.eq(archived));
         }
 
+        // QA Pass 15: filter out the synthetic TOTAL placeholder unless
+        // the caller explicitly asked for it by ID. Pass 6 inserted TOTAL
+        // into the accounts table (is_active=1, is_archived=0) purely to
+        // satisfy the holdings_snapshots FK constraint — it's not a real
+        // user-facing account. After Pass 6, EVERY caller of list/get_active
+        // that didn't explicitly target it (cash_balances, record_activity,
+        // accounts AI tool, valuation aggregation, etc) started returning
+        // an extra "All Portfolios (synthetic aggregate)" row, which
+        // double-counted in aggregations and would have surfaced as a
+        // weird editable account in any list UI. Pinned by Pass 14's
+        // regression test on the AI valuation tool.
         if let Some(ids) = account_ids {
+            // Caller asked for specific IDs — give them exactly what they
+            // asked for, including TOTAL if requested.
             query = query.filter(id.eq_any(ids));
+        } else {
+            // No explicit IDs → omit the synthetic.
+            query = query.filter(id.ne(mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID));
         }
 
         let results = query

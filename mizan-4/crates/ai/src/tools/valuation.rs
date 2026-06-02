@@ -136,7 +136,16 @@ impl<E: AiEnvironment + 'static> Tool for GetValuationHistoryTool<E> {
 
         // Fetch valuations based on account scope
         let valuations = if account_id == "TOTAL" {
-            // Get all active accounts and aggregate their valuations
+            // Get all active accounts and aggregate their valuations.
+            //
+            // The synthetic TOTAL account is filtered out by the accounts
+            // repository (QA Pass 15) when no explicit ID list is given —
+            // so get_active_accounts() returns only real accounts. Adding
+            // TOTAL's own daily_account_valuation row on top of the per-
+            // real-account sum would double the figure (Pass 14 found
+            // dashboard $254k vs AI $509k). The defense lives at the
+            // repository boundary; the in-loop assertion below is a
+            // belt-and-suspenders in case the policy changes upstream.
             let accounts = self
                 .env
                 .account_service()
@@ -149,6 +158,14 @@ impl<E: AiEnvironment + 'static> Tool for GetValuationHistoryTool<E> {
             let mut aggregated: HashMap<NaiveDate, (Decimal, Decimal)> = HashMap::new();
 
             for account in accounts {
+                // Defense in depth: skip the synthetic TOTAL even though
+                // the repository (Pass 15) already filters it out — mock
+                // services in tests may not apply that filter, and we
+                // don't want the production code path to silently double-
+                // count if the filter ever regresses.
+                if account.id == mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID {
+                    continue;
+                }
                 let account_valuations = self
                     .env
                     .valuation_service()
@@ -295,6 +312,89 @@ mod tests {
         assert_eq!(output.currency, "EUR");
         assert_eq!(output.start_date, "2024-06-01");
         assert_eq!(output.end_date, "2024-06-30");
+    }
+
+    /// QA Pass 14 regression. Pass 6 added the synthetic "TOTAL" account
+    /// to the accounts table (is_active=1) so the holdings_snapshots FK
+    /// constraint could pass. get_active_accounts() now returns TOTAL
+    /// alongside the real accounts. The AI valuation tool's TOTAL
+    /// aggregation iterates active accounts; before this fix it summed
+    /// TOTAL's own row on top of the per-real-account sum, doubling the
+    /// reported portfolio value (dashboard $254k vs AI $509k for the
+    /// same period). The two-views-one-fact CRITICAL the QA mission
+    /// flags.
+    #[tokio::test]
+    async fn total_aggregation_excludes_synthetic_total_account() {
+        use crate::env::test_env::{MockAccountService, MockEnvironment, MockValuationService};
+        use mizan_core::accounts::Account;
+        use mizan_core::portfolio::valuation::DailyAccountValuation;
+
+        let date = NaiveDate::from_ymd_opt(2026, 5, 26).unwrap();
+        // Mock returns the same fixture for every account_id (it ignores
+        // the arg), so the AI tool's sum scales with the count of
+        // accounts iterated. If TOTAL is iterated alongside 2 real
+        // accounts we'd see 3 × $100; if correctly skipped, 2 × $100.
+        let fixture = DailyAccountValuation {
+            id: "v".into(),
+            account_id: "ignored".into(),
+            valuation_date: date,
+            account_currency: "USD".into(),
+            base_currency: "USD".into(),
+            fx_rate_to_base: Decimal::ONE,
+            cash_balance: Decimal::ZERO,
+            investment_market_value: Decimal::new(100, 0),
+            total_value: Decimal::new(100, 0),
+            cost_basis: Decimal::ZERO,
+            net_contribution: Decimal::ZERO,
+            calculated_at: chrono::Utc::now(),
+        };
+
+        let accounts: Vec<Account> = vec![
+            Account {
+                id: "real-acc-1".into(),
+                is_active: true,
+                currency: "USD".into(),
+                ..Default::default()
+            },
+            Account {
+                id: "real-acc-2".into(),
+                is_active: true,
+                currency: "USD".into(),
+                ..Default::default()
+            },
+            Account {
+                id: mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID.into(),
+                is_active: true,
+                currency: "USD".into(),
+                ..Default::default()
+            },
+        ];
+
+        let mut env = MockEnvironment::new();
+        env.account_service = Arc::new(MockAccountService { accounts });
+        env.valuation_service = Arc::new(MockValuationService {
+            valuations: vec![fixture],
+        });
+
+        let tool = GetValuationHistoryTool::new(Arc::new(env), "USD".to_string());
+        let out = tool
+            .call(GetValuationHistoryArgs {
+                account_id: "TOTAL".to_string(),
+                start_date: Some("2026-05-26".to_string()),
+                end_date: Some("2026-05-26".to_string()),
+            })
+            .await
+            .expect("tool call");
+
+        assert_eq!(out.valuations.len(), 1);
+        // Pre-fix: 3 × $100 = $300 (TOTAL counted twice).
+        // Post-fix: 2 × $100 = $200 (TOTAL skipped, real accounts summed).
+        assert_eq!(
+            out.valuations[0].total_value, 200.0_f64,
+            "TOTAL synthetic account must NOT be summed alongside real \
+             accounts in the aggregation — that's the bug that made the \
+             AI report a $509k portfolio for a $254k user."
+        );
     }
 
     /// Regression test for the f64-aggregation precision bug.

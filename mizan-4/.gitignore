@@ -100,3 +100,8 @@ Thumbs.db
 /apps/tauri/db/
 tasks
 **/*.local.md
+
+# TypeScript build artefacts emitted by `tsc -b` from the project
+# references (vite.config.ts → vite.config.{js,d.ts}). Never source.
+apps/frontend/vite.config.js
+apps/frontend/vite.config.d.ts

@@ -20,7 +20,6 @@ mod model;
 mod service;
 
 pub use model::{
-    AllocationDriftEntry, DailyBrief, HoldingMover, NetWorthDelta, PendingDraftSummary,
-    StaleSignal,
+    AllocationDriftEntry, DailyBrief, HoldingMover, NetWorthDelta, PendingDraftSummary, StaleSignal,
 };
-pub use service::{InMemoryDailyBriefService, DailyBriefService};
+pub use service::{DailyBriefService, InMemoryDailyBriefService};

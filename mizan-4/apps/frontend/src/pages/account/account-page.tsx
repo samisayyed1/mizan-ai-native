@@ -383,12 +383,17 @@ const AccountPage = () => {
         requestUpgrade("max_holdings");
         return;
       }
+      // Enterprise UX-2: pass the current account context so the dialog
+      // doesn't ask the user which portfolio they want to add to — they
+      // just told us by clicking "Add" from inside an account.
       addAsset.open({
         source: "portfolio",
-        prompt: `I want to add a ${cls.toLowerCase().replace(/_/g, " ")} to this portfolio. Ask only what you need, draft a structured ADD_ASSET action, and require review before saving.`,
+        accountId: id,
+        accountName: account?.name,
+        prompt: `I want to add a ${cls.toLowerCase().replace(/_/g, " ")}. Ask only what you need, draft a structured ADD_ASSET action, and require review before saving.`,
       });
     },
-    [addAsset, holdings, entitlements.maxHoldings, requestUpgrade],
+    [addAsset, holdings, entitlements.maxHoldings, requestUpgrade, id, account?.name],
   );
 
   const handleAccountSwitch = (selectedAccount: Account) => {
@@ -660,7 +665,7 @@ const AccountPage = () => {
             <div className="grid grid-cols-1 gap-4 pt-0 md:grid-cols-3">
               <Card className="col-span-1 md:col-span-2">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-md">
+                  <CardTitle className="text-md font-semibold tracking-tight">
                     <PortfolioUpdateTrigger lastCalculatedAt={currentValuation?.calculatedAt}>
                       <div className="flex items-start gap-2">
                         <div>
@@ -750,13 +755,22 @@ const AccountPage = () => {
                             past trades, splits, and contributions are not reflected.
                           </p>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setUseEstimatedHistory((v) => !v)}
-                          className="border-border/60 bg-background/60 text-muted-foreground hover:text-foreground hover:border-border cursor-pointer rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide transition-colors sm:text-xs"
-                        >
-                          {useEstimatedHistory ? "Back to actual history" : "Estimate full history"}
-                        </button>
+                        {/* UX-10: same gate as the dashboard — hide the
+                            "Estimate full history" affordance on free
+                            accounts. The synthesis path needs a starting
+                            snapshot (typical of Plaid imports) to make
+                            sense; promising 5-year synthesised charts
+                            on a manually-entered free account over-
+                            promises what the dataset can support. */}
+                        {entitlements.brokerSync && (
+                          <button
+                            type="button"
+                            onClick={() => setUseEstimatedHistory((v) => !v)}
+                            className="border-border/60 bg-background/60 text-muted-foreground hover:text-foreground hover:border-border cursor-pointer rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide transition-colors sm:text-xs"
+                          >
+                            {useEstimatedHistory ? "Back to actual history" : "Estimate full history"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

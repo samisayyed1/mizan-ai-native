@@ -136,7 +136,7 @@ export const ExportForm = () => {
                 <format.icon className="mb-3 h-6 w-6" />
                 <div className="text-center">
                   <h3 className="font-semibold">{format.name}</h3>
-                  <p className="text-muted-foreground text-sm font-light">{format.description}</p>
+                  <p className="text-muted-foreground text-sm">{format.description}</p>
                 </div>
               </Label>
             </div>

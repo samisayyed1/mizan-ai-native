@@ -1293,6 +1293,137 @@ async fn test_no_quote_falls_back_to_cost_basis() {
 }
 
 // ============================================================================
+// FX failure regression test — never silently inject unconverted amounts
+// ============================================================================
+
+/// A FxService variant that ALWAYS errors on cross-currency lookups.
+/// Used to verify the net-worth service does NOT silently fall back to
+/// the raw amount when FX conversion fails (a real bug we hit during
+/// QA Pass 1 — INR 463,800 was being treated as "$463,800 USD" on the
+/// dashboard because of the previous silent fallback).
+struct FailingFxService;
+
+#[async_trait]
+impl FxServiceTrait for FailingFxService {
+    fn initialize(&self) -> Result<()> {
+        Ok(())
+    }
+    fn get_historical_rates(&self, _f: &str, _t: &str, _d: i64) -> Result<Vec<ExchangeRate>> {
+        Ok(vec![])
+    }
+    fn get_latest_exchange_rate(&self, _f: &str, _t: &str) -> Result<Decimal> {
+        Err(crate::errors::Error::Repository("no fx rate".into()))
+    }
+    fn get_exchange_rate_for_date(&self, _f: &str, _t: &str, _d: NaiveDate) -> Result<Decimal> {
+        Err(crate::errors::Error::Repository("no fx rate".into()))
+    }
+    fn convert_currency(&self, amount: Decimal, f: &str, t: &str) -> Result<Decimal> {
+        if f == t {
+            return Ok(amount);
+        }
+        Err(crate::errors::Error::Repository("no fx rate".into()))
+    }
+    fn convert_currency_for_date(
+        &self,
+        amount: Decimal,
+        f: &str,
+        t: &str,
+        _d: NaiveDate,
+    ) -> Result<Decimal> {
+        if f == t {
+            return Ok(amount);
+        }
+        Err(crate::errors::Error::Repository("no fx rate".into()))
+    }
+    fn get_latest_exchange_rates(&self) -> Result<Vec<ExchangeRate>> {
+        Ok(vec![])
+    }
+    async fn add_exchange_rate(&self, _n: NewExchangeRate) -> Result<ExchangeRate> {
+        unimplemented!()
+    }
+    async fn update_exchange_rate(&self, _f: &str, _t: &str, _r: Decimal) -> Result<ExchangeRate> {
+        unimplemented!()
+    }
+    async fn delete_exchange_rate(&self, _id: &str) -> Result<()> {
+        unimplemented!()
+    }
+    async fn register_currency_pair(&self, _f: &str, _t: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn register_currency_pair_manual(&self, _f: &str, _t: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn ensure_fx_pairs(&self, _pairs: Vec<(String, String)>) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn test_fx_conversion_failure_excludes_cash_instead_of_silent_passthrough() {
+    // INR cash on an account, base currency USD, FX lookup fails.
+    // Old behaviour: cash entered net worth at face value (INR 463,800
+    //   treated as $463,800 USD) — a CRITICAL data-correctness bug.
+    // New behaviour: cash is dropped with a warning. The dashboard
+    //   shows an honest empty cash line rather than a fake number.
+    let account = create_test_account("acc-inr", "CASH", "INR");
+    let mut cash = HashMap::new();
+    cash.insert("INR".to_string(), dec!(463800));
+    let snapshot = create_test_snapshot("acc-inr", vec![], cash);
+
+    let base = Arc::new(RwLock::new("USD".to_string()));
+    let service = NetWorthService::new(
+        base,
+        Arc::new(MockAccountRepository::new(vec![account])),
+        Arc::new(MockAssetRepository::new(vec![])),
+        Arc::new(MockSnapshotRepository::new(vec![snapshot])),
+        Arc::new(MockMarketDataRepository::new(vec![])),
+        Arc::new(MockValuationRepository::new(vec![])),
+        Arc::new(FailingFxService),
+    );
+
+    let date = NaiveDate::from_ymd_opt(2026, 5, 25).unwrap();
+    let result = service.get_net_worth(date).await.unwrap();
+
+    // Net worth must NOT count INR 463,800 as $463,800 USD.
+    // The honest answer when no FX rate exists is "zero".
+    assert_eq!(
+        result.net_worth,
+        dec!(0),
+        "FX failure must not silently inject raw INR amount into USD net worth",
+    );
+    // Breakdown must NOT contain a phantom cash row.
+    assert!(
+        !result.assets.breakdown.iter().any(|b| b.category == "cash"),
+        "Cash category should be absent when FX lookup fails (not present at face value)",
+    );
+}
+
+#[tokio::test]
+async fn test_negative_cash_still_appears_in_breakdown() {
+    // Overdraft / margin debit. Cash totals -$5,000 across accounts.
+    // Old behaviour: the `> Decimal::ZERO` filter silently dropped this
+    // row, overstating total assets. New behaviour: include negative
+    // categories whose magnitude is meaningful.
+    let acc = create_test_account("acc-usd", "CASH", "USD");
+    let mut cash = HashMap::new();
+    cash.insert("USD".to_string(), dec!(-5000));
+    let snapshot = create_test_snapshot("acc-usd", vec![], cash);
+
+    let service = create_net_worth_service(vec![acc], vec![], vec![snapshot], vec![]);
+    let date = NaiveDate::from_ymd_opt(2026, 5, 25).unwrap();
+    let result = service.get_net_worth(date).await.unwrap();
+
+    assert_eq!(result.net_worth, dec!(-5000));
+    let cash_row = result
+        .assets
+        .breakdown
+        .iter()
+        .find(|b| b.category == "cash")
+        .expect("Negative cash should still appear in breakdown");
+    assert_eq!(cash_row.value, dec!(-5000));
+}
+
+// ============================================================================
 // Net Worth History Tests
 // ============================================================================
 

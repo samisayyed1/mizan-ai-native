@@ -5,8 +5,28 @@
  * The adapter handles environment detection (Tauri vs Web) at build time.
  */
 
-import { streamAiChat } from "@/adapters";
+import { streamAgentChat, streamAiChat } from "@/adapters";
 import type { AiSendMessageRequest, AiStreamEvent, AiChatModelConfig } from "../types";
+
+/**
+ * Module-level toggle for Agent Mode. The composer's "Agent" button
+ * flips this; useChatRuntime reads it at send time to route between
+ * the legacy chat dispatcher and the autonomous agent runtime.
+ *
+ * A module-level boolean (not a React context) is the simplest channel
+ * for a single-thread, single-composer surface — there's exactly one
+ * chat shell mounted at a time. Refactor to context if/when we
+ * support multiple concurrent chats.
+ */
+let agentModeEnabled = false;
+
+export function setAgentMode(enabled: boolean): void {
+  agentModeEnabled = enabled;
+}
+
+export function isAgentMode(): boolean {
+  return agentModeEnabled;
+}
 
 // Re-export types for convenience
 export type { AiSendMessageRequest, AiStreamEvent, AiChatModelConfig };
@@ -41,6 +61,31 @@ export async function* streamChatResponse(
   request: SendMessageRequest,
   signal?: AbortSignal,
 ): AsyncGenerator<AiStreamEvent, void, undefined> {
+  // Agent Mode override: route the entire turn into the autonomous
+  // runtime instead of the single-turn chat dispatcher. The Tauri
+  // stream_agent_chat command emits AgentEvents (wrapped as
+  // AiStreamEvent::Agent) on the same Channel, so the consumer
+  // shape is identical — only the routing differs.
+  if (agentModeEnabled) {
+    const firstAttachment = request.attachments?.[0];
+    yield* streamAgentChat(
+      {
+        content: request.content,
+        attachments: request.attachments,
+        threadId: request.threadId,
+        // No explicit recipeId — let the backend's detect_recipe
+        // pick the best match from the user's message + attachments.
+        // Power users / tests can extend the composer to expose an
+        // override later.
+        recipeId: undefined,
+      },
+      signal,
+    );
+    // Suppress unused-variable warning from the destructure above
+    // until we wire per-attachment routing.
+    void firstAttachment;
+    return;
+  }
   yield* streamAiChat(request, signal);
 }
 

@@ -1,3 +1,4 @@
+import { useAddAsset } from "@/features/add-asset";
 import { useBalancePrivacy } from "@/hooks/use-balance-privacy";
 import { useSettingsContext } from "@/lib/settings-provider";
 import type { Goal } from "@/lib/types";
@@ -65,6 +66,7 @@ function GoalGrid({ goals }: { goals: Goal[] }) {
 export default function GoalsDashboardPage() {
   const { active, atRisk, achieved, archived, isLoading } = useGoals();
   const [archivedOpen, setArchivedOpen] = useState(false);
+  const addAsset = useAddAsset();
 
   if (isLoading) {
     return (
@@ -106,23 +108,49 @@ export default function GoalsDashboardPage() {
       />
       <PageContent>
         {!hasGoals ? (
-          <div className="flex flex-col items-center justify-center gap-5 py-28 text-center">
-            <div className="bg-muted/60 flex h-16 w-16 items-center justify-center rounded-2xl">
-              <Icons.Target className="text-muted-foreground h-8 w-8" />
+          // Empty state mirrors the Dashboard + Holdings heroes — lead
+          // with the AI agent (GoalPlanner recipe) and demote the
+          // manual form to a secondary link. Most users describing a
+          // goal ("retire at 55 with $2M") want the agent to compute
+          // the savings rate + glidepath for them, not to fill in a
+          // multi-field form by hand.
+          <div className="border-border/60 from-background to-muted/30 relative mx-auto my-12 max-w-2xl overflow-hidden rounded-2xl border bg-gradient-to-b p-8 text-center md:p-12">
+            <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center opacity-[0.04]">
+              <Icons.Target className="size-64" />
             </div>
-            <div className="space-y-2">
-              <p className="text-lg font-semibold">No goals yet</p>
-              <p className="text-muted-foreground max-w-md text-sm leading-relaxed">
-                Create your first financial goal — whether it's retirement, a home, education, or
-                anything else you're saving toward.
-              </p>
+            <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300">
+              <Icons.Sparkles className="size-6" />
             </div>
-            <Link to="/goals/new">
-              <Button size="lg" className="mt-2">
-                <Icons.Plus className="mr-2 h-4 w-4" />
-                Create Your First Goal
-              </Button>
-            </Link>
+            <h3 className="text-foreground mt-4 text-lg font-semibold">
+              Plan your first goal
+            </h3>
+            <p className="text-muted-foreground mx-auto mt-2 max-w-md text-sm leading-relaxed">
+              Tell Mizan what you're saving toward — retirement, a home, a
+              wedding, kids' education — and the agent computes the monthly
+              contribution needed plus a realistic glidepath against your
+              current portfolio.
+            </p>
+            <Button
+              size="lg"
+              className="mt-6"
+              onClick={() =>
+                addAsset.open({
+                  source: "portfolio",
+                  prompt: "Help me plan a financial goal.",
+                })
+              }
+            >
+              <Icons.Sparkles className="mr-2 h-4 w-4" />
+              Plan with Mizan
+            </Button>
+            <div className="mt-3">
+              <Link
+                to="/goals/new"
+                className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+              >
+                or create one manually
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="space-y-8">

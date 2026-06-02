@@ -51,7 +51,7 @@ export function ImportRunsList({ runs, isLoading }: ImportRunsListProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-medium">Recent Sync Runs</CardTitle>
+          <CardTitle className="text-base font-semibold">Recent Sync Runs</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
@@ -66,7 +66,7 @@ export function ImportRunsList({ runs, isLoading }: ImportRunsListProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-medium">Recent Sync Runs</CardTitle>
+          <CardTitle className="text-base font-semibold">Recent Sync Runs</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-sm">No sync runs yet.</p>
@@ -78,7 +78,7 @@ export function ImportRunsList({ runs, isLoading }: ImportRunsListProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base font-medium">Recent Sync Runs</CardTitle>
+        <CardTitle className="text-base font-semibold">Recent Sync Runs</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         {sortedRuns.map((run) => (
@@ -153,11 +153,11 @@ function ImportRunItem({ run }: { run: ImportRun }) {
                   <p className="text-muted-foreground text-xs">Fetched</p>
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-green-600">{run.summary.inserted}</p>
+                  <p className="text-lg font-semibold text-success">{run.summary.inserted}</p>
                   <p className="text-muted-foreground text-xs">Inserted</p>
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-blue-600">{run.summary.updated}</p>
+                  <p className="text-lg font-semibold text-info">{run.summary.updated}</p>
                   <p className="text-muted-foreground text-xs">Updated</p>
                 </div>
                 <div>
@@ -198,7 +198,7 @@ function ImportRunItem({ run }: { run: ImportRun }) {
             {/* Error */}
             {run.error && (
               <div className="rounded-md bg-red-50 p-2 dark:bg-red-900/20">
-                <p className="text-sm text-red-600 dark:text-red-400">{run.error}</p>
+                <p className="text-sm text-destructive dark:text-red-400">{run.error}</p>
               </div>
             )}
 

@@ -92,8 +92,11 @@ impl TestApp {
             supabase_url: "https://test.supabase.co".into(),
             supabase_jwt_audience: "authenticated".into(),
             supabase_service_role_key: None,
+            supabase_publishable_key: None,
             cors_allowed_origins: vec!["http://localhost:1420".into()],
             rate_limit_per_minute: 600,
+            user_rate_limit_per_minute: None,
+            user_rate_limit_burst: None,
             sentry: SentryConfig {
                 dsn: None,
                 environment: "test".into(),
@@ -107,13 +110,24 @@ impl TestApp {
                 api_base: plaid_api_base
                     .unwrap_or("https://sandbox.plaid.invalid")
                     .to_string(),
-                redirect_uri: "http://127.0.0.1/api/v1/sync/plaid/callback".into(),
+                // PlaidConfig.redirect_uri became Option<String> in the
+                // Plaid-fix commit so deployments without an OAuth
+                // redirect (sandbox-only postures) don't crash at boot.
+                redirect_uri: Some("http://127.0.0.1/api/v1/sync/plaid/callback".into()),
                 webhook_url: Some("http://127.0.0.1/api/v1/sync/plaid/webhook".into()),
                 token_encryption_key: TEST_ENCRYPTION_KEY.to_vec(),
             }),
             // Billing left unconfigured by default — tests that need Stripe
             // wire a `BillingContext` directly into `AppState`.
             billing: None,
+            // SnapTrade left unconfigured by default — tests that need it
+            // wire a `SnapTradeConfig` directly via a config override.
+            snaptrade: None,
+            // Admin surface disabled by default — every test runs with a
+            // hermetic config that has no QA break-glass. Tests that need
+            // to exercise the admin endpoints set this to Some(...) via
+            // a config override.
+            admin_token: None,
         };
 
         let jwks = JwksCache::new(config.jwks_url());

@@ -13,7 +13,8 @@ import {
   ToggleGroupItem,
 } from "@mizan/ui";
 import { Input } from "@mizan/ui/components/ui/input";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { SettingsHeader } from "../settings-header";
 import { AccountEditModal } from "./components/account-edit-modal";
 import { AccountItem } from "./components/account-item";
@@ -44,6 +45,23 @@ const SettingsAccountsPage = () => {
     setSelectedAccount(null);
     setVisibleModal(true);
   };
+
+  // If the user arrived via the AddAssetDialog's "Add manually" link
+  // (`/settings/accounts?addAccount=1`), auto-open the add modal so the
+  // user lands directly in the form they asked for — not on an empty
+  // list page they then have to scan for the right button. We clear
+  // the param after consuming it so reloads/back-nav don't trigger it
+  // a second time.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("addAccount") === "1") {
+      setSelectedAccount(null);
+      setVisibleModal(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("addAccount");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { deleteAccountMutation, updateAccountMutation } = useAccountMutations({});
 
@@ -234,9 +252,11 @@ const SettingsAccountsPage = () => {
           {accounts.length === 0 ? (
             <EmptyPlaceholder>
               <EmptyPlaceholder.Icon name="Wallet" />
-              <EmptyPlaceholder.Title>No portfolio added!</EmptyPlaceholder.Title>
+              <EmptyPlaceholder.Title>No portfolios yet</EmptyPlaceholder.Title>
               <EmptyPlaceholder.Description>
-                You don&apos;t have any portfolio yet. Start adding your investment portfolios.
+                A portfolio groups accounts that belong together — brokerage, retirement, crypto,
+                cash. Add your first one to start tracking, or use the top-bar Add button to let
+                Mizan AI set one up for you.
               </EmptyPlaceholder.Description>
               <Button onClick={() => handleAddAccount()}>
                 <Icons.Plus className="mr-2 h-4 w-4" />

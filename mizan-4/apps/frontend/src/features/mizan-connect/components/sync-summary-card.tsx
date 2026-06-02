@@ -47,7 +47,7 @@ export function SyncSummaryCard({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-base font-medium">Sync Status</CardTitle>
+        <CardTitle className="text-base font-semibold">Sync Status</CardTitle>
         <Badge variant={config.variant}>{config.label}</Badge>
       </CardHeader>
       <CardContent>

@@ -64,7 +64,7 @@ export function AccountSelection({ limit, accounts, deposits, isLoading }: Accou
                     {isLoading ? (
                       <span className="text-muted-foreground text-xs">Loading...</span>
                     ) : accountDeposit ? (
-                      <span className="text-muted-foreground text-xs font-light">
+                      <span className="text-muted-foreground text-xs">
                         {formatAmount(accountDeposit.convertedAmount, deposits.baseCurrency)}{" "}
                         Contributed
                       </span>

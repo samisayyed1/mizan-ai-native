@@ -7,5 +7,6 @@ pub use core_adapter::CoreImportRunRepositoryAdapter;
 pub use models::{
     BrokerSyncState, BrokerSyncStateRepositoryTrait, ImportRun, ImportRunMode,
     ImportRunRepositoryTrait, ImportRunStatus, ImportRunSummary, ImportRunType,
-    LegacyBrokerCheckpoint, PlaidInvestmentsCheckpoint, PlaidSyncCheckpoint, ReviewMode, SyncStatus,
+    LegacyBrokerCheckpoint, PlaidInvestmentsCheckpoint, PlaidSyncCheckpoint, ReviewMode,
+    SyncStatus,
 };

@@ -24,29 +24,50 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AnimatedToggleGroup } from "@mizan/ui";
+import { useAddAsset } from "@/features/add-asset";
+import { useAccounts } from "@/hooks/use-accounts";
 
-// Helper function to get display value and currency based on toggle state
+// Helper function to get display value and currency based on toggle state.
+//
+// When showConvertedToBase is false we report the holding in its OWN
+// currency. That requires an FX rate from base → local. If the rate is
+// missing AND the currencies actually differ, we can't honestly do the
+// conversion — so we fall back to the base-currency value rather than
+// silently rendering a base-currency number under a local-currency
+// label (which would mis-state the holding to the user). QA Pass 6.
 const getDisplayValueAndCurrency = (
   holding: Holding,
   valueInBase: number | null | undefined,
   showConvertedToBase: boolean,
 ): { value: number; currency: string } => {
-  const fxRate = holding.fxRate ?? 1; // Use fxRate from Holding
-
   if (showConvertedToBase) {
-    // Show value in Base Currency
     return {
       value: valueInBase ?? 0,
-      currency: holding.baseCurrency, // Use baseCurrency from Holding
-    };
-  } else {
-    // Show value in Asset's Original Currency
-    const valueInOriginal = safeDivide(valueInBase ?? 0, fxRate);
-    return {
-      value: valueInOriginal,
-      currency: holding.localCurrency, // Use localCurrency from Holding
+      currency: holding.baseCurrency,
     };
   }
+
+  // Local-currency view. If FX is unavailable and the currencies
+  // differ, the safest honest answer is to show the base value under
+  // the base label; rendering "₹1,000" when the underlying is $1,000
+  // USD would be wrong by ~85x.
+  const fxRate = holding.fxRate;
+  if (
+    fxRate == null &&
+    holding.localCurrency &&
+    holding.baseCurrency &&
+    holding.localCurrency !== holding.baseCurrency
+  ) {
+    return {
+      value: valueInBase ?? 0,
+      currency: holding.baseCurrency,
+    };
+  }
+  const valueInOriginal = safeDivide(valueInBase ?? 0, fxRate ?? 1);
+  return {
+    value: valueInOriginal,
+    currency: holding.localCurrency,
+  };
 };
 
 export const HoldingsTable = ({
@@ -212,7 +233,7 @@ const getColumns = (
           />
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
-              <span className="font-medium">{displaySymbol}</span>
+              <span className="font-semibold tracking-tight">{displaySymbol}</span>
               {isManual && (
                 <Badge variant="secondary" className="h-4 px-1 py-0 text-[10px]">
                   Manual
@@ -491,14 +512,43 @@ const getColumns = (
     header: () => null,
     cell: ({ row }) => {
       const navigate = useNavigate();
+      const addAsset = useAddAsset();
+      // Look up the account name for the holding so the AddAsset dialog
+      // can show "for the Schwab portfolio" rather than the raw ID hash.
+      const { accounts } = useAccounts({ filterActive: true });
       const holding = row.original;
       const hasInstrument = !!holding.instrument;
+      const accountName = accounts?.find((a) => a.id === holding.accountId)?.name;
+      const symbol = holding.instrument?.symbol ?? holding.id;
+      const assetId = holding.instrument?.id ?? holding.id;
 
       const handleNavigate = () => {
-        // Use instrument.id (asset ID) for navigation, not symbol (which may be stripped)
-        const navSymbol = holding.instrument?.id ?? holding.id;
-        navigate(`/holdings/${encodeURIComponent(navSymbol)}`, {
+        navigate(`/holdings/${encodeURIComponent(assetId)}`, {
           state: { holding },
+        });
+      };
+
+      // Enterprise UX-5: one-click "Record activity" routes to the
+      // activity manager with account AND asset pre-filled. No
+      // re-asking the user which portfolio or which stock — they just
+      // told us by clicking this row's menu.
+      const handleRecordActivity = () => {
+        navigate(
+          `/activities/manage?account=${encodeURIComponent(holding.accountId)}` +
+            `&assetId=${encodeURIComponent(assetId)}` +
+            `&redirect-to=${encodeURIComponent(`/accounts/${holding.accountId}`)}`,
+        );
+      };
+
+      // Ask Mizan AI to update — opens the AI dialog with full context
+      // (account + asset symbol). The agent's record_activity tool
+      // resolves both automatically.
+      const handleAskAi = () => {
+        addAsset.open({
+          source: "portfolio",
+          accountId: holding.accountId,
+          accountName,
+          prompt: `Update my ${symbol} holding. What would you like to change?`,
         });
       };
 
@@ -511,6 +561,18 @@ const getColumns = (
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {hasInstrument && (
+                <DropdownMenuItem onClick={handleRecordActivity}>
+                  <Icons.Plus className="mr-2 h-4 w-4" />
+                  Record activity
+                </DropdownMenuItem>
+              )}
+              {hasInstrument && (
+                <DropdownMenuItem onClick={handleAskAi}>
+                  <Icons.Sparkles className="mr-2 h-4 w-4" />
+                  Ask Mizan AI to update
+                </DropdownMenuItem>
+              )}
               {hasInstrument && onClassify && (
                 <DropdownMenuItem onClick={() => onClassify(holding)}>
                   <Icons.Tag className="mr-2 h-4 w-4" />
@@ -519,7 +581,7 @@ const getColumns = (
               )}
               <DropdownMenuItem onClick={handleNavigate}>
                 <Icons.ChevronRight className="mr-2 h-4 w-4" />
-                View Details
+                View details
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

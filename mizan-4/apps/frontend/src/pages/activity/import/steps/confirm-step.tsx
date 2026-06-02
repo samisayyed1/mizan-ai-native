@@ -395,7 +395,7 @@ export function ConfirmStep() {
             </div>
             <div>
               <div className="text-muted-foreground text-sm">Total Rows</div>
-              <div className="text-2xl font-semibold">{summary.total}</div>
+              <div className="text-2xl font-semibold tracking-tight">{summary.total}</div>
             </div>
           </div>
 
@@ -406,7 +406,7 @@ export function ConfirmStep() {
             </div>
             <div>
               <div className="text-primary text-sm">To Import</div>
-              <div className="text-primary text-2xl font-semibold">{summary.toImport}</div>
+              <div className="text-primary text-2xl font-semibold tracking-tight">{summary.toImport}</div>
             </div>
           </div>
 
@@ -417,7 +417,7 @@ export function ConfirmStep() {
             </div>
             <div>
               <div className="text-muted-foreground text-sm">Skipped</div>
-              <div className="text-muted-foreground text-2xl font-semibold">{skippedTotal}</div>
+              <div className="text-muted-foreground text-2xl font-semibold tracking-tight">{skippedTotal}</div>
             </div>
           </div>
         </div>

@@ -515,7 +515,7 @@ function HoldingsContentImpl({ args, result, status }: HoldingsContentProps) {
           </p>
         </div>
         <div className="text-right">
-          <span className="text-xl font-bold">{formatValue(totalValue)}</span>
+          <span className="text-xl font-semibold tracking-tight">{formatValue(totalValue)}</span>
           {!isBalanceHidden && (
             <p
               className={cn(
@@ -570,7 +570,7 @@ function HoldingsContentImpl({ args, result, status }: HoldingsContentProps) {
               </p>
             </div>
             <div className="text-right">
-              <span className="text-xl font-bold">{formatValue(totalValue)}</span>
+              <span className="text-xl font-semibold tracking-tight">{formatValue(totalValue)}</span>
               {!isBalanceHidden && (
                 <p
                   className={cn(

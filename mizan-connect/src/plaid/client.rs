@@ -8,8 +8,8 @@ use crate::error::AppError;
 
 use super::types::{
     LinkTokenResponse, PlaidAccountsGetResponse, PlaidErrorBody, PlaidInvestmentsHoldingsResponse,
-    PlaidLiabilitiesResponse, PlaidLinkTokenCreateResponse, PlaidPublicTokenExchangeResponse,
-    PlaidTokenExchange, TransactionsSyncResponse,
+    PlaidInvestmentsTransactionsResponse, PlaidLiabilitiesResponse, PlaidLinkTokenCreateResponse,
+    PlaidPublicTokenExchangeResponse, PlaidTokenExchange, TransactionsSyncResponse,
 };
 use super::webhook_verifier::WebhookKeyResponse;
 
@@ -33,7 +33,11 @@ impl PlaidClient {
             environment: config.environment,
             base_url: config.api_base.clone(),
             webhook_url: config.webhook_url.clone(),
-            redirect_uri: Some(config.redirect_uri.clone()),
+            // `config.redirect_uri` is already Option<String>; clone
+            // through verbatim. The request-time create_link_token
+            // call can still pass an override via its `redirect_uri`
+            // arg if a specific institution needs one.
+            redirect_uri: config.redirect_uri.clone(),
         }
     }
 
@@ -124,6 +128,51 @@ impl PlaidClient {
         self.post("/investments/holdings/get", &body).await
     }
 
+    /// Fetch a page of investment transactions (buys, sells, dividends,
+    /// fees, splits) for the given date range. Unlike `/transactions/sync`,
+    /// this endpoint is date-window based — the caller picks `start_date`
+    /// and `end_date`, then paginates with `offset` until they've drained
+    /// the window. We cap `count` at Plaid's documented per-page limit
+    /// (500) and let the handler do the offset loop.
+    ///
+    /// `start_date` / `end_date` are ISO `YYYY-MM-DD` strings in the
+    /// institution's local timezone (per Plaid's documentation — Plaid
+    /// normalises this on their side).
+    pub async fn investments_transactions_get(
+        &self,
+        access_token: &SecretString,
+        start_date: &str,
+        end_date: &str,
+        offset: u32,
+        count: u32,
+    ) -> Result<PlaidInvestmentsTransactionsResponse, AppError> {
+        let mut body = self.access_token_body(access_token);
+        body["start_date"] = json!(start_date);
+        body["end_date"] = json!(end_date);
+        body["options"] = json!({
+            "count": count.min(500),
+            "offset": offset,
+        });
+        self.post("/investments/transactions/get", &body).await
+    }
+
+    /// Revoke a Plaid Item on Plaid's side so the access_token stops
+    /// being honoured. Called from the disconnect handler so a user
+    /// hitting "Disconnect" actually severs the upstream link, not
+    /// just our local status flip. Per Plaid docs, success returns
+    /// `{ request_id: "..." }`; we don't need the body, so we drop
+    /// the response.
+    ///
+    /// If Plaid rejects the call (token already revoked, item not
+    /// found, etc.) we surface the AppError so the handler can decide
+    /// whether to proceed with the local soft-delete anyway — the
+    /// user's intent is unambiguous either way.
+    pub async fn item_remove(&self, access_token: &SecretString) -> Result<(), AppError> {
+        let body = self.access_token_body(access_token);
+        let _: serde_json::Value = self.post("/item/remove", &body).await?;
+        Ok(())
+    }
+
     pub async fn webhook_verification_key_get(
         &self,
         key_id: &str,
@@ -201,18 +250,24 @@ fn map_plaid_error(status: StatusCode, body: &str) -> AppError {
         "Plaid API error"
     );
 
+    // Preserve Plaid's specific error_code in the AppError message so
+    // downstream `last_error` storage carries a recognisable token
+    // (e.g. "ITEM_LOGIN_REQUIRED", "INSUFFICIENT_CREDENTIALS",
+    // "INVALID_MFA"). The desktop's needs_attention badge already keys
+    // off `last_error.is_some()` to map → "needs_reconnect"; preserving
+    // the code lets future UX call out the specific remediation (per
+    // audit Issue #3).
+    let detail = if code == "unknown" {
+        message.to_string()
+    } else {
+        format!("[{}] {}", code, message)
+    };
     match status {
-        StatusCode::BAD_REQUEST => AppError::bad_request(message.to_string()),
-        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-            AppError::forbidden("Plaid access was denied or expired")
-        }
-        StatusCode::NOT_FOUND => AppError::not_found("Plaid item or account not found"),
-        StatusCode::TOO_MANY_REQUESTS => {
-            AppError::service_unavailable("Plaid rate limit reached; try again later")
-        }
-        status if status.is_server_error() => {
-            AppError::service_unavailable("Plaid is temporarily unavailable")
-        }
-        _ => AppError::service_unavailable("Plaid request failed"),
+        StatusCode::BAD_REQUEST => AppError::bad_request(detail),
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => AppError::forbidden(detail),
+        StatusCode::NOT_FOUND => AppError::not_found(detail),
+        StatusCode::TOO_MANY_REQUESTS => AppError::service_unavailable(detail),
+        status if status.is_server_error() => AppError::service_unavailable(detail),
+        _ => AppError::service_unavailable(detail),
     }
 }

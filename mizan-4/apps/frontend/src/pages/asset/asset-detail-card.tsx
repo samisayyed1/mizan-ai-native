@@ -157,7 +157,7 @@ const AssetDetailCard: React.FC<AssetDetailProps> = ({ assetData, className }) =
   return (
     <Card className={className}>
       <CardHeader className="flex flex-row items-center justify-between pb-0">
-        <CardTitle className="flex w-full justify-between text-lg font-bold">
+        <CardTitle className="flex w-full justify-between text-lg font-semibold tracking-tight">
           <div>
             <div>
               <QuantityDisplay value={numShares} isHidden={isBalanceHidden} />
@@ -165,7 +165,7 @@ const AssetDetailCard: React.FC<AssetDetailProps> = ({ assetData, className }) =
             <div className="text-muted-foreground text-sm font-normal">shares</div>
           </div>
           <div>
-            <div className="text-xl font-extrabold">
+            <div className="text-xl font-semibold tracking-tight">
               <AmountDisplay value={marketValue} currency={currency} isHidden={isBalanceHidden} />
             </div>
             <div className="text-muted-foreground text-right text-sm font-normal">{currency}</div>

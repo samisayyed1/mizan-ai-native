@@ -37,3 +37,4 @@ r2d2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+rust_decimal_macros = { workspace = true }

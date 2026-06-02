@@ -84,18 +84,26 @@ impl NetWorthService {
 
     /// Get the latest quote for an asset on or before the given date.
     /// Returns (close_price, quote_currency, valuation_date) if found.
+    ///
+    /// Tie-breaking when multiple quotes exist for the same day (e.g. a
+    /// MANUAL override + a MARKET scrape both landed): use the full
+    /// `timestamp` instead of just `date_naive()` so the latest WRITE
+    /// wins deterministically. Without that, `max_by_key(date_naive)`
+    /// returned an arbitrary winner on ties — observed in QA Pass 4
+    /// against the seed, where one VTI day had two rows from different
+    /// providers and net_worth's "investments" total wobbled by tens
+    /// of thousands depending on which one the iterator picked.
     fn get_latest_quote_as_of(
         &self,
         asset_id: &str,
         date: NaiveDate,
     ) -> Option<(Decimal, String, NaiveDate)> {
-        // Get all quotes for this symbol and find the latest one <= date
         let quotes = self.quote_service.get_historical_quotes(asset_id).ok()?;
 
         quotes
             .iter()
             .filter(|q| q.timestamp.date_naive() <= date)
-            .max_by_key(|q| q.timestamp.date_naive())
+            .max_by_key(|q| q.timestamp)
             .map(|q| (q.close, q.currency.clone(), q.timestamp.date_naive()))
     }
 
@@ -166,10 +174,14 @@ impl NetWorthService {
             }
         }
 
-        // Build breakdown items - only include categories with non-zero values
+        // Build breakdown items. Keep ALL categories whose magnitude is
+        // meaningful — including negative ones (margin debit, overdraft,
+        // settling positions). The previous `value > 0` filter silently
+        // dropped real overdraft positions from the dashboard, making
+        // total_assets look better than reality.
         let mut breakdown: Vec<BreakdownItem> = category_totals
             .into_iter()
-            .filter(|(_, value)| *value > Decimal::ZERO)
+            .filter(|(_, value)| value.abs() > Decimal::ONE) // skip noise < $1
             .map(|(category, value)| BreakdownItem {
                 category: Self::category_key(category).to_string(),
                 name: Self::category_display_name(category).to_string(),
@@ -339,7 +351,11 @@ impl NetWorthServiceTrait for NetWorthService {
                 let (normalized_price, normalized_currency) =
                     normalize_amount(price, &quote_currency);
 
-                // Calculate market value in base currency
+                // Calculate market value in base currency. Same rule as
+                // for cash above: never silently substitute a local-
+                // currency number into a base-currency dashboard. Skip
+                // the position so it shows up as missing rather than as
+                // a fake value with the wrong currency.
                 let market_value_base = match self.calculate_market_value(
                     position.quantity,
                     normalized_price,
@@ -351,10 +367,11 @@ impl NetWorthServiceTrait for NetWorthService {
                     Ok(v) => v,
                     Err(e) => {
                         warn!(
-                            "Failed to calculate market value for {}: {}. Using local value.",
-                            asset_id, e
+                            "Cannot value {} ({}→{}): {}. Excluding from net worth — \
+                             local-currency fallback would mis-state the dashboard.",
+                            asset_id, normalized_currency, base_currency, e
                         );
-                        position.quantity * price * position.contract_multiplier
+                        continue;
                     }
                 };
 
@@ -373,7 +390,13 @@ impl NetWorthServiceTrait for NetWorthService {
                     continue;
                 }
 
-                // Convert cash to base currency
+                // Convert cash to base currency. We refuse to silently
+                // inject the unconverted value if FX lookup fails — that
+                // path used to make a 463,800 INR cash row appear as
+                // "$463,800 USD" on the net-worth dashboard. Skipping
+                // with a loud warning is safer; the surface should show
+                // a "stale FX rate" or "Unknown" affordance instead of
+                // lying about the number.
                 let cash_base = if currency == &base_currency {
                     amount
                 } else {
@@ -386,10 +409,11 @@ impl NetWorthServiceTrait for NetWorthService {
                         Ok(v) => v,
                         Err(e) => {
                             warn!(
-                                "Failed to convert cash {} {} to {}: {}. Using unconverted.",
-                                amount, currency, base_currency, e
+                                "Cannot convert {} {} → {} on {} ({}). Excluding from net worth — \
+                                 silent unconverted fallback would mis-state the dashboard.",
+                                amount, currency, base_currency, date, e
                             );
-                            amount
+                            continue;
                         }
                     }
                 };
@@ -451,10 +475,12 @@ impl NetWorthServiceTrait for NetWorthService {
                 Ok(v) => v,
                 Err(e) => {
                     warn!(
-                        "Failed to convert alternative asset {} value to base currency: {}. Using local value.",
-                        asset.id, e
+                        "Cannot value alternative asset {} ({} → {}): {}. Excluding from \
+                         net worth — silent local-currency fallback would mis-state the \
+                         dashboard.",
+                        asset.id, normalized_currency, base_currency, e
                     );
-                    price
+                    continue;
                 }
             };
 

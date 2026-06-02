@@ -160,9 +160,54 @@ pub async fn perform_broker_sync(
     let client = context.connect_service().get_api_client().await?;
     client.sync_plaid_data().await.map_err(|e| e.to_string())?;
 
+    // Plaid-4: after the cloud finishes its Plaid pull, ingest the new
+    // investment transactions into the local activities table. This is
+    // what makes trades show up in the timeline + flow into TWR / cost
+    // basis. Failure is non-fatal: we log + continue, because the cloud
+    // sync itself succeeded and the next ingest attempt will catch up.
+    let ingest_msg = match mizan_connect::plaid_ingest::ingest_plaid_investment_transactions(
+        &client,
+        context.activity_service(),
+        context.account_service(),
+        None, // server-side cursor handles the incremental window
+        Some(1000),
+    )
+    .await
+    {
+        Ok(s) => {
+            info!(
+                "Plaid ingest: created={} updated={} skipped={} accounts={} needs_review={}",
+                s.created,
+                s.updated,
+                s.skipped,
+                s.accounts_touched.len(),
+                s.mapping.needs_review
+            );
+            let mut parts: Vec<String> = Vec::new();
+            if s.created > 0 {
+                parts.push(format!("{} new activities", s.created));
+            }
+            if s.updated > 0 {
+                parts.push(format!("{} updated", s.updated));
+            }
+            if s.mapping.needs_review > 0 {
+                parts.push(format!("{} need review", s.mapping.needs_review));
+            }
+            if parts.is_empty() {
+                "Plaid live sync completed.".to_string()
+            } else {
+                format!("Plaid live sync completed — {}.", parts.join(", "))
+            }
+        }
+        Err(e) => {
+            error!("Plaid ingest failed (non-fatal): {}", e);
+            "Plaid live sync completed (activity ingest will retry on next sync).".to_string()
+        }
+    };
+
     let result = SyncResult {
         success: true,
-        message: "Plaid live sync completed.".to_string(),
+        message: ingest_msg,
         connections_synced: None,
         accounts_synced: None,
         activities_synced: None,
@@ -444,3 +489,83 @@ pub async fn save_broker_sync_profile_rules(
 // ─────────────────────────────────────────────────────────────────────────────
 // Foreground Sync Command
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SnapTrade brokerage integration commands
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Mirror of the Plaid family above. The cloud handles all SnapTrade
+// auth (HMAC signing, per-user registration, encrypted userSecret
+// storage). The desktop just calls our own /api/v1/sync/snaptrade/*.
+
+use mizan_connect::client::{
+    SnapTradeConnection, SnapTradeHealthResponse, SnapTradeLoginPortalResponse,
+    SnapTradeSyncSummary,
+};
+
+/// Health check for the SnapTrade integration. Returns `configured: true`
+/// only when the cloud has SNAPTRADE_CLIENT_ID + CONSUMER_KEY + TOKEN
+/// encryption key set. Desktop lights up the "Connect a brokerage"
+/// button based on this.
+#[tauri::command]
+pub async fn snaptrade_health(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<SnapTradeHealthResponse, String> {
+    let client = state.connect_service().get_api_client().await?;
+    client.snaptrade_health().await.map_err(|e| e.to_string())
+}
+
+/// Generate a one-time login portal URL the user opens in the system
+/// browser to pick a brokerage and complete OAuth. SnapTrade redirects
+/// back to our deep link on completion.
+#[tauri::command]
+pub async fn create_snaptrade_login_portal(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<SnapTradeLoginPortalResponse, String> {
+    info!("Creating SnapTrade login portal");
+    let client = state.connect_service().get_api_client().await?;
+    client
+        .create_snaptrade_login_portal()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_snaptrade_connections(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<Vec<SnapTradeConnection>, String> {
+    let client = state.connect_service().get_api_client().await?;
+    client
+        .list_snaptrade_connections()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn disconnect_snaptrade_authorization(
+    authorization_id: String,
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<(), String> {
+    info!(
+        "Disconnecting SnapTrade authorization: {}",
+        authorization_id
+    );
+    let client = state.connect_service().get_api_client().await?;
+    let _ = client
+        .disconnect_snaptrade_authorization(&authorization_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Run a read-only sync against SnapTrade. Returns a typed summary the
+/// frontend renders as a toast (synced N accounts / M positions /
+/// K activities).
+#[tauri::command]
+pub async fn snaptrade_sync_now(
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<SnapTradeSyncSummary, String> {
+    info!("Triggering SnapTrade sync");
+    let client = state.connect_service().get_api_client().await?;
+    client.snaptrade_sync_now().await.map_err(|e| e.to_string())
+}

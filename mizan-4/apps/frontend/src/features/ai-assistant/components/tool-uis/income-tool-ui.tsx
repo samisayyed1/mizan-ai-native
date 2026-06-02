@@ -339,7 +339,7 @@ function IncomeContentImpl({ args, result, status }: IncomeContentProps) {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <CardTitle className="text-base font-medium">Income Summary</CardTitle>
+            <CardTitle className="text-base font-semibold">Income Summary</CardTitle>
             <div className="text-muted-foreground mt-1 flex items-center gap-2 text-xs">
               <span>{getPeriodLabel(parsed.period)}</span>
               {parsed.yoyGrowth !== undefined && parsed.yoyGrowth !== null && (
@@ -354,7 +354,7 @@ function IncomeContentImpl({ args, result, status }: IncomeContentProps) {
             <PrivacyAmount
               value={parsed.totalIncome}
               currency={currency}
-              className="text-2xl font-bold"
+              className="text-2xl font-semibold tracking-tight tracking-tight"
             />
           </div>
         </div>

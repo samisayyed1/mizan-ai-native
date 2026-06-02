@@ -1620,27 +1620,32 @@ mod tests {
             "Prev close is None on cost-basis fallback"
         );
 
-        // Cash - FX rate fallback to 1.0
+        // Cash — QA Pass 10 fail-loud-skip. Previously the cash valuation
+        // silently set fx_rate=1.0 and market_value.base=local (USD 500
+        // shown as CAD 500 on the dashboard, an ~30% lie). New contract:
+        // fx_rate=None and market_value.base=0 when the FX pair is
+        // missing. The .local truth is preserved so the user can still
+        // see "USD 500 cash" on the per-holding card; the dashboard
+        // headline now omits the unconvertible line instead of
+        // fabricating a dollar value.
         let h_cash = holdings.iter().find(|h| h.id == "h_cash_usd").unwrap();
-        assert_decimal_approx(
-            h_cash.fx_rate,
-            dec!(1.0),
-            TOLERANCE,
-            "Cash FX Rate Fallback",
+        assert!(
+            h_cash.fx_rate.is_none(),
+            "Cash fx_rate must be None (not 1.0) when no USD→CAD rate exists"
         );
         assert_monetary_value_approx(
             Some(&h_cash.market_value),
             dec!(500.0),
-            dec!(500.0),
+            dec!(0.0),
             TOLERANCE,
-            "Cash Market Value Fallback",
+            "Cash market_value.local preserved, .base = 0 (honest about missing FX)",
         );
         assert_monetary_value_approx(
             h_cash.cost_basis.as_ref(),
             dec!(500.0),
-            dec!(500.0),
+            dec!(0.0),
             TOLERANCE,
-            "Cash Cost Basis Fallback",
+            "Cash cost_basis.local preserved, .base = 0",
         );
     }
 

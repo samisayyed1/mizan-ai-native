@@ -26,9 +26,9 @@ export default function ConnectSettingsPage() {
       <Separator />
       {!isEnabled ? (
         <ComingSoonCard
-          title="Mizan Connect is disabled in this build"
-          message="Set CONNECT_AUTH_URL and CONNECT_AUTH_PUBLISHABLE_KEY in your .env to enable the sign-in flow."
-          detail="Mizan still works fully offline without these."
+          title="Mizan Connect not yet configured"
+          message="Your portfolio data is fully usable offline — manual entries, CSV imports, and on-device AI all work without signing in. Mizan Connect unlocks cross-device sync, broker connections via Plaid, and cloud-grade AI."
+          detail="Operators: set SUPABASE_PUBLISHABLE_KEY on the Mizan Connect Fly app — the desktop auto-discovers it via GET /api/v1/config/public on the next launch. No installer rebuild needed."
         />
       ) : isInitializing ? null : isConnected ? (
         <ConnectedView />

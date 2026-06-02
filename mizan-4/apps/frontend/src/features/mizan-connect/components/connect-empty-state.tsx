@@ -130,7 +130,7 @@ export function ConnectEmptyState() {
             server-side boundary.
           </p>
           <ExternalLink
-            href="https://mizan-landing-rho.vercel.app"
+            href="https://mizan.app"
             className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
           >
             Learn more about Connect

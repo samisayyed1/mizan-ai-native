@@ -72,9 +72,9 @@ export function SavingGoals() {
     return (
       <div className="pb-4">
         <div className="flex items-center justify-between py-2">
-          <h2 className="text-md font-semibold">Goals</h2>
+          <h2 className="text-md font-semibold tracking-tight">Goals</h2>
         </div>
-        <Card className="shadow-xs w-full">
+        <Card className="w-full">
           <CardContent className="px-5 py-6">
             <div className="space-y-6">
               {[0, 1, 2].map((i) => (
@@ -101,24 +101,28 @@ export function SavingGoals() {
     return (
       <div className="pb-4">
         <div className="flex items-center justify-between py-2">
-          <h2 className="text-md font-semibold">Goals</h2>
+          <h2 className="text-md font-semibold tracking-tight">Goals</h2>
           <Link
             to="/goals"
-            className="text-muted-foreground hover:bg-success/10 inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors"
+            className="text-muted-foreground hover:bg-accent inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors"
           >
             View All
             <Icons.ChevronRight className="ml-1 h-3 w-3" />
           </Link>
         </div>
-        <Card className="border-border/50 bg-success/10 shadow-xs w-full">
+        <Card className="border-border/50 bg-success/10 w-full">
           <CardContent className="px-4 py-6">
             <div className="text-center">
-              <p className="text-sm">No goals set.</p>
+              <p className="text-sm font-medium">Plan what you want next</p>
+              <p className="text-muted-foreground mx-auto mt-1 max-w-[16rem] text-xs leading-relaxed">
+                Retirement, a house, hajj, a sabbatical. Mizan tracks the gap and how
+                you're closing it.
+              </p>
               <Link
                 to="/goals/new"
-                className="text-muted-foreground hover:text-foreground mt-2 inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
+                className="text-muted-foreground hover:text-foreground mt-3 inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
               >
-                Create your first goal
+                Add your first goal
                 <Icons.ChevronRight className="h-3 w-3" />
               </Link>
             </div>
@@ -131,16 +135,16 @@ export function SavingGoals() {
   return (
     <div className="pb-4">
       <div className="flex items-center justify-between py-2">
-        <h2 className="text-md font-semibold">Goals</h2>
+        <h2 className="text-md font-semibold tracking-tight">Goals</h2>
         <Link
           to="/goals"
-          className="text-muted-foreground hover:bg-success/10 inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors"
+          className="text-muted-foreground hover:bg-accent inline-flex h-8 items-center rounded-md px-3 text-xs font-medium transition-colors"
         >
           View All
           <Icons.ChevronRight className="ml-1 h-3 w-3" />
         </Link>
       </div>
-      <Card className="shadow-xs w-full">
+      <Card className="w-full">
         <CardContent className="px-4 pb-2 pt-4">
           {visibleGoals.map((goal) => {
             const progress = goal.summaryProgress ?? 0;

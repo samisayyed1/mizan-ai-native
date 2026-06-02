@@ -3,7 +3,9 @@ import { HistoryChart } from "@/components/history-chart";
 import { TickerConveyor } from "@/components/ticker-conveyor";
 import { useHapticFeedback } from "@/hooks";
 import { useHoldings } from "@/hooks/use-holdings";
+import { useValuationExtent } from "@/hooks/use-valuation-extent";
 import { useValuationHistory } from "@/hooks/use-valuation-history";
+import { useEntitlements } from "@/features/mizan-connect";
 import type { AccountValuation } from "@/lib/types";
 import { isAlternativeAssetKind, PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -23,6 +25,7 @@ import { differenceInDays, format, parseISO } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { AccountsSummary } from "./accounts-summary";
+import { HoldingsHeatmap } from "./holdings-heatmap";
 import { NewsHomeWidget } from "./news-home-widget";
 import { PortfolioHealthCard } from "./portfolio-health-card";
 import { ZakatCard } from "./zakat-card";
@@ -47,6 +50,10 @@ export function DashboardContent() {
 
   const { holdings: allHoldings, isLoading: isHoldingsLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { triggerHaptic } = useHapticFeedback();
+  // Data extent for gating IntervalSelector — hides 5Y/1Y/6M etc. when
+  // the user only has a few weeks of history. Cached aggressively so
+  // toggling between intervals doesn't re-fetch.
+  const dataEarliestDate = useValuationExtent(PORTFOLIO_ACCOUNT_ID);
 
   // Total portfolio value (includes cash, excludes alternative assets)
   const totalValue = useMemo(() => {
@@ -61,6 +68,16 @@ export function DashboardContent() {
   // Toggle: when ON, the chart shows an *estimated* historical curve
   // computed by pricing current holdings against historical quotes (good
   // for accounts where the broker only delivered a current snapshot).
+  //
+  // UX-10 gating: the "Estimate full history" button is gated behind
+  // brokerSync (Plaid / broker imports enabled) per user request. Free
+  // users see only the actual valuation history they've recorded —
+  // promising 5-year synthesised charts on a fresh install over-promises
+  // what the dataset can support. Paid users who've connected via Plaid
+  // get the option because they typically only have a starting-snapshot
+  // worth of history and need the synthesis to populate the chart.
+  const { entitlements } = useEntitlements();
+  const showEstimateToggle = entitlements.brokerSync;
   const [useEstimatedHistory, setUseEstimatedHistory] = useState(false);
 
   const { valuationHistory: realValuationHistory, isLoading: isRealHistoryLoading } =
@@ -218,6 +235,7 @@ export function DashboardContent() {
                   isLoading={isValuationHistoryLoading}
                   storageKey={INTERVAL_STORAGE_KEY}
                   defaultValue={DEFAULT_INTERVAL}
+                  dataEarliestDate={dataEarliestDate}
                 />
               )}
               <div className="flex w-full max-w-md flex-col items-center gap-2 px-4">
@@ -235,6 +253,7 @@ export function DashboardContent() {
                     trades, splits, and contributions are not reflected.
                   </p>
                 )}
+                {showEstimateToggle && (
                 <button
                   type="button"
                   onClick={() => {
@@ -245,6 +264,7 @@ export function DashboardContent() {
                 >
                   {useEstimatedHistory ? "Back to actual history" : "Estimate full history"}
                 </button>
+                )}
               </div>
             </div>
           )}
@@ -252,8 +272,13 @@ export function DashboardContent() {
 
         <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-12 md:px-6 md:pb-6 md:pt-6 lg:px-10 lg:pb-8 lg:pt-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-20">
-            <div className="lg:col-span-2">
+            <div className="space-y-6 lg:col-span-2">
               <AccountsSummary dateRange={dateRange} isAllTime={isAllTime} />
+              <HoldingsHeatmap
+                holdings={allHoldings ?? []}
+                isLoading={isHoldingsLoading}
+                baseCurrency={baseCurrency}
+              />
             </div>
             <div className="space-y-6 lg:col-span-1">
               <SavingGoals />

@@ -231,7 +231,7 @@ export const OnboardingStep2 = forwardRef<OnboardingStep2Handle, OnboardingStep2
                           <div className="bg-muted rounded-lg p-2">
                             <Icons.DollarSign className="text-muted-foreground h-5 w-5" />
                           </div>
-                          <FormLabel className="text-xl font-semibold">Currency</FormLabel>
+                          <FormLabel className="text-xl font-semibold tracking-tight">Currency</FormLabel>
                         </div>
                         <FormControl>
                           <div className="grid grid-cols-3 gap-3 md:grid-cols-4">
@@ -276,7 +276,7 @@ export const OnboardingStep2 = forwardRef<OnboardingStep2Handle, OnboardingStep2
                           <div className="bg-muted rounded-lg p-2">
                             <Icons.Globe className="text-muted-foreground h-5 w-5" />
                           </div>
-                          <FormLabel className="text-xl font-semibold">Timezone</FormLabel>
+                          <FormLabel className="text-xl font-semibold tracking-tight">Timezone</FormLabel>
                         </div>
                         <FormControl>
                           <div className="grid grid-cols-3 gap-3 md:grid-cols-4">
@@ -324,7 +324,7 @@ export const OnboardingStep2 = forwardRef<OnboardingStep2Handle, OnboardingStep2
             <Card className="w-full max-w-md border shadow-lg">
               <div className="p-6">
                 <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-xl font-bold">Select Currency</h3>
+                  <h3 className="text-xl font-bold tracking-tight">Select Currency</h3>
                   <button
                     type="button"
                     onClick={() => {
@@ -386,7 +386,7 @@ export const OnboardingStep2 = forwardRef<OnboardingStep2Handle, OnboardingStep2
             <Card className="w-full max-w-md border shadow-lg">
               <div className="p-6">
                 <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-xl font-bold">Select Timezone</h3>
+                  <h3 className="text-xl font-bold tracking-tight">Select Timezone</h3>
                   <button
                     type="button"
                     onClick={() => {

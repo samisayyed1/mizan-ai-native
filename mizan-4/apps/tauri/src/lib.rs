@@ -181,10 +181,131 @@ mod desktop {
         // holding values render with live prices on first paint.
         // Without this the user sees blank cells for ~2 minutes on every
         // cold launch.
-        let startup_quote_handle = handle.clone();
-        let startup_quote_context = Arc::clone(&context);
+        // Single chained startup task: quote sync → NW snapshot → daily
+        // brief → ledger retry drain. Each step `awaits` the previous so
+        // we don't rely on a hardcoded sleep to fake ordering — the
+        // snapshot ALWAYS sees the freshest quote cache, the brief
+        // ALWAYS sees today's snapshot, and any queued ledger appends
+        // get one drain attempt per boot.
+        let startup_handle = handle.clone();
+        let startup_chain_context = Arc::clone(&context);
         tauri::async_runtime::spawn(async move {
-            scheduler::run_startup_quote_sync(&startup_quote_handle, &startup_quote_context).await;
+            // 1) Refresh quotes so the snapshot below reads fresh prices.
+            scheduler::run_startup_quote_sync(&startup_handle, &startup_chain_context).await;
+
+            // 2) Recompute holdings snapshots BEFORE the NW capture below.
+            //    Previously the chain was just quote-sync → NW-capture, but
+            //    that left a real race at cold start: when fresh activities
+            //    landed between sessions, the NW snapshot at boot read
+            //    yesterday's holdings_snapshot table and the dashboard
+            //    showed stale numbers until the user hit Recalc by hand.
+            //    Running an incremental recompute first guarantees
+            //    holdings_snapshots reflects every committed activity
+            //    before NW reads from it.
+            {
+                use mizan_core::portfolio::snapshot::SnapshotRecalcMode;
+                use mizan_core::portfolio::valuation::ValuationRecalcMode;
+                let snapshot_service = startup_chain_context.snapshot_service();
+                if let Err(e) = snapshot_service
+                    .recalculate_holdings_snapshots(None, SnapshotRecalcMode::IncrementalFromLast)
+                    .await
+                {
+                    log::warn!("Startup holdings recompute (per-account): {}. NW snapshot below may read stale data.", e);
+                }
+                if let Err(e) = snapshot_service
+                    .recalculate_total_portfolio_snapshots(SnapshotRecalcMode::IncrementalFromLast)
+                    .await
+                {
+                    log::warn!("Startup holdings recompute (TOTAL): {}.", e);
+                }
+
+                // Also refresh per-account valuation history for every
+                // active account. Without this, accounts created or
+                // imported between sessions never get a row in
+                // daily_account_valuation and disappear from the
+                // dashboard's per-account cards until the user clicks
+                // 'Update Prices' by hand. QA Pass 5 surfaced six seed
+                // accounts (bond, saudi, dbs, emirates, forex, trade)
+                // that were missing from the dashboard for exactly this
+                // reason.
+                let valuation_service = startup_chain_context.valuation_service();
+                let account_service = startup_chain_context.account_service();
+                if let Ok(accounts) = account_service.list_accounts(Some(true), Some(false), None) {
+                    let mut account_ids: Vec<String> =
+                        accounts.iter().map(|a| a.id.clone()).collect();
+                    account_ids.push(mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID.to_string());
+                    for account_id in account_ids {
+                        if let Err(e) = valuation_service
+                            .calculate_valuation_history(
+                                &account_id,
+                                ValuationRecalcMode::IncrementalFromLast,
+                            )
+                            .await
+                        {
+                            log::warn!(
+                                "Startup valuation history recompute for {}: {}",
+                                account_id,
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+
+            // 3) §A12 — capture today's NW snapshot. Idempotent: same-day
+            // re-runs replace the row, never duplicate it.
+            scheduler::run_startup_net_worth_snapshot(&startup_chain_context).await;
+
+            // 3) §A22 — daily Investor Brief. Reads §A12 + today's
+            // movers; safe to call even if the snapshot above failed
+            // (the brief will log + skip).
+            scheduler::run_startup_daily_brief(&startup_chain_context).await;
+
+            // 4) Notify-5 — personalized wealth-insights tick. Runs
+            // the deterministic rule set against the NW snapshot + goal
+            // state we just refreshed. Idempotent: re-running today is
+            // a no-op via the dedupe_key UNIQUE.
+            scheduler::run_insights_tick(&startup_handle, &startup_chain_context).await;
+
+            // 5) §A1/§A2 — drain any ledger appends that failed on a
+            // previous run. Bounded at 5 attempts/row to prevent
+            // infinite retries on permanently-bad payloads.
+            let queue = startup_chain_context.truth_ledger_retry_queue();
+            let ledger = startup_chain_context.truth_ledger();
+            match queue.drain(ledger, 5).await {
+                Ok(stats) if stats.succeeded > 0 || stats.failed > 0 => log::info!(
+                    "Truth-ledger retry drain: {} succeeded, {} still failing",
+                    stats.succeeded,
+                    stats.failed
+                ),
+                Ok(_) => log::debug!("Truth-ledger retry drain: queue empty"),
+                Err(e) => log::warn!("Truth-ledger retry drain failed: {e}"),
+            }
+        });
+
+        // Notify-5 — recurring 4-hour insights tick. Idempotent via
+        // the dedupe_key UNIQUE so this is safe to run while the user
+        // has the app open all day; users only see the bell flash
+        // once per logical insight. Detached: cancellation happens
+        // implicitly on app exit (the spawned future is dropped).
+        let recurring_handle_for_insights = handle.clone();
+        let recurring_context_for_insights = Arc::clone(&context);
+        tauri::async_runtime::spawn(async move {
+            // First tick happens after 4h — the startup tick above
+            // already fired ≤ a few seconds ago, so we don't want to
+            // immediately re-fire and waste a DB roundtrip.
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(4 * 3600));
+            // `interval` fires immediately by default — skip the first
+            // tick so the loop body only runs after the 4h wait.
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                scheduler::run_insights_tick(
+                    &recurring_handle_for_insights,
+                    &recurring_context_for_insights,
+                )
+                .await;
+            }
         });
 
         // Periodic market data sync continues every 6h. Initial delay is
@@ -374,7 +495,11 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_deep_link::init())
+        // Native OS notifications for the personalized wealth-insights
+        // center. Surfacing happens in `scheduler::insights::dispatch`
+        // — this only registers the plugin so the IPC bridge exists.
+        .plugin(tauri_plugin_notification::init());
 
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
@@ -512,6 +637,14 @@ pub fn run() {
             commands::limits::update_contribution_limit,
             commands::limits::delete_contribution_limit,
             commands::limits::calculate_deposits_for_contribution_limit,
+            // Personalized wealth-notification center (Notify-6)
+            commands::notifications::list_notifications,
+            commands::notifications::notifications_unread_count,
+            commands::notifications::mark_notification_read,
+            commands::notifications::dismiss_notification,
+            commands::notifications::mark_all_notifications_read,
+            #[cfg(debug_assertions)]
+            commands::notifications::debug_emit_test_notification,
             // Utility commands
             commands::utilities::get_app_info,
             commands::utilities::export_user_data_json,
@@ -591,6 +724,7 @@ pub fn run() {
             commands::ai_providers::list_ai_models,
             // AI chat commands
             commands::ai_chat::stream_ai_chat,
+            commands::ai_chat::stream_agent_chat,
             commands::ai_chat::list_ai_threads,
             commands::ai_chat::get_ai_thread,
             commands::ai_chat::get_ai_thread_messages,
@@ -641,6 +775,17 @@ pub fn run() {
             commands::brokers_sync::exchange_plaid_public_token,
             #[cfg(feature = "connect-sync")]
             commands::brokers_sync::delete_broker_connection,
+            // SnapTrade brokerage integration (Gold)
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::snaptrade_health,
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::create_snaptrade_login_portal,
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::list_snaptrade_connections,
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::disconnect_snaptrade_authorization,
+            #[cfg(feature = "connect-sync")]
+            commands::brokers_sync::snaptrade_sync_now,
             #[cfg(feature = "connect-sync")]
             commands::brokers_sync::get_subscription_plans,
             #[cfg(feature = "connect-sync")]

@@ -1,6 +1,7 @@
 import { isWeb } from "@/adapters";
 import { useAuth } from "@/context/auth-context";
 import { useAddAsset } from "@/features/add-asset";
+import { NotificationBell } from "@/features/notifications/notification-bell";
 import { isAppleDevice } from "@/lib/device-utils";
 import { cn } from "@/lib/utils";
 import {
@@ -60,7 +61,7 @@ export function AppSidebar({ navigation }: AppSidebarProps) {
 
                   <span
                     className={cn(
-                      "text-md text-foreground/90 ml-2 font-serif text-xl font-bold transition-opacity delay-100 duration-300 ease-in-out",
+                      "text-md text-foreground/90 ml-2 font-serif text-xl font-bold tracking-tight transition-opacity delay-100 duration-300 ease-in-out",
                       {
                         "sr-only opacity-0": collapsed,
                         "block opacity-100": !collapsed,
@@ -122,6 +123,9 @@ export function AppSidebar({ navigation }: AppSidebarProps) {
                 {navigation?.addons && navigation.addons.length > 0 && (
                   <AddonsMenu addons={navigation.addons} collapsed={collapsed} />
                 )}
+
+                {/* Notify-7: personalized AI wealth-notification bell. */}
+                <NotificationBell collapsed={collapsed} />
               </nav>
             </div>
 
@@ -299,7 +303,7 @@ function AddonsMenu({ addons, collapsed }: AddonsMenuProps) {
                 >
                   {addon.icon ?? <Icons.ArrowRight className="h-5 w-5" />}
                 </span>
-                <span className="text-sm font-medium">{addon.title}</span>
+                <span className="text-sm font-medium tracking-tight">{addon.title}</span>
               </Link>
             </DropdownMenuItem>
           );

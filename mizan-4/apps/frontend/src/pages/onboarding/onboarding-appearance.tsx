@@ -77,7 +77,7 @@ export const OnboardingAppearance = forwardRef<
               <div className="bg-muted rounded-lg p-2">
                 <Icons.Palette className="text-muted-foreground h-5 w-5" />
               </div>
-              <span className="text-xl font-semibold">Theme</span>
+              <span className="text-xl font-semibold tracking-tight">Theme</span>
             </div>
 
             <div className="grid grid-cols-3 gap-3 sm:gap-4">
@@ -210,7 +210,7 @@ export const OnboardingAppearance = forwardRef<
               <div className="bg-muted rounded-lg p-2">
                 <Icons.Type className="text-muted-foreground h-5 w-5" />
               </div>
-              <span className="text-xl font-semibold">Font</span>
+              <span className="text-xl font-semibold tracking-tight">Font</span>
             </div>
 
             <div className="grid grid-cols-3 gap-3 sm:gap-4">

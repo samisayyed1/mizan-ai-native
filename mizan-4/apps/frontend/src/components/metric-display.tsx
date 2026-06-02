@@ -142,7 +142,7 @@ export const MetricLabelWithInfo: React.FC<MetricLabelWithInfoProps> = ({
   className,
 }) => {
   return (
-    <div className={cn("text-muted-foreground flex items-center text-xs font-light", className)}>
+    <div className={cn("text-muted-foreground flex items-center text-xs", className)}>
       <span>{label}</span>
       <Popover>
         <PopoverTrigger asChild>

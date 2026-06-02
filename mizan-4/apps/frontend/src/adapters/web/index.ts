@@ -287,6 +287,16 @@ export {
   syncBrokerData,
   syncTriggerCycle,
   updateDevice,
+  // SnapTrade brokerage integration — same shared module, exposed
+  // through the web adapter so the SnapTradeConnectionsCard mounts
+  // under both build targets. The Tauri adapter re-exports the
+  // whole module via `export *`; the web adapter has to list
+  // names explicitly because it omits a few desktop-only helpers.
+  snaptradeHealth,
+  createSnapTradeLoginPortal,
+  listSnapTradeConnections,
+  disconnectSnapTradeAuthorization,
+  snaptradeSyncNow,
 } from "../shared/connect";
 
 // Zakat assessment
@@ -339,7 +349,25 @@ export {
 // ============================================================================
 
 // AI Streaming (web-specific HTTP fetch implementation)
-export { streamAiChat } from "./ai-streaming";
+export { streamAiChat, streamAgentChat, type AgentRunRequest } from "./ai-streaming";
+
+// Notifications — no-op stub on web; the engine + storage live on the
+// desktop. See ./notifications for the rationale.
+export {
+  listNotifications,
+  notificationsUnreadCount,
+  markNotificationRead,
+  dismissNotification,
+  markAllNotificationsRead,
+  notificationAdapter,
+  type Notification,
+  type NotificationsPage,
+} from "./notifications";
+export type {
+  NotificationKind,
+  NotificationSeverity,
+  NotificationAdapter,
+} from "../types-notifications";
 
 // Event Listeners (web-specific SSE implementation)
 export {
@@ -355,6 +383,7 @@ export {
   listenMarketSyncError,
   listenMarketSyncStart,
   listenNavigateToRoute,
+  listenNotificationsNew,
   listenPortfolioUpdateComplete,
   listenPortfolioUpdateError,
   listenPortfolioUpdateStart,

@@ -40,12 +40,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          # pnpm/action-setup reads `packageManager` from the repo-root
+          # package.json. The Mizan monorepo's package.json lives at
+          # mizan-4/package.json, so we declare the version explicitly
+          # here. Keep this in sync with mizan-4/package.json's
+          # `packageManager` field on bumps.
+          version: 9.12.3
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
           cache-dependency-path: mizan-4/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # The frontend depends on @mizan/ui's compiled type declarations
+      # in packages/ui/dist/. Build types across all workspace packages
+      # before type-check so tsc finds the .d.ts files (otherwise TS6305
+      # fires on every `@mizan/ui` import).
+      - run: pnpm -r run build:types
       - run: pnpm --filter frontend type-check
       - run: pnpm --filter frontend lint:quiet
       - run: pnpm --filter frontend test -- --run
@@ -130,3 +142,64 @@ jobs:
           tags: mizan-connect:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Apple-grade: surface every new RustSec advisory in both projects on
+  # every PR. Known-accepted advisories are recorded in each project's
+  # `.cargo/audit.toml` so a future contributor can see the rationale
+  # without re-deriving it. Anything not in those files that audit flags
+  # is a real failure that must be fixed (or explicitly added with a
+  # documented reason).
+  cargo-audit:
+    name: cargo audit (mizan-4 + mizan-connect)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: Audit mizan-4
+        working-directory: mizan-4
+        # mizan-4's audit-config is committed in `.cargo/audit.toml` —
+        # 15 unmaintained advisories on transitive gtk-rs 0.18.x + utility
+        # crates pulled in by Tauri 2's Linux backend. See audit.toml for
+        # the full rationale and the re-evaluation trigger (Tauri 3 or
+        # the upstream GTK4 migration).
+        #
+        # `--ignore` flags are explicit here so the CI is reproducible
+        # across cargo-audit versions (older versions only honour
+        # ~/.cargo/audit.toml, not per-project config).
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2024-0411 \
+            --ignore RUSTSEC-2024-0412 \
+            --ignore RUSTSEC-2024-0413 \
+            --ignore RUSTSEC-2024-0414 \
+            --ignore RUSTSEC-2024-0415 \
+            --ignore RUSTSEC-2024-0416 \
+            --ignore RUSTSEC-2024-0417 \
+            --ignore RUSTSEC-2024-0418 \
+            --ignore RUSTSEC-2024-0419 \
+            --ignore RUSTSEC-2024-0420 \
+            --ignore RUSTSEC-2024-0388 \
+            --ignore RUSTSEC-2024-0384 \
+            --ignore RUSTSEC-2024-0370 \
+            --ignore RUSTSEC-2025-0057 \
+            --ignore RUSTSEC-2025-0081 \
+            --ignore RUSTSEC-2025-0075 \
+            --ignore RUSTSEC-2025-0080 \
+            --ignore RUSTSEC-2025-0100 \
+            --ignore RUSTSEC-2025-0098 \
+            --ignore RUSTSEC-2024-0429 \
+            --deny warnings
+      - name: Audit mizan-connect
+        working-directory: mizan-connect
+        # Known-accepted: see mizan-connect/.cargo/audit.toml. The
+        # ignore list is passed explicitly so the CI is reproducible
+        # even on cargo-audit versions that don't read the per-project
+        # config file (older versions only honour ~/.cargo/audit.toml).
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2025-0111 \
+            --ignore RUSTSEC-2025-0134 \
+            --deny warnings

@@ -63,7 +63,7 @@ const EditableBalance: React.FC<EditableBalanceProps> = ({ account, initialBalan
       <Tooltip>
         <TooltipTrigger asChild>
           <div
-            className="flex cursor-pointer items-center gap-2 text-lg font-extrabold"
+            className="flex cursor-pointer items-center gap-2 text-lg font-semibold tracking-tight"
             onClick={() => setIsEditing(true)}
           >
             <PrivacyAmount value={initialBalance} currency={currency} />
@@ -207,7 +207,7 @@ const AccountMetrics: React.FC<AccountMetricsProps> = ({
             currency={displayCurrency}
           />
         ) : (
-          <span className="text-lg font-extrabold">
+          <span className="text-lg font-semibold tracking-tight">
             <PrivacyAmount value={valuation?.cashBalance || 0} currency={displayCurrency} />
           </span>
         )}

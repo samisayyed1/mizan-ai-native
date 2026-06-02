@@ -1,6 +1,7 @@
 "use client";
 
 import { calculatePerformanceSummary } from "@/adapters";
+import { useAddAsset } from "@/features/add-asset";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useLatestValuations } from "@/hooks/use-latest-valuations";
 import { QueryKeys } from "@/lib/query-keys";
@@ -84,7 +85,7 @@ const AccountSummaryComponent = React.memo(
       }
 
       return (
-        <div className="border-border bg-card shadow-xs flex w-full items-center justify-between gap-3 rounded-lg border px-4 py-3 md:px-5 md:py-4">
+        <div className="border-border/70 bg-card shadow-sm flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 md:px-5 md:py-4">
           {skeletonContent}
         </div>
       );
@@ -249,7 +250,7 @@ const AccountSummaryComponent = React.memo(
       return (
         <Link
           to={`/accounts/${accountId}`}
-          className="border-border bg-card shadow-xs flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-all duration-150 hover:shadow-md md:px-5 md:py-4"
+          className="border-border/70 bg-card shadow-sm flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-all duration-150 hover:shadow-md md:px-5 md:py-4"
         >
           {content}
         </Link>
@@ -257,7 +258,7 @@ const AccountSummaryComponent = React.memo(
     }
 
     return (
-      <div className="border-border bg-card shadow-xs flex w-full items-center justify-between gap-3 rounded-lg border px-4 py-3 md:px-5 md:py-4">
+      <div className="border-border/70 bg-card shadow-sm flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 md:px-5 md:py-4">
         {content}
       </div>
     );
@@ -269,6 +270,7 @@ export const AccountsSummary = React.memo(
   ({ dateRange, isAllTime }: { dateRange?: DateRange; isAllTime?: boolean }) => {
     const { accountsGrouped, setAccountsGrouped, settings } = useSettingsContext();
     const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+    const { open: openAddAsset } = useAddAsset();
 
     const {
       accounts: allAccounts,
@@ -343,19 +345,50 @@ export const AccountsSummary = React.memo(
         }
 
         const perf = performanceQueries[i]?.data;
-        const fxRate = valuation.fxRateToBase ?? 1;
+        // QA Pass 16: when fxRateToBase is missing AND the account
+        // currency differs from base, multiplying by `?? 1` silently
+        // shows e.g. "SGD 30,420" as "$30,420 USD" — wrong by ~25%
+        // and the exact "silent wrong-but-plausible number" pattern
+        // the QA mission flags. Pass 5 fixed the same anti-pattern in
+        // the holdings table; this site was missed.
+        //
+        // Same-currency cards (USD account on USD base): rate is
+        // effectively 1.0 and `?? 1` was a no-op.
+        // Cross-currency cards with a valid rate: multiply as before.
+        // Cross-currency cards with NO rate: alias baseCurrency to
+        // accountCurrency for this card so the renderer labels the
+        // value with its true currency. The user sees "SGD 30,420"
+        // instead of "$30,420" — honest about what we don't know.
+        const fxRate = valuation.fxRateToBase;
+        const fxRateUsable = fxRate != null && fxRate !== 0;
+        const accountCurrencyDiffers =
+          !!valuation.accountCurrency &&
+          !!valuation.baseCurrency &&
+          valuation.accountCurrency !== valuation.baseCurrency;
+        const fxMissingCrossCurrency = accountCurrencyDiffers && !fxRateUsable;
+
         const totalValueAccountCurrency = valuation.totalValue;
-        const totalValueBaseCurrency = totalValueAccountCurrency * fxRate;
+        const totalValueBaseCurrency = fxRateUsable
+          ? totalValueAccountCurrency * fxRate
+          : totalValueAccountCurrency;
 
         const gainLossAccountCurrency = perf?.periodGain ?? null;
         const gainLossBaseCurrency =
-          gainLossAccountCurrency !== null ? gainLossAccountCurrency * fxRate : null;
+          gainLossAccountCurrency !== null && fxRateUsable
+            ? gainLossAccountCurrency * fxRate
+            : gainLossAccountCurrency;
         const gainPercent = perf?.periodReturn ?? null;
 
         return {
           accountName: acc.name,
           totalValueBaseCurrency,
-          baseCurrency,
+          // When FX is missing on a cross-currency account, alias the
+          // "base currency" label to the account currency so the value
+          // is rendered with its truthful unit (e.g. "SGD 30,420" not
+          // "$30,420"). See QA Pass 16 above.
+          baseCurrency: fxMissingCrossCurrency
+            ? (valuation.accountCurrency ?? baseCurrency)
+            : baseCurrency,
           totalGainLossAmountBaseCurrency: gainLossBaseCurrency,
           totalValueAccountCurrency,
           accountCurrency: valuation.accountCurrency,
@@ -381,7 +414,7 @@ export const AccountsSummary = React.memo(
         return Array.from({ length: 4 }).map((_, index) => (
           <div
             key={`skeleton-${index}`}
-            className="border-border bg-card shadow-xs rounded-lg border px-4 py-3 md:px-5 md:py-4"
+            className="border-border/70 bg-card shadow-sm rounded-xl border px-4 py-3 md:px-5 md:py-4"
           >
             <AccountSummarySkeleton />
           </div>
@@ -390,7 +423,7 @@ export const AccountsSummary = React.memo(
 
       if (isErrorAccounts) {
         return (
-          <div className="border-destructive/30 bg-destructive/5 rounded-lg border p-4 md:p-5">
+          <div className="border-destructive/30 bg-destructive/5 rounded-xl border p-4 md:p-5">
             <div className="flex items-start gap-3">
               <div className="bg-destructive/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
                 <Icons.AlertTriangle className="text-destructive h-4 w-4" />
@@ -410,16 +443,53 @@ export const AccountsSummary = React.memo(
       }
 
       if (!combinedAccountViews || combinedAccountViews.length === 0) {
+        // First-run zero state. Make this the moment we sell the agent —
+        // big "Set up your portfolio" CTA opens the same in-place dialog
+        // the + button uses. A muted "or do it manually" link sits below
+        // for the user who wants to skip the AI flow.
         return (
-          <div className="border-border/50 bg-success/10 rounded-lg border p-6 text-center md:p-8">
-            <p className="text-sm">No portfolios found.</p>
-            <Link
-              to="/settings/accounts"
-              className="text-muted-foreground hover:text-foreground mt-2 inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
+          <div className="border-border/60 from-background to-muted/30 relative overflow-hidden rounded-2xl border bg-gradient-to-b p-8 text-center md:p-12">
+            {/* Soft sparkle bg — hints at the AI surface without
+                shouting. Sits behind the content via -z-10 so it never
+                catches a click. */}
+            <div className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center opacity-[0.04]">
+              <Icons.Sparkles className="size-64" />
+            </div>
+
+            <div className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300">
+              <Icons.Sparkles className="size-6" />
+            </div>
+            <h3 className="text-foreground mt-4 text-lg font-semibold">
+              Let's set up your portfolio
+            </h3>
+            <p className="text-muted-foreground mx-auto mt-2 max-w-md text-sm leading-relaxed">
+              Drop a broker CSV, snap a statement, or just describe what you own.
+              Mizan creates the accounts, parses the rows, and verifies the totals
+              — you watch it happen.
+            </p>
+
+            <Button
+              size="lg"
+              className="mt-6"
+              onClick={() =>
+                openAddAsset({
+                  source: "dashboard",
+                  prompt: "Set up my portfolio from this file.",
+                })
+              }
             >
-              Add your first portfolio
-              <Icons.ChevronRight className="h-3 w-3" />
-            </Link>
+              <Icons.Sparkles className="mr-2 h-4 w-4" />
+              Set up with Mizan
+            </Button>
+
+            <div className="mt-3">
+              <Link
+                to="/settings/accounts?addAccount=1"
+                className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+              >
+                or add manually
+              </Link>
+            </div>
           </div>
         );
       }
@@ -542,7 +612,7 @@ export const AccountsSummary = React.memo(
               return (
                 <div
                   key={group.accountName}
-                  className="border-border bg-card shadow-xs overflow-hidden rounded-lg border transition-shadow duration-150 hover:shadow-md"
+                  className="border-border/70 bg-card shadow-sm overflow-hidden rounded-xl border transition-shadow duration-150 hover:shadow-md"
                 >
                   <div className="cursor-pointer">
                     <AccountSummaryComponent
@@ -613,7 +683,7 @@ export const AccountsSummary = React.memo(
           <h2 className="text-md font-semibold tracking-tight">Portfolios</h2>
           <Button
             variant="ghost"
-            className="text-muted-foreground hover:bg-success/10"
+            className="text-muted-foreground hover:bg-accent"
             size="sm"
             onClick={() => setAccountsGrouped(!accountsGrouped)}
             aria-label={accountsGrouped ? "List view" : "Group view"}

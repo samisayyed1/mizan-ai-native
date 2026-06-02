@@ -315,7 +315,7 @@ function PerformanceToolUIContentImpl({ args, result, status }: PerformanceToolU
             />
             <span
               className={cn(
-                "text-3xl font-bold tabular-nums",
+                "text-3xl font-semibold tracking-tight tabular-nums",
                 isPositiveReturn ? "text-success" : "text-destructive",
               )}
             >

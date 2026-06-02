@@ -30,6 +30,10 @@ pub fn router() -> Router<AppState> {
             delete(handlers::disconnect_connection),
         )
         .route("/sync/plaid/accounts", get(handlers::list_accounts))
+        .route(
+            "/sync/plaid/investment-transactions",
+            get(handlers::list_investment_transactions),
+        )
         .route("/sync/plaid/sync", post(handlers::sync_now))
         .route("/sync/plaid/webhook", post(handlers::webhook))
 }

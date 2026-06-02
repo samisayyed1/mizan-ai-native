@@ -17,6 +17,9 @@ import { toast } from "@mizan/ui/components/ui/use-toast";
 import { formatDate } from "@/lib/utils";
 import { useCallback, useMemo, useState } from "react";
 import { useCreateBrokerLoginPortal } from "../hooks";
+import { CurrentPlanCard } from "./current-plan-card";
+import { SnapTradeConnectionsCard } from "./snaptrade-connections-card";
+import { SubscriptionPlans } from "./subscription-plans";
 import { useEntitlements } from "../hooks/use-entitlements";
 import { useIsBrokerSyncRunning, useSyncBrokerData } from "../hooks/use-sync-broker-data";
 import { useMizanConnect } from "../providers/mizan-connect-provider";
@@ -177,7 +180,7 @@ function BrokerAccountCard({ account, connections }: BrokerAccountCardProps) {
             <Tooltip>
               <TooltipTrigger>
                 {account.sync_enabled ? (
-                  <Icons.Eye className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                  <Icons.Eye className="h-3.5 w-3.5 shrink-0 text-info" />
                 ) : (
                   <Icons.EyeOff className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                 )}
@@ -227,12 +230,28 @@ function BrokerAccountCard({ account, connections }: BrokerAccountCardProps) {
  */
 function BrokerConnectionRow({ connection }: { connection: BrokerConnection }) {
   const queryClient = useQueryClient();
+  // Reconnect flow: when a connection lands in "needs_attention" (Plaid's
+  // ITEM_LOGIN_REQUIRED — the broker rotated MFA, password changed, etc.),
+  // we re-use the same Link mutation. Plaid Link recognises the existing
+  // institution and walks the user through re-authentication. Once the
+  // cloud also accepts `itemId` for update-mode link tokens, the UX gets
+  // a step shorter — but offering the affordance today is what unblocks
+  // the otherwise-silent stale-data failure mode.
+  const [linkMutation, isReconnecting] = useCreateBrokerLoginPortal();
 
   const logoUrl =
     connection.brokerage?.aws_s3_square_logo_url ?? connection.brokerage?.aws_s3_logo_url;
   const brokerageName =
     connection.brokerage?.display_name ?? connection.brokerage?.name ?? "Unknown Broker";
-  const isConnected = connection.status === "connected" && !connection.disabled;
+  // Cloud surfaces three terminal states: "connected" (healthy), "needs_attention"
+  // (last_error set — typically ITEM_LOGIN_REQUIRED, the broker rotated MFA or
+  // the user changed their password), and "disconnected" (user revoked). The
+  // healthy branch must reject needs_attention too, otherwise stale numbers
+  // ride under a green badge and the user has no idea their balances stopped
+  // updating days ago.
+  const isNeedsAttention = connection.status === "needs_attention" && !connection.disabled;
+  const isConnected =
+    connection.status === "connected" && !connection.disabled && !isNeedsAttention;
 
   // M3.5: surface a relative-time "last synced" hint sourced from the
   // connection's own `updated_at` (the cloud bumps it whenever sync results
@@ -306,21 +325,44 @@ function BrokerConnectionRow({ connection }: { connection: BrokerConnection }) {
       </Avatar>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium leading-tight">{brokerageName}</p>
-        {lastSynced && isConnected && (
+        {isNeedsAttention ? (
+          <p className="text-amber-600 dark:text-amber-400 mt-0.5 truncate text-[11px]">
+            Reconnect to resume syncing — your broker requires sign-in
+          </p>
+        ) : lastSynced && isConnected ? (
           <p className="text-muted-foreground mt-0.5 truncate text-[11px]">
             Last synced {lastSynced}
           </p>
-        )}
+        ) : null}
       </div>
       <Badge
         className={`shrink-0 ${
           isConnected
             ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-            : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+            : isNeedsAttention
+              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
         }`}
       >
-        {isConnected ? "Connected" : "Disconnected"}
+        {isConnected ? "Connected" : isNeedsAttention ? "Needs reconnect" : "Disconnected"}
       </Badge>
+      {isNeedsAttention && (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="shrink-0"
+          aria-label={`Reconnect ${brokerageName}`}
+          disabled={linkMutation.isPending || isReconnecting}
+          onClick={() => linkMutation.mutate(undefined)}
+        >
+          {linkMutation.isPending || isReconnecting ? (
+            <Icons.Spinner className="h-4 w-4 animate-spin" />
+          ) : (
+            "Reconnect"
+          )}
+        </Button>
+      )}
       <ActionConfirm
         confirmTitle={`Disconnect ${brokerageName}?`}
         confirmMessage="Live sync stops immediately. Your already-synced accounts and history stay on this device — nothing is deleted locally. You can reconnect any time."
@@ -515,17 +557,39 @@ export function ConnectedView() {
     clearError,
     refetchUserInfo,
   } = useMizanConnect();
+  const { requestUpgrade } = useUpgradeGate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
 
   // Check if there's a service unavailable error (failed to fetch user info)
   const isServiceUnavailable = !!error && !isLoadingUserInfo && !userInfo;
 
-  // Gold-tier Plaid sync gating: only show the broker UI when the user's
-  // team plan + subscription unlocks `plaidSync`. Silver users see the
-  // upgrade-CTA empty state from the parent ConnectPage.
-  const hasSubscription = hasBrokerSync(userInfo);
-  const showBrokerSync = !!userInfo && hasSubscription;
+  // Two distinct gates on this page that previously got conflated:
+  //
+  //   hasActiveSubscription — the user is on ANY paid plan with an
+  //     active/trialing Stripe status. Drives whether we hide the
+  //     SubscriptionPlans "upgrade now" grid; a Silver user has
+  //     paid and should see "Current plan" + the Manage button,
+  //     not the upgrade pitch.
+  //
+  //   showBrokerSync       — the active plan includes the `plaidSync`
+  //     entitlement (Gold+ today). Drives the Plaid + SnapTrade
+  //     cards. Silver users have paid but don't get broker sync,
+  //     so they see "Upgrade to Gold to add broker connections".
+  //
+  // The previous code aliased `hasSubscription = hasBrokerSync(userInfo)`,
+  // which made Silver users render IDENTICALLY to Free users (plans
+  // grid still showing, no acknowledgement of payment, no path to
+  // Gold from inside the Silver state). The two gates need to live
+  // independently.
+  const subscriptionStatus = userInfo?.team?.subscription_status;
+  const hasActiveSubscription =
+    subscriptionStatus === "active" || subscriptionStatus === "trialing";
+  const showBrokerSync = !!userInfo && hasBrokerSync(userInfo);
+  // Backwards-compat alias for the rest of this file's existing
+  // references — anything that asked "do they have a sub" now gets
+  // the *correct* answer (any active sub, not just Gold).
+  const hasSubscription = hasActiveSubscription;
 
   // Hooks - only fetch broker connections and accounts if user has broker sync
   const connectionsQuery = useBrokerConnections(showBrokerSync);
@@ -681,14 +745,33 @@ export function ConnectedView() {
         <ServiceUnavailableCard onRetry={handleRetry} isRetrying={isRetrying} />
       )}
 
-      {/* Subscription plans backend (/api/v1/subscription/plans) is not in
-          Chunk 1 of Mizan Connect. Replaces upstream's <SubscriptionPlans/>
-          render with a quiet placeholder until billing ships in Chunk 2. */}
-      {!isServiceUnavailable && !hasSubscription && !!userInfo && (
-        <ComingSoonCard
-          title="Plans & billing"
-          message="Subscriptions and plan upgrades arrive with the next Mizan Connect release."
-          detail="You're signed in — that's all that's needed for Chunk 2."
+      {/* Subscription plans grid — only for users WITHOUT an active
+          subscription. Stripe Checkout is fully wired on the cloud
+          (/v1/billing/checkout-session) and the `SubscriptionPlans`
+          component already calls `openCheckout(plan, interval)` and
+          opens the resulting URL in the user's default browser. */}
+      {!isServiceUnavailable && !hasActiveSubscription && !!userInfo && (
+        <SubscriptionPlans
+          onRefresh={() => {
+            // After checkout completes the Stripe webhook updates the
+            // cloud-side subscription; nudge /v1/me to re-fetch so the
+            // tier badge + showBrokerSync flip without a page reload.
+            void refetchUserInfo();
+          }}
+        />
+      )}
+
+      {/* Current plan card — for users WITH an active subscription.
+          Acknowledges the payment, surfaces the tier badge, and
+          offers either an "Upgrade to Gold" CTA (Silver users need
+          this to unlock broker sync) or "Manage subscription"
+          (Stripe Customer Portal, for downgrade/cancel/payment-update). */}
+      {!isServiceUnavailable && hasActiveSubscription && !!userInfo && (
+        <CurrentPlanCard
+          plan={userInfo.team?.plan ?? "silver"}
+          status={subscriptionStatus ?? "active"}
+          canUpgradeToGold={!showBrokerSync}
+          onRefresh={() => void refetchUserInfo()}
         />
       )}
 
@@ -715,6 +798,13 @@ export function ConnectedView() {
         />
       )}
 
+      {/* SnapTrade brokerage card — sister surface to the Plaid card.
+          Both providers feed into the same downstream holdings +
+          activities pipeline. The card self-gates on the cloud's
+          /v1/sync/snaptrade/health.configured boolean so it degrades
+          cleanly when SnapTrade isn't wired on a given deployment. */}
+      {showBrokerSync && <SnapTradeConnectionsCard />}
+
       {/* Accounts Card - Only show if user has broker sync */}
       {showBrokerSync && (
         <Card>
@@ -738,7 +828,7 @@ export function ConnectedView() {
                 </Button>
                 {/* TODO(chunk-5): in-app per-account management UI.
                     The "Manage accounts" buttons used to deep-link into a
-                    hosted Wealthfolio portal at MIZAN_CONNECT_PORTAL_URL
+                    hosted Mizan Connect portal at MIZAN_CONNECT_PORTAL_URL
                     (currently a parked domain), so they're hidden until we
                     surface a real in-app screen. Adding a broker is still
                     available via the BrokerConnectionsCard "Add broker"
@@ -789,17 +879,13 @@ export function ConnectedView() {
                   Connect your brokerage accounts for automatic portfolio syncing.
                 </p>
               </div>
-              {/* In-app Stripe checkout opens here once live billing keys land. */}
-              <Button
-                size="sm"
-                onClick={() =>
-                  toast({
-                    title: "Billing portal coming soon",
-                    description:
-                      "Stripe checkout ships in the next release. We'll email you when it's ready.",
-                  })
-                }
-              >
+              {/* Routes through the contextual upgrade-gate modal, which
+                  calls openCheckout(plan, interval) on confirm and opens
+                  the Stripe-hosted Checkout in the user's default
+                  browser. Same code path the dashboard's broker-sync
+                  gated-error handler uses, so users get a consistent
+                  CTA wherever they hit the Gold paywall. */}
+              <Button size="sm" onClick={() => requestUpgrade("broker_sync")}>
                 Upgrade
                 <Icons.ArrowRight className="ml-1 h-3.5 w-3.5" />
               </Button>
@@ -815,7 +901,7 @@ export function ConnectedView() {
           syncs securely via an aggregator to your local database. Device sync uses end-to-end
           encryption.{" "}
           <ExternalLink
-            href="https://mizan-landing-rho.vercel.app"
+            href="https://mizan.app"
             className="text-muted-foreground hover:text-foreground underline underline-offset-2"
           >
             Learn more

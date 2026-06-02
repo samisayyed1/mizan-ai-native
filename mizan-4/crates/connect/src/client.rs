@@ -101,6 +101,52 @@ pub struct PlaidExchangePublicTokenResponse {
     pub accounts_synced: usize,
 }
 
+// ─── SnapTrade DTOs (mirror the cloud's snaptrade::types envelopes) ────
+
+/// Response of `POST /api/v1/sync/snaptrade/login-portal`. The desktop
+/// opens `redirect_uri` in the system browser; SnapTrade handles the
+/// brokerage OAuth then redirects back to our custom URL.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapTradeLoginPortalResponse {
+    pub redirect_uri: String,
+    pub session_id: Option<String>,
+}
+
+/// One active brokerage authorization. Mirrors the cloud's
+/// `ConnectionEnvelope`. The desktop renders these in the connected-
+/// brokerages card alongside Plaid items.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapTradeConnection {
+    pub authorization_id: String,
+    pub brokerage_name: String,
+    pub display_name: Option<String>,
+    pub connected_at_ms: Option<i64>,
+    pub disabled: bool,
+    pub disabled_at_ms: Option<i64>,
+}
+
+/// Summary of one sync run (read-only). Returned by `POST /v1/sync/snaptrade/sync`.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapTradeSyncSummary {
+    pub accounts_synced: u32,
+    pub positions_synced: u32,
+    pub activities_synced: u32,
+}
+
+/// Health envelope returned by `GET /v1/sync/snaptrade/health` so the
+/// desktop can light up the "Connect a brokerage" button only when the
+/// cloud is configured. Same shape as Plaid's.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapTradeHealthResponse {
+    pub configured: bool,
+    pub environment: Option<String>,
+    pub message: String,
+}
+
 /// Stored Plaid connection returned by Mizan Connect.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -232,6 +278,32 @@ impl ConnectApiClient {
             .post(&url)
             .headers(self.headers())
             .json(body)
+            .send()
+            .await
+            .map_err(|e| Error::Unexpected(format!("Request failed: {}", e)))?;
+        self.parse_response(response).await
+    }
+
+    /// Typed GET helper.
+    async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await
+            .map_err(|e| Error::Unexpected(format!("Request failed: {}", e)))?;
+        self.parse_response(response).await
+    }
+
+    /// Typed DELETE helper.
+    async fn delete_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
             .send()
             .await
             .map_err(|e| Error::Unexpected(format!("Request failed: {}", e)))?;
@@ -494,10 +566,131 @@ impl ConnectApiClient {
             .await
     }
 
+    /// Fetch Plaid investment transactions (buys, sells, dividends, fees,
+    /// splits) for the current user. Newest first, server-side capped at
+    /// 1000 per call. `since` is an ISO `YYYY-MM-DD` lower bound on
+    /// `transactionDate`; `account_id` narrows to a single Plaid
+    /// account; `limit` is clamped server-side to [1, 1000].
+    ///
+    /// Returns the raw DTO array; downstream ingestion (mapping into the
+    /// desktop's local `activities` table) is handled by callers.
+    pub async fn list_plaid_investment_transactions(
+        &self,
+        since: Option<&str>,
+        account_id: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let url = format!(
+            "{}/api/v1/sync/plaid/investment-transactions",
+            self.base_url
+        );
+        let mut params: Vec<(&str, String)> = Vec::with_capacity(3);
+        if let Some(s) = since {
+            params.push(("since", s.to_string()));
+        }
+        if let Some(a) = account_id {
+            params.push(("accountId", a.to_string()));
+        }
+        if let Some(l) = limit {
+            params.push(("limit", l.to_string()));
+        }
+        let response = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .query(&params)
+            .send()
+            .await
+            .map_err(|e| Error::Unexpected(format!("Request failed: {}", e)))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| Error::Unexpected(format!("Failed to read response: {}", e)))?;
+        if !status.is_success() {
+            return Err(Error::Unexpected(format!(
+                "API error {}: {}",
+                status,
+                body.chars().take(200).collect::<String>()
+            )));
+        }
+        serde_json::from_str(&body).map_err(|e| {
+            Error::Unexpected(format!("Failed to parse investment transactions: {}", e))
+        })
+    }
+
+    // ─── SnapTrade ──────────────────────────────────────────────────────
+    //
+    // Mirror of the Plaid family above. The cloud handles HMAC signing of
+    // the upstream SnapTrade API; the desktop just talks JSON to our own
+    // /v1/sync/snaptrade/* endpoints with the user's Supabase JWT.
+
+    pub async fn snaptrade_health(&self) -> Result<SnapTradeHealthResponse> {
+        self.get_json("/api/v1/sync/snaptrade/health").await
+    }
+
+    /// Open the SnapTrade connection portal. On success the desktop opens
+    /// `redirect_uri` in the system browser; SnapTrade redirects back via
+    /// the deep link configured on the cloud (`SNAPTRADE_CUSTOM_REDIRECT`).
+    pub async fn create_snaptrade_login_portal(&self) -> Result<SnapTradeLoginPortalResponse> {
+        self.post_json(
+            "/api/v1/sync/snaptrade/login-portal",
+            &serde_json::json!({}),
+        )
+        .await
+    }
+
+    pub async fn list_snaptrade_connections(&self) -> Result<Vec<SnapTradeConnection>> {
+        self.get_json("/api/v1/sync/snaptrade/connections").await
+    }
+
+    pub async fn disconnect_snaptrade_authorization(
+        &self,
+        authorization_id: &str,
+    ) -> Result<serde_json::Value> {
+        let path = format!(
+            "/api/v1/sync/snaptrade/connections/{}",
+            urlencoding::encode(authorization_id)
+        );
+        self.delete_json(&path).await
+    }
+
+    /// Read-only sync — list accounts → per-account positions + activities.
+    /// Returns a typed summary the desktop can render as a toast.
+    pub async fn snaptrade_sync_now(&self) -> Result<SnapTradeSyncSummary> {
+        self.post_json("/api/v1/sync/snaptrade/sync", &serde_json::json!({}))
+            .await
+    }
+
     /// Trigger Plaid cursor sync for all connected Items.
+    ///
+    /// The cloud returns a structured response with per-item counts and any
+    /// errors. We surface a non-empty `errors` field as an `Err` so the desktop
+    /// orchestrator can log + report partial failures instead of pretending
+    /// every Plaid item synced successfully — a key production-grade guarantee
+    /// per the Plaid Connect audit (GAP 7: "cloud returns 200 but sync was
+    /// partial, desktop never knows").
     pub async fn sync_plaid_data(&self) -> Result<()> {
         let body = serde_json::json!({});
-        let _: serde_json::Value = self.post_json("/api/v1/sync/plaid/sync", &body).await?;
+        let response: serde_json::Value = self.post_json("/api/v1/sync/plaid/sync", &body).await?;
+        // Best-effort parse: if the cloud surfaces an `errors` array with any
+        // entries, treat the call as a partial failure even though HTTP 200
+        // was returned. Tolerant of older cloud versions that don't yet emit
+        // the field — those still resolve Ok.
+        if let Some(errors) = response.get("errors").and_then(|v| v.as_array()) {
+            if !errors.is_empty() {
+                let first = errors
+                    .first()
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown sync error");
+                return Err(Error::Unexpected(format!(
+                    "Plaid sync completed with {} error(s); first: {}",
+                    errors.len(),
+                    first
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -572,28 +765,26 @@ impl BrokerApiClient for ConnectApiClient {
 
         let connections: Vec<BrokerConnection> = raw
             .into_iter()
-            .map(|c| {
-                BrokerConnection {
-                    id: c.item_id.clone(),
-                    brokerage: Some(BrokerConnectionBrokerage {
-                        id: c.institution_id,
-                        slug: None,
-                        name: c.institution_name.clone(),
-                        display_name: c.institution_name,
-                        aws_s3_logo_url: None,
-                        aws_s3_square_logo_url: None,
-                    }),
-                    connection_type: Some("plaid".to_string()),
-                    status: Some(if c.last_error.is_some() {
-                        "needs_attention".to_string()
-                    } else {
-                        c.status
-                    }),
-                    disabled: false,
-                    disabled_date: None,
-                    updated_at: c.last_successful_sync_at.or(Some(c.updated_at)),
-                    name: Some(format!("{} accounts", c.account_count)),
-                }
+            .map(|c| BrokerConnection {
+                id: c.item_id.clone(),
+                brokerage: Some(BrokerConnectionBrokerage {
+                    id: c.institution_id,
+                    slug: None,
+                    name: c.institution_name.clone(),
+                    display_name: c.institution_name,
+                    aws_s3_logo_url: None,
+                    aws_s3_square_logo_url: None,
+                }),
+                connection_type: Some("plaid".to_string()),
+                status: Some(if c.last_error.is_some() {
+                    "needs_attention".to_string()
+                } else {
+                    c.status
+                }),
+                disabled: false,
+                disabled_date: None,
+                updated_at: c.last_successful_sync_at.or(Some(c.updated_at)),
+                name: Some(format!("{} accounts", c.account_count)),
             })
             .collect();
 
@@ -918,4 +1109,124 @@ mod tests {
         assert_eq!(accounts[0].institution_name.as_deref(), Some("Plaid Bank"));
     }
 
+    // Plaid-1 partial-failure regression: cloud may return 200 OK with a
+    // non-empty `errors` array if a subset of Plaid items failed mid-sync
+    // (one institution down, one rate-limited, etc). The desktop used to
+    // swallow the response and tell the user "sync succeeded" — leaving
+    // their numbers stale with zero feedback. We now surface that as Err.
+    #[tokio::test]
+    async fn sync_plaid_data_treats_non_empty_errors_array_as_err() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "synced": 2,
+                "errors": [
+                    { "itemId": "item-1", "message": "ITEM_LOGIN_REQUIRED" }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
+        let err = client
+            .sync_plaid_data()
+            .await
+            .expect_err("non-empty errors array must surface as Err");
+        let msg = err.to_string();
+        assert!(msg.contains("ITEM_LOGIN_REQUIRED"), "got: {msg}");
+        assert!(msg.contains("1 error"), "got: {msg}");
+    }
+
+    // Companion: a clean response with `errors: []` (or no `errors` field
+    // at all, for backward-compat with older cloud builds) must still
+    // resolve Ok.
+    #[tokio::test]
+    async fn sync_plaid_data_accepts_empty_errors_array_and_missing_field() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "synced": 3,
+                "errors": []
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
+        client
+            .sync_plaid_data()
+            .await
+            .expect("empty errors array must resolve Ok");
+
+        // Backward-compat: older cloud builds may not emit the field at all.
+        let server2 = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "synced": 1
+            })))
+            .expect(1)
+            .mount(&server2)
+            .await;
+        let client2 = ConnectApiClient::new(&server2.uri(), "mizan-test-jwt").unwrap();
+        client2
+            .sync_plaid_data()
+            .await
+            .expect("missing errors field must resolve Ok");
+    }
+
+    // Plaid-5/6 regression: the cloud's sync_now now returns either a
+    // bare array (success) or an envelope { results, errors } (partial
+    // failure). The desktop parser must handle BOTH shapes — bare-array
+    // success has been live since the feature shipped; the envelope is
+    // new in Plaid-5. Lock both behaviours in.
+    #[tokio::test]
+    async fn sync_plaid_data_handles_partial_failure_envelope_shape() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "results": [
+                    { "itemId": "item-1", "accountsSynced": 3, "transactionsAdded": 47 }
+                ],
+                "errors": [
+                    { "itemId": "item-2", "message": "[ITEM_LOGIN_REQUIRED] Please re-link" }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
+        let err = client
+            .sync_plaid_data()
+            .await
+            .expect_err("envelope errors → Err");
+        assert!(
+            err.to_string().contains("ITEM_LOGIN_REQUIRED"),
+            "should surface Plaid-3 preserved error code; got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_plaid_data_handles_bare_array_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sync/plaid/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "itemId": "item-1", "accountsSynced": 3, "transactionsAdded": 47 }
+            ])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
+        client
+            .sync_plaid_data()
+            .await
+            .expect("bare array success path → Ok");
+    }
 }

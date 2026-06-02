@@ -2,7 +2,7 @@ import { useHapticFeedback } from "@/hooks";
 import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@mizan/ui/components/ui/popover";
-import { cn } from "@mizan/ui/lib/utils";
+import { cn } from "@/lib/utils";
 import * as React from "react";
 
 export interface ActionPaletteItem {

@@ -36,26 +36,77 @@ pub fn build_app(state: AppState) -> Router {
         hsts,
     } = security_headers::layers(state.config().app_env);
 
-    let trace_layer = TraceLayer::new_for_http().make_span_with(|req: &axum::http::Request<_>| {
-        let request_id = req
-            .headers()
-            .get(crate::middleware::request_id::HEADER_NAME)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        tracing::info_span!(
-            "http_request",
-            method = %req.method(),
-            uri = %req.uri(),
-            version = ?req.version(),
-            request_id = %request_id,
-        )
-    });
+    // Wire the SENSITIVE_HEADERS allowlist into tower_http's redaction
+    // layer so the TraceLayer below (and any other middleware that
+    // serialises headers, e.g. on_request/on_response handlers) emits
+    // them as `Sensitive` and never logs their values. Without this
+    // the const was just documentation.
+    let sensitive_header_names: Vec<axum::http::HeaderName> = crate::telemetry::SENSITIVE_HEADERS
+        .iter()
+        .filter_map(|name| axum::http::HeaderName::from_lowercase(name.as_bytes()).ok())
+        .collect();
+    let redact_request_headers =
+        tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer::new(
+            sensitive_header_names.clone(),
+        );
+    let redact_response_headers =
+        tower_http::sensitive_headers::SetSensitiveResponseHeadersLayer::new(
+            sensitive_header_names,
+        );
+
+    let trace_layer = TraceLayer::new_for_http()
+        .make_span_with(|req: &axum::http::Request<_>| {
+            let request_id = req
+                .headers()
+                .get(crate::middleware::request_id::HEADER_NAME)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            // user_id is initialised to "" and populated later by the
+            // AuthenticatedUser extractor via tracing::Span::current()
+            // .record("user_id", ...) — declaring the field here means
+            // it shows up in structured logs even for anonymous routes
+            // (as an empty string) without a second span layer.
+            tracing::info_span!(
+                "http_request",
+                method = %req.method(),
+                uri = %req.uri(),
+                version = ?req.version(),
+                request_id = %request_id,
+                user_id = tracing::field::Empty,
+                status = tracing::field::Empty,
+                latency_ms = tracing::field::Empty,
+            )
+        })
+        .on_response(
+            |res: &axum::http::Response<_>, latency: std::time::Duration, span: &tracing::Span| {
+                span.record("status", res.status().as_u16());
+                span.record("latency_ms", latency.as_millis() as u64);
+                tracing::info!(
+                    status = res.status().as_u16(),
+                    latency_ms = latency.as_millis() as u64,
+                    "request completed"
+                );
+            },
+        );
+
+    // Per-user AI throttle layer. Cloned `state` for the inner router
+    // mount (the v1 + api_v1 mounts each get an independent layer
+    // application — both target the SAME UserRateLimiter inside the
+    // shared AppState, so buckets are coherent across mount points).
+    let v1_ai_chat = crate::billing::ai_chat_router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_per_user_limit,
+        ))
+        .with_state(state.clone());
 
     // Legacy versioned mount. Kept live for tests and any internal callers.
     let v1 = Router::new()
         .merge(crate::users::router())
         .merge(crate::teams::router())
         .merge(crate::billing::router())
+        .merge(crate::admin::router())
+        .merge(v1_ai_chat)
         .with_state(state.clone());
 
     // Production mount. The desktop client (samisayyed1/mizan-4) calls
@@ -69,6 +120,19 @@ pub fn build_app(state: AppState) -> Router {
     //   - /api/v1/billing/*                     (Chunk 4 — Stripe checkout/portal)
     //   - /api/v1/usage                         (Chunk 4 — usage ledger)
     //   - /api/v1/stripe/webhook                (Chunk 4 — public, signature-verified)
+    // /ai/chat is split out so we can attach a per-user throttle middleware
+    // ONLY to AI endpoints (not to /billing/* or /usage etc.). The global
+    // governor at the outer layer covers anonymous flood protection; this
+    // layer stops a SINGLE authenticated client from burning their AI
+    // credits / our upstream OpenAI quota by hammering /ai/chat from one
+    // terminal even when their IP bucket has headroom.
+    let ai_chat = crate::billing::ai_chat_router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_per_user_limit,
+        ))
+        .with_state(state.clone());
+
     let api_v1 = Router::new()
         .merge(crate::users::router())
         .route(
@@ -79,14 +143,42 @@ pub fn build_app(state: AppState) -> Router {
         .merge(crate::billing::plans_router())
         .merge(crate::billing::router())
         .merge(crate::plaid::router())
+        .merge(crate::snaptrade::router())
+        // Public self-discovery endpoint for the desktop: returns
+        // Supabase URL + anon key + feature flags so a fresh install
+        // can render the sign-in flow without a build-time .env.
+        // Sits on /api/v1/config/public — unauth'd by design (values
+        // are public).
+        .merge(crate::public_config::router())
+        .merge(crate::admin::router())
+        .merge(ai_chat)
         .with_state(state.clone());
 
-    Router::new()
+    // Build the rate-limited router (every public + authed route) and
+    // mount the Stripe webhook OUTSIDE that layer — Stripe redrives
+    // arrive in bursts and rate-limiting them would force Stripe into
+    // exponential backoff against our own infrastructure. The webhook
+    // is signature-authed (HMAC), so rate-limiting is the wrong tool.
+    let rate_limited = Router::new()
         .merge(crate::health::router())
         .nest("/v1", v1)
         .nest("/api/v1", api_v1)
-        .with_state(state)
-        // The order matters: outermost layer is added last.
+        .with_state(state.clone())
+        .layer(governor);
+
+    let webhook = Router::new()
+        .nest("/v1", crate::billing::webhook_router())
+        .nest("/api/v1", crate::billing::webhook_router())
+        .with_state(state);
+
+    Router::new()
+        .merge(rate_limited)
+        .merge(webhook)
+        // The order matters: outermost layer is added last. Header
+        // redaction wraps the trace layer so request/response header
+        // serialisation never logs Authorization / Stripe signatures /
+        // cookies. The const SENSITIVE_HEADERS is the single source of
+        // truth — adding a header there propagates here automatically.
         .layer(nosniff)
         .layer(frame)
         .layer(referrer)
@@ -94,13 +186,14 @@ pub fn build_app(state: AppState) -> Router {
         .layer(cross_domain)
         .layer(option_layer(hsts))
         .layer(cors)
-        .layer(governor)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .layer(timeout::layer())
         .layer(RequestIdLayer)
+        .layer(redact_response_headers)
         .layer(trace_layer)
+        .layer(redact_request_headers)
         .layer(sentry_tower::NewSentryLayer::<axum::http::Request<_>>::new_from_top())
-        .layer(sentry_tower::SentryHttpLayer::with_transaction())
+        .layer(sentry_tower::SentryHttpLayer::new().enable_transaction())
 }
 
 fn build_cors(config: &Config) -> CorsLayer {
@@ -134,7 +227,7 @@ fn build_rate_limiter_config(
     config: &Config,
 ) -> Arc<
     tower_governor::governor::GovernorConfig<
-        tower_governor::key_extractor::PeerIpKeyExtractor,
+        tower_governor::key_extractor::SmartIpKeyExtractor,
         governor::middleware::NoOpMiddleware,
     >,
 > {
@@ -142,12 +235,19 @@ fn build_rate_limiter_config(
     let per_second = (per_minute / 60).max(1);
     let burst = (per_minute / 4).max(1);
 
+    // SmartIpKeyExtractor reads X-Forwarded-For / Forwarded / X-Real-IP
+    // before falling back to peer IP. Behind Fly's edge proxy the peer
+    // IP is ALWAYS the proxy itself, so PeerIpKeyExtractor would
+    // collapse the entire fleet into a single bucket. Fly sets
+    // X-Forwarded-For, which the smart extractor honours.
+    //
     // `finish()` only returns `None` for impossible values (zero burst /
     // zero period). Both are clamped to ≥ 1 above, so the unwrap is safe.
     #[allow(clippy::expect_used)]
     let governor_conf = GovernorConfigBuilder::default()
         .per_second(u64::from(per_second))
         .burst_size(burst)
+        .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
         .finish()
         .expect("rate limiter config is valid (per_second and burst clamped >= 1)");
     Arc::new(governor_conf)

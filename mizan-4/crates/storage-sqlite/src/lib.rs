@@ -1,3 +1,10 @@
+// AI chat repository surfaces `ChatRepositoryResult<T> = Result<T, AiError>`,
+// which inherits AiError's large-by-design footprint. See the same allow
+// in crates/ai/src/lib.rs for the rationale (flat sum type for
+// matchability over boxing). Suppressed crate-wide to keep storage
+// signatures aligned with the AI crate's contract.
+#![allow(clippy::result_large_err)]
+
 //! SQLite storage implementation for Mizan.
 //!
 //! This crate provides all database-related functionality using Diesel ORM with SQLite.
@@ -42,9 +49,14 @@ pub mod limits;
 pub mod market_data;
 pub mod news;
 pub mod portfolio;
+pub mod daily_brief;
+pub mod net_worth_snapshot;
+pub mod notifications;
 pub mod settings;
 pub mod sync;
+pub mod sync_run_ledger;
 pub mod taxonomies;
+pub mod truth_ledger;
 
 // Re-export database utilities
 pub use db::{

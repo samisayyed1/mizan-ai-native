@@ -7,11 +7,17 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "@mizan/ui/components/ui/use-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PlaidLinkTokenResponse } from "@/adapters/shared/connect";
+// Relative path so the import resolves to the actual `shared/connect`
+// module regardless of build target. Using `@/adapters/shared/connect`
+// would get caught by the BUILD_TARGET-conditional `@/adapters` alias
+// in vite.config and re-routed into `./web/shared/connect` (which
+// doesn't exist).
+import type { PlaidLinkTokenResponse } from "../../../adapters/shared/connect";
 import {
   createPlaidLinkToken,
   exchangePlaidPublicToken,
   listBrokerConnections,
+  syncBrokerData,
 } from "../services/broker-service";
 import type { BrokerConnection } from "../types";
 
@@ -152,14 +158,37 @@ export function useCreateBrokerLoginPortal(): readonly [
           token: linkToken,
           onSuccess: (publicToken) => {
             void exchangePlaidPublicToken(publicToken)
-              .then(() => {
+              .then(async () => {
                 toast.success("Plaid connection secured", {
                   id: "plaid-link-connected",
+                  description: "Syncing your accounts, holdings, and recent transactions…",
                 });
                 start();
+                // Eagerly invalidate both connections AND accounts so the UI
+                // doesn't sit at "0 accounts" while polling waits for the new
+                // connection to land — the polling effect still re-invalidates
+                // accounts once the connection actually appears as a safety
+                // net for slow networks.
                 void queryClient.invalidateQueries({
                   queryKey: [QueryKeys.BROKER_CONNECTIONS],
                 });
+                void queryClient.invalidateQueries({
+                  queryKey: [QueryKeys.BROKER_ACCOUNTS],
+                });
+                // Auto-trigger the first sync so the user doesn't have to
+                // hunt for a "sync" button after linking. The sync is
+                // fire-and-forget — global event listeners (BROKER_SYNC_*)
+                // own the toast lifecycle and React Query invalidation when
+                // it completes. Wrapped in try/catch so a rate-limit / cooldown
+                // error doesn't blow up the link-success path; the next
+                // scheduled or user-initiated sync will catch up.
+                try {
+                  await syncBrokerData();
+                } catch (err) {
+                  // Logged but not surfaced — the connection itself succeeded.
+                  // The user can retry via the Sync button on the connect page.
+                  console.warn("Auto-sync after Plaid link skipped:", err);
+                }
               })
               .catch((error) => {
                 const msg = error instanceof Error ? error.message : "Unknown error";

@@ -1018,7 +1018,40 @@ fn build_user_prompt(user_message: &str, attachments: &[MessageAttachment]) -> M
     // Build instruction-prefixed text
     let mut text = String::new();
     if has_csv {
-        text.push_str("[INSTRUCTION: A CSV file is attached. You MUST call the import_csv tool with the full CSV content in csvContent parameter. Do NOT analyze or summarize the data yourself - use the tool.]\n\n");
+        // HARD ROUTING RULES — the model picks one path AND ONLY ONE:
+        //
+        // (A) User said "create a new portfolio/account" + populate:
+        //     1. Call `create_account` with a sensible name derived from
+        //        the CSV filename or content (e.g. "US Stocks Portfolio").
+        //     2. AFTER the create_account draft is confirmed, the user
+        //        will see the new account_id. The next turn, call
+        //        `import_csv` with `accountId` PRE-FILLED to that id +
+        //        the FULL csvContent so the mapping wizard opens with
+        //        the target account already locked in (no manual
+        //        "Select target account" dropdown step).
+        //
+        // (B) User just wants to import existing rows (no "new
+        //     portfolio" language): call `import_csv` directly. The
+        //     user picks the account in the wizard.
+        //
+        // (C) NEVER do both at once and never call `import_csv` with
+        //     a null/empty accountId when the user explicitly said
+        //     "new portfolio". That's the failure mode we are trying
+        //     to eliminate (mapping wizard shows "Select target
+        //     account" with no auto-fill, user has to scroll 402 rows
+        //     wondering what went wrong).
+        //
+        // Detection phrases for (A): "new portfolio", "create account",
+        // "new account", "fresh portfolio", "set up a portfolio".
+        text.push_str(
+            "[INSTRUCTION — CSV ATTACHED. Pick exactly one path:\n\
+             • If the user said NEW portfolio / NEW account / CREATE account / FRESH portfolio:\n\
+             \u{20}\u{20}1) call `create_account` first with a name inferred from the CSV (e.g. 'US Stocks');\n\
+             \u{20}\u{20}2) WAIT for the user to confirm the create_account draft;\n\
+             \u{20}\u{20}3) once confirmed, call `import_csv` with accountId set to the newly created account's id AND the full csvContent.\n\
+             • Otherwise (user just wants to import): call `import_csv` directly with the full csvContent; the user will pick the account in the wizard.\n\
+             DO NOT narrate or summarise. DO NOT call import_csv without an accountId if the user said 'new portfolio'.]\n\n",
+        );
     }
     if has_image_or_pdf {
         text.push_str("[INSTRUCTION: Image or PDF file(s) attached. Examine for financial transaction data and use record_activities to create drafts for all extracted transactions.]\n\n");

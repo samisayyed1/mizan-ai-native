@@ -1,4 +1,3 @@
-import { HealthStatusIndicator } from "@/components/health-status-icon";
 import { SwipablePage, SwipablePageView } from "@/components/page";
 import { PrivacyToggle } from "@/components/privacy-toggle";
 import { useAddAsset } from "@/features/add-asset";
@@ -7,7 +6,6 @@ import { Button, Icons } from "@mizan/ui";
 import { Card, CardContent, CardHeader } from "@mizan/ui/components/ui/card";
 import { Skeleton } from "@mizan/ui/components/ui/skeleton";
 import { Suspense, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { NetWorthContent } from "../net-worth/net-worth-content";
 import { DashboardActions } from "./dashboard-actions";
 import { DashboardContent } from "./dashboard-content";
@@ -35,21 +33,32 @@ const PageLoader = () => (
 export default function PortfolioPage() {
   const { isFocusMode, toggleFocusMode } = useNavigationMode();
   const addAsset = useAddAsset();
-  const navigate = useNavigate();
 
   const handleAddAsset = useCallback(() => {
     addAsset.open();
   }, [addAsset]);
 
+  // Net-worth liabilities flow through the same inline AddAssetDialog so
+  // users never get yanked into a separate assistant page (see UX-1).
+  // We seed a liability-specific prompt so the dialog's Mizan AI tab
+  // opens already pointing at the right capability.
   const handleAddLiability = useCallback(() => {
-    const prompt =
-      "Tell me about the liability you want to track — for example: my mortgage balance, a student loan, a credit card balance, or a car loan.";
-    navigate(`/assistant?intent=add-asset&prompt=${encodeURIComponent(prompt)}`);
-  }, [navigate]);
+    addAsset.open({
+      source: "portfolio",
+      prompt:
+        "Tell me about the liability you want to track — for example: my mortgage balance, a student loan, a credit card balance, or a car loan.",
+    });
+  }, [addAsset]);
 
+  // UX-10: HealthStatusIndicator removed from the customer-facing
+  // dashboard per user request — health warnings were leaking
+  // diagnostic-grade detail (FX gaps, missing quotes, classification
+  // drift) into the headline action row. The backend health checks
+  // still run and self-correct via the existing scheduler; the /health
+  // route remains accessible for support, just no longer linked from
+  // the dashboard chrome.
   const commonActions = (
     <>
-      <HealthStatusIndicator />
       {isFocusMode && (
         <Button
           variant="secondary"

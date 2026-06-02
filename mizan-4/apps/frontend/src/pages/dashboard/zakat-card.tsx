@@ -27,7 +27,7 @@ export function ZakatCard() {
       <Icons.Coins className="text-primary mt-0.5 size-6 shrink-0" />
       <div className="flex-1">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Zakat assessment</h3>
+          <h3 className="text-sm font-semibold tracking-tight">Zakat assessment</h3>
           {locked && (
             <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
               Gold

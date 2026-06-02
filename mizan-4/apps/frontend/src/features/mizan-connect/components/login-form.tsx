@@ -546,7 +546,7 @@ export function LoginForm() {
 
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-center text-base font-medium">
+          <CardTitle className="text-center text-base font-semibold">
             {showOtpInput ? "Verify your email" : "Get started"}
           </CardTitle>
           <CardDescription className="text-center">

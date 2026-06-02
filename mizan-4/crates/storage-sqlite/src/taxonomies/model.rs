@@ -5,14 +5,46 @@ use diesel::prelude::*;
 use log::error;
 use serde::{Deserialize, Serialize};
 
-/// Helper to parse RFC3339 string to NaiveDateTime
+/// Parse the various datetime serialisations that have appeared in the
+/// taxonomies table across migrations + seed scripts:
+///
+///   1. RFC3339 with timezone (`2026-05-25T15:16:19+00:00` or `…Z`)
+///      — produced by Diesel for newer rows.
+///   2. SQLite CURRENT_TIMESTAMP default (`2026-05-25 15:16:19`) —
+///      space-separated, no fractional seconds, no zone. Older
+///      migrations and one of the seed scripts emit this shape.
+///   3. ISO 8601 with fractional seconds (`2026-05-25T15:16:19.123Z`).
+///
+/// All three are real on-disk values today. The previous implementation
+/// only tried #1, which caused a fatal-looking ERROR to log on every
+/// taxonomy row read (200+ lines per page open) — looks like the app
+/// is crashing when it's actually working fine. Falls back to "now"
+/// only when ALL formats fail, which is now genuinely exceptional.
 fn text_to_datetime(s: &str) -> NaiveDateTime {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|dt| dt.naive_utc())
-        .unwrap_or_else(|e| {
-            error!("Failed to parse datetime '{}': {}", s, e);
-            chrono::Utc::now().naive_utc()
-        })
+    // Strict RFC3339 first — fastest path and covers Diesel-written rows.
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return dt.naive_utc();
+    }
+    // Naive datetime, no timezone, T-separated (some seed scripts).
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+        return ndt;
+    }
+    // Naive datetime, no timezone, SPACE-separated (SQLite CURRENT_TIMESTAMP).
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return ndt;
+    }
+    // With fractional seconds — Diesel sometimes emits this for newer rows.
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+        return ndt;
+    }
+    if let Ok(ndt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f") {
+        return ndt;
+    }
+    error!(
+        "Failed to parse datetime '{}': no known format matched (tried RFC3339 + 4 fallbacks)",
+        s
+    );
+    chrono::Utc::now().naive_utc()
 }
 
 /// Database model for taxonomies

@@ -746,8 +746,13 @@ mod tests {
             Ok(existing.clone())
         }
 
-        async fn delete_activity(&self, _activity_id: String) -> Result<Activity> {
-            unimplemented!()
+        async fn delete_activity(&self, activity_id: String) -> Result<Activity> {
+            let mut activities = self.activities.lock().unwrap();
+            let pos = activities
+                .iter()
+                .position(|a| a.id == activity_id)
+                .ok_or_else(|| Error::Repository(format!("activity {activity_id} not found")))?;
+            Ok(activities.remove(pos))
         }
 
         async fn link_transfer_activities(
@@ -5744,6 +5749,255 @@ mod tests {
             created.asset_id,
             Some("aapl-opt-uuid".to_string()),
             "OCC symbol should match existing option asset"
+        );
+    }
+
+    // ─── §A1/§A2 Truth Ledger wiring tests ──────────────────────────────
+    //
+    // These prove the ActivityService<→TruthLedger contract:
+    //   1. create_activity appends ActivityRecorded
+    //   2. update_activity appends ActivityReversed + ActivityRecorded
+    //   3. delete_activity appends ActivityReversed
+    //   4. When the ledger fails, the AppendInput lands in the retry queue
+    //   5. Activity write succeeds even if both ledger + queue fail (chain
+    //      may have a gap but the row persists)
+
+    use crate::truth_engine::{
+        AppendInput, InMemoryTruthLedger, LedgerEntry, LedgerEntryKind, LedgerIntegrityError,
+        TruthLedger, TruthLedgerRetryQueue,
+    };
+
+    /// Always-fails ledger — used to exercise the retry-queue path.
+    struct FailingTruthLedger;
+
+    #[async_trait]
+    impl TruthLedger for FailingTruthLedger {
+        async fn append(&self, _input: AppendInput) -> Result<LedgerEntry> {
+            Err(Error::Unexpected(
+                "simulated ledger backend failure".to_string(),
+            ))
+        }
+        async fn verify(&self) -> std::result::Result<(), LedgerIntegrityError> {
+            Ok(())
+        }
+        async fn all(&self, _limit: Option<usize>) -> Result<Vec<LedgerEntry>> {
+            Ok(vec![])
+        }
+        async fn by_account(&self, _account_id: &str) -> Result<Vec<LedgerEntry>> {
+            Ok(vec![])
+        }
+    }
+
+    /// In-memory retry queue capturing every enqueue for assertions.
+    #[derive(Default)]
+    struct RecordingRetryQueue {
+        inner: Arc<Mutex<Vec<(AppendInput, String)>>>,
+    }
+
+    impl RecordingRetryQueue {
+        fn snapshot(&self) -> Vec<(AppendInput, String)> {
+            self.inner.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl TruthLedgerRetryQueue for RecordingRetryQueue {
+        async fn enqueue(&self, input: &AppendInput, reason: &str) -> Result<()> {
+            self.inner
+                .lock()
+                .unwrap()
+                .push((input.clone(), reason.to_string()));
+            Ok(())
+        }
+    }
+
+    fn standard_buy(id: &str, account_id: &str) -> NewActivity {
+        NewActivity {
+            id: Some(id.to_string()),
+            account_id: account_id.to_string(),
+            asset: Some(AssetResolutionInput {
+                id: Some("AAPL".to_string()),
+                ..Default::default()
+            }),
+            activity_type: "BUY".to_string(),
+            subtype: None,
+            activity_date: "2026-05-25".to_string(),
+            quantity: Some(dec!(10)),
+            unit_price: Some(dec!(100)),
+            currency: "USD".to_string(),
+            fee: Some(dec!(0)),
+            amount: Some(dec!(1000)),
+            status: None,
+            notes: None,
+            fx_rate: None,
+            metadata: None,
+            needs_review: None,
+            source_system: None,
+            source_record_id: None,
+            source_group_id: None,
+            idempotency_key: None,
+        }
+    }
+
+    fn ledger_wired_service(
+        ledger: Arc<dyn TruthLedger>,
+        queue: Option<Arc<dyn TruthLedgerRetryQueue>>,
+    ) -> (ActivityService, Arc<MockActivityRepository>) {
+        let account_service = Arc::new(MockAccountService::new());
+        let asset_service = Arc::new(MockAssetService::new());
+        let fx_service = Arc::new(MockFxService::new());
+        let activity_repository = Arc::new(MockActivityRepository::new());
+        let quote_service = Arc::new(MockQuoteService);
+
+        account_service.add_account(create_test_account("acc-1", "USD"));
+        asset_service.add_asset(create_test_asset("AAPL", "USD"));
+
+        let mut svc = ActivityService::new(
+            activity_repository.clone(),
+            account_service,
+            asset_service,
+            fx_service,
+            quote_service,
+        )
+        .with_truth_ledger(ledger);
+        if let Some(q) = queue {
+            svc = svc.with_truth_ledger_retry_queue(q);
+        }
+        (svc, activity_repository)
+    }
+
+    #[tokio::test]
+    async fn create_activity_appends_activity_recorded_to_ledger() {
+        let ledger = Arc::new(InMemoryTruthLedger::new());
+        let (service, _repo) = ledger_wired_service(ledger.clone(), None);
+
+        let created = service
+            .create_activity(standard_buy("buy-1", "acc-1"))
+            .await
+            .expect("create_activity ok");
+
+        let entries = ledger.all(None).await.unwrap();
+        assert_eq!(entries.len(), 1, "exactly one ledger row per create");
+        assert_eq!(entries[0].kind, LedgerEntryKind::ActivityRecorded);
+        assert_eq!(entries[0].account_id.as_deref(), Some("acc-1"));
+        assert_eq!(entries[0].amount, created.amount);
+        assert_eq!(entries[0].id, format!("activity:{}:created", created.id));
+        ledger.verify().await.expect("chain still valid");
+    }
+
+    #[tokio::test]
+    async fn update_activity_emits_reversed_then_recorded_pair() {
+        let ledger = Arc::new(InMemoryTruthLedger::new());
+        let (service, _repo) = ledger_wired_service(ledger.clone(), None);
+
+        let created = service
+            .create_activity(standard_buy("buy-2", "acc-1"))
+            .await
+            .expect("create ok");
+
+        let update = ActivityUpdate {
+            id: created.id.clone(),
+            account_id: created.account_id.clone(),
+            asset: Some(AssetResolutionInput {
+                id: Some("AAPL".to_string()),
+                ..Default::default()
+            }),
+            activity_type: created.activity_type.clone(),
+            subtype: None,
+            activity_date: "2026-05-26".to_string(),
+            quantity: Some(Some(dec!(20))), // changed
+            unit_price: Some(Some(dec!(100))),
+            currency: "USD".to_string(),
+            fee: Some(Some(dec!(0))),
+            amount: Some(Some(dec!(2000))), // changed
+            status: None,
+            notes: None,
+            fx_rate: None,
+            metadata: None,
+        };
+        service.update_activity(update).await.expect("update ok");
+
+        let entries = ledger.all(None).await.unwrap();
+        // create + reversed-old + recorded-new = 3
+        assert_eq!(entries.len(), 3, "create + edit emits a 3-entry chain");
+        assert_eq!(entries[0].kind, LedgerEntryKind::ActivityRecorded);
+        assert_eq!(entries[1].kind, LedgerEntryKind::ActivityReversed);
+        assert_eq!(entries[2].kind, LedgerEntryKind::ActivityRecorded);
+        assert_eq!(entries[2].amount, Some(dec!(2000)));
+        ledger.verify().await.expect("chain still valid");
+    }
+
+    #[tokio::test]
+    async fn delete_activity_emits_activity_reversed() {
+        let ledger = Arc::new(InMemoryTruthLedger::new());
+        let (service, _repo) = ledger_wired_service(ledger.clone(), None);
+
+        let created = service
+            .create_activity(standard_buy("buy-3", "acc-1"))
+            .await
+            .expect("create ok");
+        service
+            .delete_activity(created.id.clone())
+            .await
+            .expect("delete ok");
+
+        let entries = ledger.all(None).await.unwrap();
+        assert_eq!(entries.len(), 2, "create + delete emits a 2-entry chain");
+        assert_eq!(entries[0].kind, LedgerEntryKind::ActivityRecorded);
+        assert_eq!(entries[1].kind, LedgerEntryKind::ActivityReversed);
+        ledger.verify().await.expect("chain still valid");
+    }
+
+    #[tokio::test]
+    async fn ledger_failure_lands_in_retry_queue_without_failing_the_write() {
+        let ledger: Arc<dyn TruthLedger> = Arc::new(FailingTruthLedger);
+        let queue = Arc::new(RecordingRetryQueue::default());
+        let queue_trait: Arc<dyn TruthLedgerRetryQueue> = queue.clone();
+        let (service, _repo) = ledger_wired_service(ledger, Some(queue_trait));
+
+        let created = service
+            .create_activity(standard_buy("buy-4", "acc-1"))
+            .await
+            .expect("activity write must succeed even when ledger fails");
+
+        let queued = queue.snapshot();
+        assert_eq!(
+            queued.len(),
+            1,
+            "exactly one retry slot for the failed append"
+        );
+        let (input, reason) = &queued[0];
+        assert_eq!(input.id, format!("activity:{}:created", created.id));
+        assert_eq!(input.kind, Some(LedgerEntryKind::ActivityRecorded));
+        assert!(
+            reason.contains("simulated ledger backend failure"),
+            "reason should preserve the underlying error message: {reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn ledger_and_queue_both_failing_still_lets_activity_write_succeed() {
+        // Even when both the ledger AND the queue silently fail, the
+        // activity row must commit — losing the audit row is a problem
+        // surfaced by the support bundle, not a user-blocking error.
+        struct FailingQueue;
+        #[async_trait]
+        impl TruthLedgerRetryQueue for FailingQueue {
+            async fn enqueue(&self, _input: &AppendInput, _reason: &str) -> Result<()> {
+                Err(Error::Unexpected("queue disk full".into()))
+            }
+        }
+
+        let ledger: Arc<dyn TruthLedger> = Arc::new(FailingTruthLedger);
+        let queue: Arc<dyn TruthLedgerRetryQueue> = Arc::new(FailingQueue);
+        let (service, _repo) = ledger_wired_service(ledger, Some(queue));
+
+        let result = service
+            .create_activity(standard_buy("buy-5", "acc-1"))
+            .await;
+        assert!(
+            result.is_ok(),
+            "activity write must succeed even when both ledger and queue fail: {result:?}"
         );
     }
 }

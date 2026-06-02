@@ -181,6 +181,22 @@ pub async fn initialize_context(
         import_run_repository.clone(),
     ));
 
+    // §v3.1 foundation services — built here (instead of later) so the
+    // truth_ledger can be threaded into ActivityService below. SQLite-
+    // backed so every audit/snapshot/brief/ledger row survives restarts.
+    let crate::context::registry::V31Foundations {
+        ai_safety,
+        sync_ledger,
+        nw_snapshot: net_worth_snapshot_service,
+        daily_brief: daily_brief_service,
+        notifications: notification_service,
+        truth_ledger,
+        retry_queue: truth_ledger_retry_queue,
+    } = crate::context::registry::build_v31_foundation_defaults(pool.clone(), writer.clone());
+
+    let truth_ledger_retry_queue_trait: Arc<dyn mizan_core::truth_engine::TruthLedgerRetryQueue> =
+        Arc::clone(&truth_ledger_retry_queue) as _;
+
     let activity_service = Arc::new(
         ActivityService::with_import_run_repository(
             activity_repository.clone(),
@@ -190,7 +206,9 @@ pub async fn initialize_context(
             quote_service.clone(),
             core_import_run_repository,
         )
-        .with_event_sink(domain_event_sink.clone()),
+        .with_event_sink(domain_event_sink.clone())
+        .with_truth_ledger(Arc::clone(&truth_ledger))
+        .with_truth_ledger_retry_queue(Arc::clone(&truth_ledger_retry_queue_trait)),
     );
     let goal_service = Arc::new(GoalService::new(goal_repo.clone(), account_service.clone()));
     let limits_service = Arc::new(ContributionLimitService::new_with_timezone(
@@ -339,6 +357,7 @@ pub async fn initialize_context(
         health_service.clone(),
         Some(connect_service.clone()),
     ));
+    let ai_environment_for_agent = ai_environment.clone();
     let ai_chat_service = Arc::new(ChatService::new(ai_environment, ChatConfig::default()));
 
     // Device enroll service for E2EE sync
@@ -362,11 +381,6 @@ pub async fn initialize_context(
     {
         warn!("Failed to prune local sync outbox: {}", err);
     }
-
-    // §v3.1 foundation services — wired here so every command + scheduler
-    // shares the same instance. Switch to SQLite-backed impls per-PR.
-    let (ai_safety, sync_ledger, net_worth_snapshot_service, daily_brief_service, truth_ledger) =
-        crate::context::registry::build_v31_foundation_defaults();
 
     Ok(ContextInitResult {
         context: ServiceContext {
@@ -399,6 +413,7 @@ pub async fn initialize_context(
             connect_service,
             ai_provider_service,
             ai_chat_service,
+            ai_environment: ai_environment_for_agent,
             device_enroll_service,
             device_sync_runtime,
             health_service,
@@ -407,7 +422,9 @@ pub async fn initialize_context(
             sync_ledger,
             net_worth_snapshot_service,
             daily_brief_service,
+            notification_service,
             truth_ledger,
+            truth_ledger_retry_queue,
         },
         event_receiver,
         sync_outbox_wake_receiver,

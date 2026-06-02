@@ -556,16 +556,28 @@ impl HoldingsValuationService {
         );
 
         // --- Calculate FX Rate ---
-        let fx_rate_local_to_base = self.get_fx_rate_or_fallback(
+        //
+        // QA Pass 17: use the STRICT FX getter for local→base. The lenient
+        // 1.0-fallback path is explicitly forbidden for market_value.base
+        // (see this file's doc on get_fx_rate_or_fallback). A property in
+        // EUR with no EUR/USD rate would silently show "€500,000" as
+        // "$500,000" — the same wrong-but-invisible failure pattern Pass
+        // 10 fixed for cash holdings.
+        let fx_rate_local_to_base_opt = self.try_get_fx_rate(
             pos_currency,
             base_currency,
             &format!("{}: FX Local->Base", context_msg),
         );
-        holding.fx_rate = Some(fx_rate_local_to_base);
+        holding.fx_rate = fx_rate_local_to_base_opt;
 
         // --- Calculate Base Cost Basis (If applicable) ---
+        // When FX is missing on a cross-currency alt asset, .base = 0
+        // (honest) rather than = .local (silently mis-stating).
         if let Some(cost_basis) = &mut holding.cost_basis {
-            cost_basis.base = cost_basis.local * fx_rate_local_to_base;
+            cost_basis.base = match fx_rate_local_to_base_opt {
+                Some(rate) => cost_basis.local * rate,
+                None => Decimal::ZERO,
+            };
         }
 
         // --- Handle Zero Quantity ---
@@ -595,7 +607,10 @@ impl HoldingsValuationService {
                 );
             }
 
-            let fx_rate_quote_to_base = self.get_fx_rate_or_fallback(
+            // Strict for quote→base (drives market_value.base); lenient
+            // for quote→local is acceptable (only feeds display .local
+            // which can absorb a 1.0 fallback if quote==pos currency).
+            let fx_rate_quote_to_base_opt = self.try_get_fx_rate(
                 normalized_quote_currency,
                 base_currency,
                 &format!("{}: FX Quote->Base", context_msg),
@@ -615,7 +630,18 @@ impl HoldingsValuationService {
             let market_value_quote_major = normalized_price * quantity;
 
             let market_value_local = market_value_quote_major * fx_rate_quote_to_local;
-            let market_value_base = market_value_quote_major * fx_rate_quote_to_base;
+            let market_value_base = match fx_rate_quote_to_base_opt {
+                Some(rate) => market_value_quote_major * rate,
+                None => {
+                    warn!(
+                        "{}: No {} → {} FX rate available. Setting market_value.base \
+                         to ZERO instead of silently treating the local-currency value \
+                         as base currency. .local still carries the truthful amount.",
+                        context_msg, normalized_quote_currency, base_currency
+                    );
+                    Decimal::ZERO
+                }
+            };
             let market_price_local = normalized_price * fx_rate_quote_to_local;
             holding.price = Some(market_price_local);
 
@@ -630,7 +656,14 @@ impl HoldingsValuationService {
             let gain_calculated = if let Some(purchase_price) = holding.purchase_price {
                 // Gain = market_value - (quantity * purchase_price)
                 let total_cost_local = quantity * purchase_price;
-                let total_cost_base = total_cost_local * fx_rate_local_to_base;
+                // When local→base FX is missing, base-cost is 0 (honest);
+                // unrealized_gain_base then equals market_value_base
+                // (which is itself 0 when its own FX failed). The .local
+                // gain is always correct regardless of FX availability.
+                let total_cost_base = match fx_rate_local_to_base_opt {
+                    Some(rate) => total_cost_local * rate,
+                    None => Decimal::ZERO,
+                };
 
                 let unrealized_gain_local = market_value_local - total_cost_local;
                 let unrealized_gain_base = market_value_base - total_cost_base;
@@ -719,11 +752,33 @@ impl HoldingsValuationService {
 
         holding.price = Some(dec!(1.0));
 
-        let fx_rate_cash_to_base =
-            self.get_fx_rate_or_fallback(cash_currency, base_currency, &context_msg);
-        holding.fx_rate = Some(fx_rate_cash_to_base);
+        // QA Pass 10: market_value.base for cash MUST use the strict
+        // FX getter — silently valuing SGD cash at SGD == USD is the
+        // exact "wrong + invisible" failure pattern this file's docs
+        // (see get_fx_rate_or_fallback above) explicitly forbid. When
+        // no rate is available we mark fx_rate=None, leave .local as
+        // the truth, and set .base = 0 so the UI can render "—" or a
+        // warning chip instead of a fabricated dollar amount.
+        let fx_rate_opt = self.try_get_fx_rate(
+            cash_currency,
+            base_currency,
+            &format!("{}: FX Cash->Base", context_msg),
+        );
+        holding.fx_rate = fx_rate_opt;
 
-        let value_base = cash_amount * fx_rate_cash_to_base;
+        let value_base = match fx_rate_opt {
+            Some(rate) => cash_amount * rate,
+            None => {
+                warn!(
+                    "{}: NO {} → {} FX rate available. Setting market_value.base to ZERO \
+                     instead of silently treating the foreign-currency amount as base \
+                     currency. .local still carries the truthful amount. Add the FX pair \
+                     under Settings → Market Data → Exchange Rates.",
+                    context_msg, cash_currency, base_currency
+                );
+                Decimal::ZERO
+            }
+        };
 
         holding.market_value.base = value_base;
         holding.market_value.local = cash_amount;

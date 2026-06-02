@@ -183,7 +183,7 @@ export const AlternativeAssetContent: React.FC<AlternativeAssetContentProps> = (
           {/* Left: Value history chart with value/gain/equity in header */}
           <Card className="col-span-1 md:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-md">
+              <CardTitle className="text-md font-semibold tracking-tight">
                 <div>
                   <p className="pt-3 text-xl font-bold">
                     <AmountDisplay
@@ -502,7 +502,7 @@ const AlternativeAssetDetailCard: React.FC<AlternativeAssetDetailCardProps> = ({
             </div>
             <div>
               <div
-                className={`text-xl font-extrabold ${netEquity >= 0 ? "text-success" : "text-destructive"}`}
+                className={`text-xl font-semibold tracking-tight ${netEquity >= 0 ? "text-success" : "text-destructive"}`}
               >
                 <AmountDisplay
                   value={netEquity}
@@ -532,7 +532,7 @@ const AlternativeAssetDetailCard: React.FC<AlternativeAssetDetailCardProps> = ({
             </div>
             <div>
               <div
-                className={`text-xl font-extrabold ${liabilityProgress.amountPaid >= 0 ? "text-success" : "text-destructive"}`}
+                className={`text-xl font-semibold tracking-tight ${liabilityProgress.amountPaid >= 0 ? "text-success" : "text-destructive"}`}
               >
                 <AmountDisplay
                   value={liabilityProgress.amountPaid}

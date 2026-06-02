@@ -59,12 +59,23 @@ pub async fn receive_webhook(
                 .map_err(|e| AppError::bad_request(format!("subscription payload: {e}")))?;
 
             let Some(user_id) = resolve_user_id(state.db(), &sub).await? else {
+                // Race: `subscription.created` arrived BEFORE the
+                // `checkout.session.completed` row that links the
+                // stripe_customer_id to our user_id (Stripe delivers
+                // these out-of-order on a small percentage of requests).
+                // We MUST NOT commit the stripe_events row here, or the
+                // redelivery once the link exists will be silently
+                // dropped as a duplicate. Roll back + return 5xx so
+                // Stripe retries with exponential backoff (3d window).
                 tracing::warn!(
                     stripe_subscription_id = %sub.id,
-                    "stripe webhook references unknown customer — recording event but skipping subscription upsert",
+                    stripe_customer_id = %sub.customer,
+                    "stripe webhook references unknown customer — rolling back so Stripe retries",
                 );
-                tx.commit().await?;
-                return Ok(StatusCode::OK);
+                tx.rollback().await?;
+                return Err(AppError::internal(
+                    "customer link not yet established; please retry",
+                ));
             };
 
             let tier = resolve_tier(&sub, &billing.prices)
@@ -102,6 +113,55 @@ pub async fn receive_webhook(
             {
                 repository::reset_ai_credits(&mut tx, &sub_id, period_start).await?;
             }
+        }
+
+        // Stripe-1: payment failed. The subscription stays "active" until the
+        // smart-retry policy ages out (3–5 attempts over a week), then Stripe
+        // moves it to "past_due" → "unpaid" → "canceled". We mirror the
+        // intermediate status flips locally so the desktop's entitlements
+        // can downgrade Gold features the moment Stripe says "past_due" —
+        // we don't wait for the eventual cancel. Stripe sends a separate
+        // customer.subscription.updated when the status changes, but we
+        // also stamp last_payment_failure on the row so support can see
+        // why a downgrade fired even before the subsequent update arrives.
+        "invoice.payment_failed" => {
+            let invoice: InvoiceObject = serde_json::from_value(envelope.data.object.clone())
+                .map_err(|e| AppError::bad_request(format!("invoice payload: {e}")))?;
+            if let Some(sub_id) = invoice.subscription.as_deref() {
+                if let Err(err) = repository::mark_payment_failed(&mut tx, sub_id).await {
+                    tracing::warn!(
+                        stripe_subscription_id = %sub_id,
+                        error = %err,
+                        "stripe webhook: mark_payment_failed soft-failed"
+                    );
+                }
+                tracing::info!(
+                    stripe_subscription_id = %sub_id,
+                    "stripe webhook: invoice.payment_failed recorded"
+                );
+            }
+        }
+
+        // Stripe-1: 7-day heads-up that a trial is about to convert. We
+        // record the date on the subscription row so the desktop UI can
+        // surface a "trial ends in N days" banner ahead of the charge.
+        // No tier change here — the subscription is still on the trial.
+        "customer.subscription.trial_will_end" => {
+            let sub: SubscriptionObject = serde_json::from_value(envelope.data.object.clone())
+                .map_err(|e| AppError::bad_request(format!("subscription payload: {e}")))?;
+            let trial_end = ts(sub.trial_end);
+            if let Err(err) = repository::mark_trial_will_end(&mut tx, &sub.id, trial_end).await {
+                tracing::warn!(
+                    stripe_subscription_id = %sub.id,
+                    error = %err,
+                    "stripe webhook: mark_trial_will_end soft-failed"
+                );
+            }
+            tracing::info!(
+                stripe_subscription_id = %sub.id,
+                trial_end = ?trial_end,
+                "stripe webhook: trial_will_end recorded"
+            );
         }
 
         "checkout.session.completed" => {
@@ -193,6 +253,11 @@ struct SubscriptionObject {
     current_period_start: Option<i64>,
     #[serde(default)]
     current_period_end: Option<i64>,
+    /// Unix-timestamp of when the trial converts to a paid charge.
+    /// Populated on `customer.subscription.trial_will_end` (7-day
+    /// heads-up) so the desktop can render a banner.
+    #[serde(default)]
+    trial_end: Option<i64>,
     items: SubscriptionItems,
 }
 

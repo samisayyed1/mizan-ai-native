@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use futures::StreamExt;
+use mizan_ai::types::MessageAttachment;
 use mizan_ai::{
     AiError, AiStreamEvent, ChatMessage, ChatThread, ListThreadsRequest, SendMessageRequest,
     ThreadPage,
@@ -56,6 +57,293 @@ pub async fn stream_ai_chat(
     }
 
     Ok(())
+}
+
+// ============================================================================
+// Agent runtime commands (Gold-tier autonomous mode)
+// ============================================================================
+
+/// Request payload for [`stream_agent_chat`]. Mirrors a subset of
+/// [`SendMessageRequest`] — the fields the agent runtime needs to
+/// kick off a recipe-driven run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRunRequest {
+    /// The user's free-form goal (e.g. "make a new portfolio and add
+    /// these stocks").
+    pub content: String,
+    /// File attachments — primarily CSVs the agent will parse.
+    /// Same shape as the chat command's attachments.
+    #[serde(default)]
+    pub attachments: Vec<MessageAttachment>,
+    /// Optional thread id to associate the agent run with. None = the
+    /// chat shell creates a fresh thread for the run.
+    pub thread_id: Option<String>,
+    /// Force a specific recipe by id. When None, the runtime picks
+    /// the best-matching recipe via `detect_recipe`. UI exposes the
+    /// override so power users can rerun a specific recipe deliberately.
+    pub recipe_id: Option<String>,
+}
+
+/// Stream an autonomous agent run.
+///
+/// Distinct from [`stream_ai_chat`] — this command bypasses the legacy
+/// single-turn rig-core loop and instead spins up an
+/// [`mizan_ai::agent::InMemoryAgentRuntime`] that:
+///
+///   1. Calls the planner LLM to decompose the goal into PlanSteps.
+///   2. Executes each step autonomously via the ToolSetDispatcher.
+///   3. Verifies the result.
+///   4. Reports back via [`AiStreamEvent::Agent`] events streamed on
+///      the same Tauri Channel.
+///
+/// Gold-tier-gated: free / silver users get an immediate "upgrade"
+/// event and the command returns. Tier check uses the existing
+/// `connect_service().capabilities()` surface.
+///
+/// LLM planner: production deployments wire this through the user's
+/// active AI provider (Mizan Connect / OpenAI / Anthropic / etc.).
+/// The v1 implementation here uses a placeholder planner that emits
+/// a hardcoded plan for the matched recipe — enough to demonstrate
+/// the full event stream to the frontend without burning LLM credits
+/// during development. The real planner integration lands in a
+/// follow-on once the chat dispatcher's provider router is exposed
+/// as a shareable async closure.
+#[tauri::command]
+pub async fn stream_agent_chat(
+    context: State<'_, Arc<ServiceContext>>,
+    request: AgentRunRequest,
+    on_event: Channel<AiStreamEvent>,
+) -> CommandResult<()> {
+    use mizan_ai::agent::{
+        AgentEvent, AgentPlanner, AgentRuntime, AgentToolDispatcher, InMemoryAgentRuntime,
+        PlannerAttachment, PlannerContext,
+    };
+    use mizan_ai::agent_chat_bridge::{wrap_agent_event_for_sse, AgentTier};
+    use mizan_ai::agent_dispatcher::ToolSetDispatcher;
+    use mizan_ai::agent_recipes::{detect_recipe, ALL_RECIPES, PORTFOLIO_FROM_CSV};
+    use uuid::Uuid;
+
+    let thread_id = request
+        .thread_id
+        .clone()
+        .unwrap_or_else(|| Uuid::now_v7().to_string());
+    let run_id = Uuid::now_v7().to_string();
+    let message_id = Uuid::now_v7().to_string();
+
+    // Emit a system event first so the frontend can correlate.
+    let _ = on_event.send(AiStreamEvent::system(&thread_id, &run_id, &message_id));
+
+    // ── Tier gate ───────────────────────────────────────────────────
+    // The connect service surfaces the user's subscription state. We
+    // treat Gold + Lifetime as agent-unlocked; everyone else (Free /
+    // Silver / no-sub) sees the upgrade nudge.
+    match resolve_agent_tier(&context).await {
+        AgentTier::Unlocked => {}
+        AgentTier::Locked => {
+            let _ = on_event.send(AiStreamEvent::error(
+                &thread_id,
+                &run_id,
+                Some(&message_id),
+                "agent_tier_locked",
+                "Agent Mode is a Gold-tier feature. Sign in and upgrade to unlock autonomous multi-step flows.",
+            ));
+            return Ok(());
+        }
+    }
+
+    // ── Recipe selection ────────────────────────────────────────────
+    let has_attachment = !request.attachments.is_empty();
+    let recipe = if let Some(forced_id) = request.recipe_id.as_deref() {
+        ALL_RECIPES
+            .iter()
+            .find(|r| r.id == forced_id)
+            .cloned()
+            .unwrap_or(PORTFOLIO_FROM_CSV)
+    } else {
+        match detect_recipe(&request.content, has_attachment) {
+            Some(r) => r.clone(),
+            None => {
+                let _ = on_event.send(AiStreamEvent::error(
+                    &thread_id,
+                    &run_id,
+                    Some(&message_id),
+                    "agent_no_recipe_match",
+                    "No agent recipe matched this goal. Try the regular chat instead.",
+                ));
+                return Ok(());
+            }
+        }
+    };
+
+    // ── Planner ─────────────────────────────────────────────────────
+    // v1 uses a recipe-driven hardcoded planner so the full streaming
+    // experience works without an LLM round-trip. The agent runtime
+    // doesn't care that the plan is hardcoded — it still topologically
+    // sorts, executes, verifies, and reports the same way it would
+    // with an LLM-emitted plan. Swap this for the real LlmPlanner
+    // once the chat dispatcher's provider router is callable as a
+    // standalone closure (queued).
+    let planner: Arc<dyn AgentPlanner> = Arc::new(RecipePlanner {
+        recipe_id: recipe.id.to_string(),
+    });
+
+    // ── Dispatcher + ledger ─────────────────────────────────────────
+    let ai_chat_service = context.ai_chat_service();
+    let _ = ai_chat_service; // hold a ref — currently unused, future LLM integration uses it
+    let env = context.ai_env();
+    let base_currency = context.get_base_currency();
+    let tool_set = Arc::new(mizan_ai::tools::ToolSet::new(env, base_currency.clone()));
+    let dispatcher: Arc<dyn AgentToolDispatcher> = Arc::new(ToolSetDispatcher::new(tool_set));
+    let truth_ledger = context.truth_ledger();
+
+    let runtime = InMemoryAgentRuntime::new(planner, dispatcher, truth_ledger);
+
+    let attachments: Vec<PlannerAttachment> = request
+        .attachments
+        .iter()
+        .map(|a| PlannerAttachment {
+            filename: a.name.clone(),
+            content_type: a.content_type.clone(),
+            content: a.data.clone(),
+        })
+        .collect();
+
+    let context_for_run = PlannerContext {
+        attachments,
+        user_id: None,
+        base_currency: Some(base_currency),
+        completed_steps: Vec::new(),
+    };
+
+    let recipe_addendum = mizan_ai::agent_recipes::build_recipe_addendum(&recipe);
+    let goal = format!(
+        "{}\n\n--- User goal ---\n{}",
+        recipe_addendum, request.content
+    );
+
+    // ── Run + stream ────────────────────────────────────────────────
+    let handle = match runtime.run(goal, context_for_run).await {
+        Ok(h) => h,
+        Err(e) => {
+            let _ = on_event.send(AiStreamEvent::error(
+                &thread_id,
+                &run_id,
+                Some(&message_id),
+                "agent_plan_failed",
+                &format!("Agent failed to plan: {e}"),
+            ));
+            return Ok(());
+        }
+    };
+
+    let mut events = handle.events;
+    while let Some(agent_event) = events.recv().await {
+        let is_terminal = matches!(
+            agent_event,
+            AgentEvent::RunComplete { .. } | AgentEvent::RunAborted { .. }
+        );
+        let wrapped = wrap_agent_event_for_sse(&thread_id, &run_id, &message_id, agent_event);
+        if on_event.send(wrapped).is_err() {
+            // Channel closed — frontend gave up on the stream.
+            log::warn!("agent stream channel closed mid-run");
+            break;
+        }
+        if is_terminal {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+/// Resolve the user's agent tier from the connect service capabilities.
+async fn resolve_agent_tier(
+    context: &Arc<ServiceContext>,
+) -> mizan_ai::agent_chat_bridge::AgentTier {
+    use mizan_ai::agent_chat_bridge::AgentTier;
+    // Treat Gold (live broker sync) as the proxy for "agent unlocked".
+    // When the broker sync capability is true, the user has paid
+    // tier — close enough for v1 until we surface an explicit
+    // `agent_mode` capability via the catalog.
+    match context.connect_service().has_broker_sync().await {
+        Ok(true) => AgentTier::Unlocked,
+        _ => AgentTier::Locked,
+    }
+}
+
+/// v1 hardcoded planner — emits a canned plan per recipe id so the
+/// agent runtime can demonstrate the full event stream to the
+/// frontend without requiring an LLM round-trip.
+///
+/// Replace with `mizan_ai::agent_planner::PromptBasedPlanner` (already
+/// implemented) once the chat dispatcher's provider router is exposed
+/// as a shareable async closure. The agent_planner module + its tests
+/// are already production-ready; only the closure plumbing is missing.
+struct RecipePlanner {
+    recipe_id: String,
+}
+
+#[async_trait::async_trait]
+impl mizan_ai::agent::AgentPlanner for RecipePlanner {
+    async fn plan(
+        &self,
+        _goal: &str,
+        _context: &mizan_ai::agent::PlannerContext,
+    ) -> Result<Vec<mizan_ai::agent::PlanStep>, mizan_ai::agent::AgentError> {
+        use mizan_ai::agent::PlanStep;
+        Ok(match self.recipe_id.as_str() {
+            "portfolio_from_csv" => vec![
+                PlanStep {
+                    id: "create".into(),
+                    tool: "create_account".into(),
+                    args: serde_json::json!({
+                        "name": "US Stocks",
+                        "currency": "USD",
+                        "accountType": "SECURITIES"
+                    }),
+                    depends_on: vec![],
+                    summary: "Create the US Stocks portfolio account".into(),
+                    verify: None,
+                },
+                PlanStep {
+                    id: "parse".into(),
+                    tool: "parse_csv".into(),
+                    args: serde_json::json!({"csvContent": "(populated from attachment by runtime)"}),
+                    depends_on: vec!["create".into()],
+                    summary: "Parse the attached CSV".into(),
+                    verify: None,
+                },
+                PlanStep {
+                    id: "summary".into(),
+                    tool: "query_account_summary".into(),
+                    args: serde_json::json!({"accountId": "<create>"}),
+                    depends_on: vec!["parse".into()],
+                    summary: "Read back the new account state".into(),
+                    verify: None,
+                },
+            ],
+            _ => vec![PlanStep {
+                id: "noop".into(),
+                tool: "abort_with_message".into(),
+                args: serde_json::json!({
+                    "reason": format!("Recipe '{}' has no v1 hardcoded plan yet — wire LlmPlanner.", self.recipe_id)
+                }),
+                depends_on: vec![],
+                summary: "Recipe planner not yet wired".into(),
+                verify: None,
+            }],
+        })
+    }
+
+    async fn replan(
+        &self,
+        goal: &str,
+        ctx: &mizan_ai::agent::PlannerContext,
+        _failure: &str,
+    ) -> Result<Vec<mizan_ai::agent::PlanStep>, mizan_ai::agent::AgentError> {
+        self.plan(goal, ctx).await
+    }
 }
 
 // ============================================================================

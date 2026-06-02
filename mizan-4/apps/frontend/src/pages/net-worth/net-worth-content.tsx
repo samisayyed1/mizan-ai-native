@@ -1,4 +1,8 @@
-import { useNetWorth, useNetWorthHistory } from "@/hooks/use-alternative-assets";
+import {
+  useNetWorth,
+  useNetWorthHistory,
+  useNetWorthHistoryExtent,
+} from "@/hooks/use-alternative-assets";
 import { excludeVehiclesFromNetWorth } from "@/lib/net-worth";
 import { useSettingsContext } from "@/lib/settings-provider";
 import type { DateRange } from "@/lib/types";
@@ -97,7 +101,7 @@ function BalanceSheet({ data, currency }: BalanceSheetProps) {
   const hasLiabilities = data.liabilities.total > 0 || data.liabilities.breakdown.length > 0;
 
   return (
-    <div className="border-border bg-card shadow-xs rounded-lg border">
+    <div className="border-border/70 bg-card shadow-sm rounded-xl border">
       {/* Assets Section */}
       <Collapsible open={assetsOpen} onOpenChange={setAssetsOpen}>
         <CollapsibleTrigger className="hover:bg-muted/50 flex w-full items-center justify-between px-4 py-3 transition-colors md:px-5">
@@ -105,9 +109,9 @@ function BalanceSheet({ data, currency }: BalanceSheetProps) {
             <Icons.ChevronRight
               className={`text-muted-foreground h-4 w-4 transition-transform ${assetsOpen ? "rotate-90" : ""}`}
             />
-            <span className="text-sm font-semibold">Assets</span>
+            <span className="text-sm font-semibold tracking-tight">Assets</span>
           </div>
-          <span className="text-success text-sm font-semibold">
+          <span className="text-success text-sm font-semibold tracking-tight tabular-nums">
             <PrivacyAmount value={data.assets.total} currency={currency} />
           </span>
         </CollapsibleTrigger>
@@ -145,9 +149,9 @@ function BalanceSheet({ data, currency }: BalanceSheetProps) {
               <Icons.ChevronRight
                 className={`text-muted-foreground h-4 w-4 transition-transform ${liabilitiesOpen ? "rotate-90" : ""}`}
               />
-              <span className="text-sm font-semibold">Liabilities</span>
+              <span className="text-sm font-semibold tracking-tight">Liabilities</span>
             </div>
-            <span className="text-destructive text-sm font-semibold">
+            <span className="text-destructive text-sm font-semibold tracking-tight tabular-nums">
               -<PrivacyAmount value={data.liabilities.total} currency={currency} />
             </span>
           </CollapsibleTrigger>
@@ -176,8 +180,8 @@ function BalanceSheet({ data, currency }: BalanceSheetProps) {
 
       {/* Net Worth Summary */}
       <div className="bg-muted/30 flex items-center justify-between border-t px-4 py-3 md:px-5">
-        <span className="text-sm font-bold">Net Worth</span>
-        <span className="text-sm font-bold">
+        <span className="text-sm font-semibold tracking-tight tabular-nums">Net Worth</span>
+        <span className="text-sm font-semibold tracking-tight tabular-nums">
           <PrivacyAmount value={data.netWorth} currency={currency} />
         </span>
       </div>
@@ -219,7 +223,7 @@ function CompositionWidget({ data, isLoading }: CompositionWidgetProps) {
     return (
       <div className="w-full">
         <h2 className="text-md pb-2 font-semibold tracking-tight">Composition</h2>
-        <div className="border-border bg-card shadow-xs rounded-lg border p-4 md:p-5">
+        <div className="border-border/70 bg-card shadow-sm rounded-xl border p-4 md:p-5">
           <Skeleton className="mb-4 h-2.5 w-full rounded-full" />
           <div className="grid grid-cols-2 gap-x-4 gap-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -239,7 +243,7 @@ function CompositionWidget({ data, isLoading }: CompositionWidgetProps) {
   return (
     <div className="w-full">
       <h2 className="text-md pb-2 font-semibold tracking-tight">Composition</h2>
-      <div className="border-border bg-card shadow-xs rounded-lg border p-4 md:p-5">
+      <div className="border-border/70 bg-card shadow-sm rounded-xl border p-4 md:p-5">
         {/* Stacked horizontal bar */}
         <div className="mb-4 flex h-2.5 w-full overflow-hidden rounded-full">
           {items.map((item, index) => (
@@ -326,6 +330,8 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
     endDate: historyDates?.endDate ?? "",
     enabled: !!historyDates,
   });
+  // Data extent for gating IntervalSelector to ranges we can plot.
+  const dataEarliestDate = useNetWorthHistoryExtent();
 
   // Interval selector callback
   const handleIntervalSelect = (
@@ -461,21 +467,21 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
               ) : (
                 <>
                   <GainAmount
-                    className="lg:text-md text-sm font-light"
+                    className="lg:text-md text-sm font-medium"
                     value={gainLossAmount}
                     currency={currency}
                     displayCurrency={false}
                   />
                   <div className="border-secondary my-1 border-r pr-2" />
                   <GainPercent
-                    className="lg:text-md text-sm font-light"
+                    className="lg:text-md text-sm font-medium"
                     value={gainLossPercent}
                     animated={true}
                   />
                 </>
               )}
               {selectedIntervalDescription && (
-                <span className="lg:text-md text-muted-foreground ml-1 text-sm font-light">
+                <span className="lg:text-md text-muted-foreground ml-1 text-sm">
                   {selectedIntervalDescription}
                 </span>
               )}
@@ -516,6 +522,7 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
                 isLoading={isHistoryLoading}
                 storageKey={INTERVAL_STORAGE_KEY}
                 defaultValue={DEFAULT_INTERVAL}
+                dataEarliestDate={dataEarliestDate}
               />
             </div>
           )}
@@ -524,13 +531,17 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
         {/* Content section */}
         <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-12 md:px-6 md:pb-6 md:pt-6 lg:px-10 lg:pb-8 lg:pt-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-20">
-            {/* Left column: Breakdown */}
+            {/* Left column: Composition — net-worth breakdown by asset class.
+                 Spec §12 directs "Breakdown" page-label terminology be removed
+                 from the UI now that this page is canonically named "Net Worth";
+                 the section heading uses "Composition" to avoid the redundant
+                 "Net Worth → Breakdown" stacking. */}
             <div className="lg:col-span-2">
               <div className="mb-4 mt-8 w-full lg:mt-0">
-                <h2 className="text-md pb-2 font-semibold tracking-tight">Breakdown</h2>
+                <h2 className="text-md pb-2 font-semibold tracking-tight">Composition</h2>
 
                 {isLoading ? (
-                  <div className="border-border bg-card shadow-xs rounded-lg border p-4 md:p-5">
+                  <div className="border-border/70 bg-card shadow-sm rounded-xl border p-4 md:p-5">
                     <div className="space-y-4">
                       {Array.from({ length: 3 }).map((_, i) => (
                         <div key={i} className="flex items-center justify-between">
@@ -567,7 +578,7 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
 
               {/* Stale valuations warning */}
               {hasStaleValuations && (
-                <div className="border-warning/30 bg-warning/5 rounded-lg border p-4 md:p-5">
+                <div className="border-warning/30 bg-warning/5 rounded-xl border p-4 md:p-5">
                   <div className="flex items-start gap-3">
                     <div className="bg-warning/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
                       <Icons.AlertCircle className="text-warning h-4 w-4" />

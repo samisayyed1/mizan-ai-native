@@ -112,7 +112,7 @@ export function BrokerAccountCard({ account }: BrokerAccountCardProps) {
 
           {/* Sync enabled indicator */}
           {account.sync_enabled ? (
-            <Icons.Eye className="h-4 w-4 text-blue-500" />
+            <Icons.Eye className="h-4 w-4 text-info" />
           ) : (
             <Icons.EyeOff className="text-muted-foreground h-4 w-4" />
           )}

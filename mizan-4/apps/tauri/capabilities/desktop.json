@@ -41,6 +41,11 @@
     "core:window:allow-theme",
     "updater:default",
     "log:default",
-    "window-state:default"
+    "window-state:default",
+    "notification:default",
+    "notification:allow-notify",
+    "notification:allow-request-permission",
+    "notification:allow-permission-state",
+    "notification:allow-is-permission-granted"
   ]
 }

@@ -225,7 +225,7 @@ export default function GoalNewPage() {
               return (
                 <div
                   key={tmpl.type}
-                  className={`border-border/60 bg-card shadow-xs group overflow-hidden rounded-xl border transition-all ${
+                  className={`border-border/70 bg-card shadow-sm group overflow-hidden rounded-xl border transition-all ${
                     disabled
                       ? "cursor-not-allowed opacity-50"
                       : "hover:border-border cursor-pointer hover:shadow-md"

@@ -344,7 +344,7 @@ export function PortfolioComposition({ holdings, isLoading }: PortfolioCompositi
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div className="flex items-center space-x-2">
             <Icons.LayoutDashboard className="text-muted-foreground h-4 w-4" />
-            <CardTitle className="text-md font-medium">Composition</CardTitle>
+            <CardTitle className="text-md font-semibold tracking-tight">Composition</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="flex h-[500px] items-center justify-center">

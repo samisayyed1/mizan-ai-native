@@ -171,7 +171,27 @@ export {
 } from "./addons";
 
 // AI Streaming (Tauri Channel-based implementation)
-export { streamAiChat } from "./ai-streaming";
+export { streamAiChat, streamAgentChat, type AgentRunRequest } from "./ai-streaming";
+
+// Notifications — personalized AI wealth-insight center (Notify-6).
+// The desktop adapter calls Tauri commands backed by the SQLite
+// `notifications` table; the web adapter (../web/notifications) is a
+// no-op stub since the web build has no local DB.
+export {
+  listNotifications,
+  notificationsUnreadCount,
+  markNotificationRead,
+  dismissNotification,
+  markAllNotificationsRead,
+  notificationAdapter,
+  type Notification,
+  type NotificationsPage,
+} from "./notifications";
+export type {
+  NotificationKind,
+  NotificationSeverity,
+  NotificationAdapter,
+} from "../types-notifications";
 
 // Event Listeners (Tauri listen() implementation)
 export {
@@ -190,6 +210,7 @@ export {
   listenBrokerSyncError,
   listenNavigateToRoute,
   listenDeepLink,
+  listenNotificationsNew,
 } from "./events";
 
 // File Dialogs (Tauri file dialogs)

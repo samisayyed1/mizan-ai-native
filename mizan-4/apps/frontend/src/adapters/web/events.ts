@@ -171,6 +171,11 @@ export const listenDeepLink = <T>(_handler: EventCallback<T>): Promise<UnlistenF
   return Promise.resolve(noopUnlisten);
 };
 
+/** Web stub for the Notify-5 `notifications:new` event. */
+export const listenNotificationsNew = <T>(_handler: EventCallback<T>): Promise<UnlistenFn> => {
+  return Promise.resolve(noopUnlisten);
+};
+
 // Broker sync events
 export const listenBrokerSyncStart = <T>(handler: EventCallback<T>): Promise<UnlistenFn> => {
   return portfolioEventBridge.listen("broker:sync-start", handler);

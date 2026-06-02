@@ -8,7 +8,7 @@ import {
 } from "@/adapters";
 import { useAuth } from "@/context/auth-context";
 import { getPlatform } from "@/hooks/use-platform";
-import { CONNECT_ENABLED } from "@/lib/connect-config";
+import { resolveConnectConfig, type ResolvedConnectConfig } from "@/lib/connect-config";
 import { QueryKeys } from "@/lib/query-keys";
 import { createClient, Session, SupabaseClient, User } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
@@ -33,8 +33,12 @@ import type { UserInfo } from "../types";
 // when CONNECT_ENABLED is false, so the empty fallback is unreachable in
 // practice. We keep `as string` for the type cast; the gate (connect-config.ts)
 // is what actually decides whether the Connect provider runs.
-const AUTH_URL = (import.meta.env.CONNECT_AUTH_URL as string) || "";
-const AUTH_PUBLISHABLE_KEY = (import.meta.env.CONNECT_AUTH_PUBLISHABLE_KEY as string) || "";
+// Both `CONNECT_AUTH_URL` and `CONNECT_AUTH_PUBLISHABLE_KEY` are now
+// resolved at runtime via `resolveConnectConfig()` — this lets the
+// desktop self-discover the cloud's Supabase config from
+// `/api/v1/config/public` instead of requiring an installer rebuild
+// on every key rotation. The build-time .env path still wins when
+// set (see `lib/connect-config.ts`).
 
 // Key for storing refresh token in keyring/localStorage (for session restoration)
 // Note: For keyring (Tauri), the "mizan_" prefix is added automatically by SecretStore
@@ -199,10 +203,13 @@ function createHybridPkceStorage(storageKey: string) {
   };
 }
 
-// Create a Supabase client with custom storage for persistent auth
-const createSupabaseClient = () => {
-  const storageKey = getAuthStorageKey(AUTH_URL);
-  return createClient(AUTH_URL, AUTH_PUBLISHABLE_KEY, {
+// Create a Supabase client with custom storage for persistent auth.
+// Accepts the resolved config so the same code path works for both
+// build-time-baked credentials and runtime-discovered ones (the
+// cloud's /api/v1/config/public endpoint).
+const createSupabaseClient = (cfg: ResolvedConnectConfig) => {
+  const storageKey = getAuthStorageKey(cfg.supabaseUrl);
+  return createClient(cfg.supabaseUrl, cfg.supabasePublishableKey, {
     auth: {
       storageKey,
       storage: createHybridPkceStorage(storageKey),
@@ -218,7 +225,13 @@ const createSupabaseClient = () => {
 };
 
 // Internal provider used when Connect is enabled
-function EnabledMizanConnectProvider({ children }: { children: ReactNode }) {
+function EnabledMizanConnectProvider({
+  children,
+  resolvedConfig,
+}: {
+  children: ReactNode;
+  resolvedConfig: ResolvedConnectConfig;
+}) {
   const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const [isInitializing, setIsInitializing] = useState(true);
@@ -231,8 +244,10 @@ function EnabledMizanConnectProvider({ children }: { children: ReactNode }) {
 
   const supabaseRef = useRef<SupabaseClient | null>(null);
 
-  // Initialize Supabase client
-  supabaseRef.current ??= createSupabaseClient();
+  // Initialize Supabase client — pass the resolved config so we work
+  // whether the credentials came from build-time .env or runtime
+  // self-discovery via the cloud's /api/v1/config/public endpoint.
+  supabaseRef.current ??= createSupabaseClient(resolvedConfig);
 
   const supabase = supabaseRef.current;
 
@@ -827,16 +842,59 @@ function EnabledMizanConnectProvider({ children }: { children: ReactNode }) {
   return <MizanConnectContext.Provider value={value}>{children}</MizanConnectContext.Provider>;
 }
 
-// Main provider that chooses enabled/disabled path based on configuration
+// Main provider that chooses enabled/disabled path based on the
+// resolved Connect config + the platform's cloud_sync capability.
+//
+// Resolution order:
+//   1. Await resolveConnectConfig() — build-time wins; runtime fallback
+//      hits /api/v1/config/public when build-time creds are missing.
+//   2. Await getPlatform() — some platforms (web build, headless test
+//      runners) opt out of cloud sync entirely.
+//   3. If both succeed → mount EnabledMizanConnectProvider with the
+//      resolved credentials. Otherwise → mount the disabled context.
+//
+// During resolution we render the disabled context with
+// isInitializing=true so no Connect UI flashes a misleading state
+// (showing "sign in" then yanking it away after the fetch).
 export function MizanConnectProvider({ children }: { children: ReactNode }) {
-  const [isCapabilityCheckComplete, setIsCapabilityCheckComplete] = useState(!CONNECT_ENABLED);
+  const [resolvedConfig, setResolvedConfig] = useState<ResolvedConnectConfig | null>(null);
+  const [resolveComplete, setResolveComplete] = useState(false);
   const [isCloudSyncAvailable, setIsCloudSyncAvailable] = useState(false);
+  const [isCapabilityCheckComplete, setIsCapabilityCheckComplete] = useState(false);
 
+  // Step 1: resolve the Connect config (build-time or runtime).
   useEffect(() => {
-    if (!CONNECT_ENABLED) return;
+    let cancelled = false;
+    void resolveConnectConfig()
+      .then((state) => {
+        if (cancelled) return;
+        if (state.enabled) {
+          setResolvedConfig(state.config);
+        } else {
+          // Log the reason so support can diagnose without log-diving.
+          console.info(`[MizanConnect] disabled: ${state.reason}`);
+        }
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setResolveComplete(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Step 2: capability check — only once config has resolved to an
+  // enabled state. No point asking the platform if the config can't
+  // even produce a Supabase client.
+  useEffect(() => {
+    if (!resolveComplete) return;
+    if (!resolvedConfig) {
+      setIsCapabilityCheckComplete(true);
+      return;
+    }
 
     let cancelled = false;
-
     void getPlatform()
       .then((platform) => {
         if (cancelled) return;
@@ -845,7 +903,6 @@ export function MizanConnectProvider({ children }: { children: ReactNode }) {
         );
       })
       .catch(() => {
-        // Fall back to enabled on detection errors to preserve current behavior.
         if (cancelled) return;
         setIsCloudSyncAvailable(true);
       })
@@ -857,9 +914,11 @@ export function MizanConnectProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [resolveComplete, resolvedConfig]);
 
-  if (!isCapabilityCheckComplete) {
+  // Initial loading state: spinner instead of "sign in" until both
+  // resolution + capability check finish.
+  if (!resolveComplete || !isCapabilityCheckComplete) {
     return (
       <MizanConnectContext.Provider
         value={{
@@ -873,7 +932,7 @@ export function MizanConnectProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!CONNECT_ENABLED || !isCloudSyncAvailable) {
+  if (!resolvedConfig || !isCloudSyncAvailable) {
     return (
       <MizanConnectContext.Provider value={disabledContextValue}>
         {children}
@@ -881,7 +940,11 @@ export function MizanConnectProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  return <EnabledMizanConnectProvider>{children}</EnabledMizanConnectProvider>;
+  return (
+    <EnabledMizanConnectProvider resolvedConfig={resolvedConfig}>
+      {children}
+    </EnabledMizanConnectProvider>
+  );
 }
 
 export const useMizanConnect = () => {

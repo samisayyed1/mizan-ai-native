@@ -98,6 +98,8 @@ export const QueryKeys = {
   // Cloud Sync
   BROKER_CONNECTIONS: "brokerConnections",
   BROKER_ACCOUNTS: "brokerAccounts",
+  SNAPTRADE_HEALTH: "snaptradeHealth",
+  SNAPTRADE_CONNECTIONS: "snaptradeConnections",
   PLATFORMS: "platforms",
   SYNCED_ACCOUNTS: "syncedAccounts",
   SUBSCRIPTION_PLANS: "subscriptionPlans",
@@ -151,4 +153,12 @@ export const QueryKeys = {
     accountId,
     date,
   ],
+
+  // Notify track — personalized AI wealth-notification center.
+  // `NOTIFICATIONS` is the page list (capped at `limit`); the
+  // unread count has its own key so the bell badge stays cheap to
+  // poll without paginating.
+  NOTIFICATIONS: "notifications",
+  notifications: (limit?: number) => [QueryKeys.NOTIFICATIONS, limit ?? 25],
+  NOTIFICATIONS_UNREAD_COUNT: "notificationsUnreadCount",
 } as const;

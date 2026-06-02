@@ -3,19 +3,18 @@
 //! Per `MIZAN_AI_NATIVE_PLAN.md` v3.1 §A6, the assistant needs hard
 //! guardrails *outside* the system prompt:
 //!
-//!   1. Tools that mutate must return drafts only.
-//!      ↳ Already enforced by Phase B: every write tool builds a draft
-//!         and never calls the persistence service. Nothing for this
-//!         module to do.
+//! 1. Tools that mutate must return drafts only. Already enforced by
+//!    Phase B: every write tool builds a draft and never calls the
+//!    persistence service. Nothing for this module to do.
 //!
-//!   2. Reject AI-claimed outputs that contradict service data.
-//!      ↳ Each tool's `build_output` re-reads the underlying state on
-//!         every call, so the AI's claim is replaced by ground truth.
-//!         Out of scope for this module.
+//! 2. Reject AI-claimed outputs that contradict service data. Each
+//!    tool's `build_output` re-reads the underlying state on every
+//!    call, so the AI's claim is replaced by ground truth. Out of
+//!    scope for this module.
 //!
-//!   3. Hard cap on tool calls per turn.       ← THIS MODULE
-//!   4. Numeric bounds on writes.                ← THIS MODULE (helpers)
-//!   5. All tool calls logged to an audit trail. ← THIS MODULE (emit hook)
+//! 3. Hard cap on tool calls per turn (THIS MODULE).
+//! 4. Numeric bounds on writes (THIS MODULE — helpers).
+//! 5. All tool calls logged to an audit trail (THIS MODULE — emit hook).
 //!
 //! This module ships the data structures + assertion helpers + audit
 //! emit hook so the chat-runtime layer can adopt them site-by-site.
@@ -91,7 +90,10 @@ impl AiSafetyRuntime {
         turn_index: u32,
         tool_name: &str,
     ) -> Result<ToolCallAuditEntry, ToolCallAuditEntry> {
-        let mut counters = self.counters.lock().expect("safety counters mutex poisoned");
+        let mut counters = self
+            .counters
+            .lock()
+            .expect("safety counters mutex poisoned");
         let counter = counters
             .entry((thread_id.to_string(), turn_index))
             .or_insert(0);
@@ -163,7 +165,10 @@ impl AiSafetyRuntime {
     /// Reset a thread's per-turn counter — call when a new user message
     /// starts a fresh turn. Cheap O(1) hash drop.
     pub fn end_turn(self: &Arc<Self>, thread_id: &str, turn_index: u32) {
-        let mut counters = self.counters.lock().expect("safety counters mutex poisoned");
+        let mut counters = self
+            .counters
+            .lock()
+            .expect("safety counters mutex poisoned");
         counters.remove(&(thread_id.to_string(), turn_index));
     }
 }

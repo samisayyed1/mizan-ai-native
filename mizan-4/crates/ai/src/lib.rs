@@ -47,11 +47,26 @@
 //! }
 //! ```
 
+// AiError is intentionally a flat sum-type (Structured variant carries
+// the full MizanError envelope so the frontend can render it without a
+// second decode). The variant is large by design — boxing every Err
+// site to silence `clippy::result_large_err` would multiply hot-path
+// allocations + obscure pattern matches in handlers without changing
+// performance meaningfully (Result return values flow through tokio
+// futures already on the heap).
+#![allow(clippy::result_large_err)]
+
+pub mod agent;
+pub mod agent_chat_bridge;
+pub mod agent_dispatcher;
+pub mod agent_planner;
+pub mod agent_recipes;
 pub mod chat;
 pub mod env;
 pub mod error;
 #[cfg(test)]
 pub mod eval;
+pub mod insights_digest;
 pub mod prompt_template;
 pub mod prompt_template_service;
 pub mod provider_model;

@@ -76,9 +76,18 @@ pub async fn update_settings(
         let base_currency = updated_settings.base_currency.clone();
         // Detached so a Plaid/connect hiccup never blocks the onboarding-finish click.
         tauri::async_runtime::spawn(async move {
-            match mizan_core::onboarding::seed_example_liabilities(&alt_asset_service, &base_currency).await {
+            match mizan_core::onboarding::seed_example_liabilities(
+                &alt_asset_service,
+                &base_currency,
+            )
+            .await
+            {
                 Ok(0) => debug!("Example liabilities skipped — user already has at least one."),
-                Ok(n) => debug!("Seeded {} example liabilit{}", n, if n == 1 { "y" } else { "ies" }),
+                Ok(n) => debug!(
+                    "Seeded {} example liabilit{}",
+                    n,
+                    if n == 1 { "y" } else { "ies" }
+                ),
                 Err(e) => log::warn!("Example liability seed failed: {}", e),
             }
         });

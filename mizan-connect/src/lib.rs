@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 #![deny(rust_2018_idioms)]
 
+pub mod admin;
 pub mod audit;
 pub mod auth;
 pub mod billing;
@@ -16,9 +17,11 @@ pub mod error;
 pub mod health;
 pub mod middleware;
 pub mod plaid;
+pub mod public_config;
 pub mod secret_crypto;
 pub mod server;
 pub mod shutdown;
+pub mod snaptrade;
 pub mod state;
 pub mod teams;
 pub mod telemetry;

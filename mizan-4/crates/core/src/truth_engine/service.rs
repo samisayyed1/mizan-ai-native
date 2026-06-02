@@ -8,9 +8,10 @@ use rust_decimal::Decimal;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+#[cfg(test)]
+use super::model::canonical_payload;
 use super::model::{
-    canonical_payload, derive_entry_hash, LedgerEntry, LedgerEntryKind, LedgerIntegrityError,
-    GENESIS_PREV_HASH,
+    derive_entry_hash, LedgerEntry, LedgerEntryKind, LedgerIntegrityError, GENESIS_PREV_HASH,
 };
 use crate::Result;
 
@@ -28,6 +29,17 @@ pub struct AppendInput {
     pub metadata: BTreeMap<String, Value>,
     /// Override the default `Utc::now()` for tests / replay scenarios.
     pub recorded_at: Option<DateTime<Utc>>,
+}
+
+/// Durable queue used by write-path callers to persist ledger appends
+/// that failed transiently after the originating row already committed.
+/// Implementations live in the storage layer (so they can be backed by
+/// the same db connection); `mizan-core` only depends on the trait.
+#[async_trait]
+pub trait TruthLedgerRetryQueue: Send + Sync {
+    /// Persist an AppendInput for later replay. Idempotent on
+    /// `AppendInput.id` — re-enqueueing bumps the attempt count + last_error.
+    async fn enqueue(&self, input: &AppendInput, reason: &str) -> Result<()>;
 }
 
 /// Append-only immutable ledger.
@@ -81,11 +93,11 @@ impl Default for InMemoryTruthLedger {
 #[async_trait]
 impl TruthLedger for InMemoryTruthLedger {
     async fn append(&self, input: AppendInput) -> Result<LedgerEntry> {
-        let kind = input
-            .kind
-            .ok_or_else(|| crate::Error::Validation(crate::errors::ValidationError::InvalidInput(
+        let kind = input.kind.ok_or_else(|| {
+            crate::Error::Validation(crate::errors::ValidationError::InvalidInput(
                 "LedgerEntry kind is required".to_string(),
-            )))?;
+            ))
+        })?;
         if input.id.trim().is_empty() {
             return Err(crate::Error::Validation(
                 crate::errors::ValidationError::InvalidInput(
@@ -134,9 +146,9 @@ impl TruthLedger for InMemoryTruthLedger {
         let entries = self.entries.read().expect("ledger poisoned");
 
         let mut expected_prev = GENESIS_PREV_HASH.to_string();
-        let mut expected_seq: u64 = 0;
 
-        for entry in entries.iter() {
+        for (expected_seq_usize, entry) in entries.iter().enumerate() {
+            let expected_seq = expected_seq_usize as u64;
             if entry.sequence != expected_seq {
                 return Err(LedgerIntegrityError::OutOfOrder(entry.id.clone()));
             }
@@ -150,7 +162,6 @@ impl TruthLedger for InMemoryTruthLedger {
                 return Err(LedgerIntegrityError::TamperedEntry(entry.id.clone()));
             }
             expected_prev = entry.entry_hash.clone();
-            expected_seq += 1;
         }
         Ok(())
     }
@@ -198,10 +209,9 @@ mod tests {
         let l = InMemoryTruthLedger::new();
         // futures::executor avoids needing a tokio runtime for this one
         // assertion. Other tests use the #[tokio::test] macro.
-        let entry = futures::executor::block_on(
-            l.append(input("e1", LedgerEntryKind::AccountCreated)),
-        )
-        .unwrap();
+        let entry =
+            futures::executor::block_on(l.append(input("e1", LedgerEntryKind::AccountCreated)))
+                .unwrap();
         let p1 = canonical_payload(&entry);
         let p2 = canonical_payload(&entry);
         assert_eq!(p1, p2, "canonical payload must be deterministic");

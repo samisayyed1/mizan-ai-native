@@ -72,7 +72,7 @@ function HoldingRow({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <TickerAvatar symbol={avatarSymbol} className="size-9 shrink-0" />
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-semibold">{title}</span>
+          <span className="truncate text-sm font-semibold tracking-tight">{title}</span>
           <span className="text-muted-foreground text-xs">{subtitle}</span>
         </div>
       </div>
@@ -81,7 +81,7 @@ function HoldingRow({
           value={marketValue}
           currency={baseCurrency}
           isHidden={isHidden}
-          className="text-sm font-semibold"
+          className="text-sm font-semibold tracking-tight tabular-nums"
         />
         <div className="flex items-center gap-2">
           <GainAmount
@@ -147,10 +147,10 @@ function TopHoldingsSkeleton() {
   return (
     <Card className="w-full border-0 bg-transparent shadow-none">
       <CardHeader className="py-2">
-        <CardTitle className="text-md">Top Holdings</CardTitle>
+        <CardTitle className="text-md font-semibold tracking-tight">Top Holdings</CardTitle>
       </CardHeader>
       <CardContent>
-        <Card className="shadow-xs w-full">
+        <Card className="w-full">
           <CardContent className="px-4 pb-2 pt-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="border-border border-b py-3 last:border-0">
@@ -183,10 +183,10 @@ function TopHoldingsEmptyState() {
   return (
     <Card className="w-full border-0 bg-transparent p-0 shadow-none">
       <CardHeader className="px-0 py-2">
-        <CardTitle className="text-md">Top Holdings</CardTitle>
+        <CardTitle className="text-md font-semibold tracking-tight">Top Holdings</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <Card className="border-border/50 bg-success/10 shadow-xs w-full">
+        <Card className="bg-muted/30 w-full">
           <CardContent className="px-4 py-6">
             <div className="text-center">
               <p className="text-sm">No holdings yet.</p>
@@ -262,14 +262,14 @@ export function TopHoldings({ holdings, isLoading, baseCurrency }: TopHoldingsPr
   return (
     <Card className="w-full border-0 bg-transparent p-0 shadow-none">
       <CardHeader className="flex flex-row items-center justify-between px-0 py-2">
-        <CardTitle className="text-md">Holdings</CardTitle>
+        <CardTitle className="text-md font-semibold tracking-tight">Holdings</CardTitle>
         <div className="flex items-center gap-1">
           <Popover>
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground hover:bg-success/10 h-8 w-8 p-0"
+                className="text-muted-foreground hover:bg-accent h-8 w-8 p-0"
               >
                 <Icons.ListFilter className="h-4 w-4" />
               </Button>
@@ -356,7 +356,7 @@ export function TopHoldings({ holdings, isLoading, baseCurrency }: TopHoldingsPr
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground hover:bg-success/10 text-xs"
+            className="text-muted-foreground hover:bg-accent text-xs"
             onClick={() => navigate("/holdings")}
           >
             View All
@@ -365,7 +365,7 @@ export function TopHoldings({ holdings, isLoading, baseCurrency }: TopHoldingsPr
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <Card className="shadow-xs w-full">
+        <Card className="w-full">
           <CardContent className="px-4 pb-2 pt-4">
             {topHoldings.map((holding) => {
               const assetId = holding.instrument?.id ?? holding.id;

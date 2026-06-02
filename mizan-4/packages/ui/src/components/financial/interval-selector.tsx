@@ -2,7 +2,7 @@ import { AnimatedToggleGroup } from "../ui/animated-toggle-group";
 import { useIsMobile } from "../../hooks/use-mobile";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import { cn } from "../../lib/utils";
-import { endOfDay, startOfDay, startOfYear, subDays, subMonths, subWeeks, subYears } from "date-fns";
+import { endOfDay, startOfDay, startOfYear, subMonths, subWeeks, subYears } from "date-fns";
 import React, { useCallback, useState } from "react";
 
 export type TimePeriod = "1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "5Y" | "ALL";
@@ -38,11 +38,12 @@ const intervalDescriptions: Record<TimePeriod, string> = {
 // "past 1 week" mean "the seven calendar days ending today, inclusive"
 // — which matches what the user expects when they click the button.
 const intervals: IntervalData[] = [
-  {
-    code: "1D",
-    description: intervalDescriptions["1D"],
-    calculateRange: () => ({ from: startOfDay(subDays(new Date(), 1)), to: endOfDay(new Date()) }),
-  },
+  // 1D is intentionally omitted. Mizan only ingests one valuation snapshot
+  // per day, so a "past day" view collapses to two flat points around the
+  // headline value — looks broken, says nothing useful. The 1W view is the
+  // shortest window that draws a meaningful curve at daily resolution.
+  // (When intraday quotes ship — minute-bar history backend — restore 1D
+  // here.)
   {
     code: "1W",
     description: intervalDescriptions["1W"],
@@ -101,7 +102,19 @@ interface IntervalSelectorProps {
   storageKey?: string;
   /** Optional callback for haptic feedback */
   onHaptic?: () => void;
+  /**
+   * Earliest date for which the underlying data is available. When set,
+   * intervals whose lookback window starts more than a week earlier
+   * than this date are hidden — picking "5Y" on a 50-day-old account
+   * produces a chart that's mostly empty axes, which makes the app feel
+   * broken. Hiding the unsupported buttons is honest about what we can
+   * actually plot. `ALL` is always shown (it adapts to the data).
+   */
+  dataEarliestDate?: Date | null;
 }
+
+/** Tolerance (days) for keeping an interval visible past the actual data extent. */
+const INTERVAL_GRACE_DAYS = 7;
 
 const IntervalSelector: React.FC<IntervalSelectorProps> = ({
   onIntervalSelect,
@@ -109,6 +122,7 @@ const IntervalSelector: React.FC<IntervalSelectorProps> = ({
   defaultValue = DEFAULT_INTERVAL_CODE,
   storageKey,
   onHaptic,
+  dataEarliestDate,
 }) => {
   const isMobile = useIsMobile();
   // State for selection - persisted or local
@@ -137,7 +151,34 @@ const IntervalSelector: React.FC<IntervalSelectorProps> = ({
     [onIntervalSelect, storageKey, setPersistedValue, onHaptic],
   );
 
-  const items = intervals.map((interval) => ({
+  // Filter out intervals whose window starts well before our earliest data
+  // point — they'd just render mostly-empty axes and feel broken.
+  const visibleIntervals = React.useMemo(() => {
+    if (!dataEarliestDate) return intervals;
+    const earliestTs = dataEarliestDate.getTime();
+    const graceMs = INTERVAL_GRACE_DAYS * 24 * 60 * 60 * 1000;
+    return intervals.filter((interval) => {
+      if (interval.code === "ALL") return true; // always honour
+      const range = interval.calculateRange();
+      if (!range?.from) return true;
+      // Hide when the interval reaches more than GRACE_DAYS before the
+      // earliest data we actually have.
+      return range.from.getTime() >= earliestTs - graceMs;
+    });
+  }, [dataEarliestDate]);
+
+  // If the user's persisted choice is now hidden (e.g. they picked 5Y last
+  // session and now have a fresh account with 50 days of data), snap back
+  // to the longest still-visible interval.
+  React.useEffect(() => {
+    if (!dataEarliestDate) return;
+    if (visibleIntervals.some((i) => i.code === currentValue)) return;
+    const fallback = visibleIntervals[visibleIntervals.length - 1];
+    if (fallback) handleValueChange(fallback.code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataEarliestDate, visibleIntervals.length]);
+
+  const items = visibleIntervals.map((interval) => ({
     value: interval.code,
     label: interval.code,
     title: interval.description,

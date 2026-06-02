@@ -90,12 +90,10 @@ const SettingsContributionLimitPage = () => {
           ) : (
             <EmptyPlaceholder>
               <EmptyPlaceholder.Icon name="CircleGauge" />
-              <EmptyPlaceholder.Title>
-                No contribution limits for {currentYear}!
-              </EmptyPlaceholder.Title>
+              <EmptyPlaceholder.Title>No limits set for {currentYear}</EmptyPlaceholder.Title>
               <EmptyPlaceholder.Description>
-                You don&apos;t have any contribution limits for the current year. Start adding your
-                contribution limits.
+                Track room left in tax-advantaged accounts — ISA, 401(k), TFSA, RRSP, IRA. Mizan
+                will warn you before contributions push you over the cap.
               </EmptyPlaceholder.Description>
               <Button onClick={() => handleAddLimit()}>
                 <Icons.Plus className="mr-2 h-4 w-4" />

@@ -52,6 +52,60 @@ pub struct PlaidConnectionDto {
     pub updated_at: OffsetDateTime,
 }
 
+/// Investment transaction row served to the desktop.
+///
+/// Mirrors the storage schema 1:1 but with camelCase keys for the JSON
+/// wire format. Monetary fields are serialised as strings rather than
+/// JSON numbers so the desktop can parse them into Decimal without f64
+/// round-trip drift at the boundary — same convention the desktop's
+/// Decimal-as-string adapter uses for activities.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaidInvestmentTransactionDto {
+    pub investment_transaction_id: String,
+    pub item_id: String,
+    pub account_id: String,
+    #[serde(rename = "type")]
+    pub transaction_type: Option<String>,
+    pub subtype: Option<String>,
+    pub name: Option<String>,
+    pub security_id: Option<String>,
+    /// Denormalized from the Plaid securities array at sync time so the
+    /// desktop can resolve to a local asset in a single GET (rather than
+    /// per-security round-trips). NULL only on rows from the pre-0010
+    /// schema until the next sync refreshes them.
+    pub security_ticker_symbol: Option<String>,
+    pub security_name: Option<String>,
+    pub security_type: Option<String>,
+    pub security_cusip: Option<String>,
+    pub security_isin: Option<String>,
+    /// Decimal-as-string. Empty string would be ambiguous; we emit
+    /// `null` for absent values via Option.
+    pub amount: Option<String>,
+    pub price: Option<String>,
+    pub quantity: Option<String>,
+    pub fees: Option<String>,
+    pub iso_currency_code: Option<String>,
+    pub unofficial_currency_code: Option<String>,
+    pub transaction_date: String,
+    pub cancelled: bool,
+    pub raw_json: serde_json::Value,
+    pub updated_at: OffsetDateTime,
+}
+
+/// Query-string parameters for GET /sync/plaid/investment-transactions.
+/// All optional — defaults pull the most recent 500 across all accounts.
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ListInvestmentTransactionsParams {
+    /// ISO YYYY-MM-DD. Only rows with `transaction_date >= since` returned.
+    pub since: Option<String>,
+    /// Filter to a single Plaid account_id.
+    pub account_id: Option<String>,
+    /// Max rows. Server-side cap at 1000 to bound memory.
+    pub limit: Option<i64>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaidAccountDto {
@@ -77,6 +131,11 @@ pub struct PlaidSyncResponse {
     pub transactions_removed: usize,
     pub liabilities_synced: usize,
     pub holdings_synced: usize,
+    /// Count of investment_transactions inserted/upserted in this sync run.
+    /// Field name + #[serde(default)] keeps the wire format backward-
+    /// compatible with desktops that haven't been updated yet.
+    #[serde(default)]
+    pub investment_transactions_synced: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -213,6 +272,43 @@ pub struct PlaidInvestmentsHoldingsResponse {
     pub accounts: Vec<PlaidAccount>,
     pub holdings: Vec<serde_json::Value>,
     pub securities: Vec<serde_json::Value>,
+    pub item: PlaidItem,
+}
+
+/// A single investment transaction as returned by /investments/transactions/get.
+/// We keep the raw JSON via `#[serde(flatten)]` so the repository can persist
+/// the full payload — Plaid sometimes adds fields between schema versions and
+/// we don't want to lose those on the cloud side.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PlaidInvestmentTransaction {
+    pub investment_transaction_id: String,
+    pub account_id: String,
+    pub security_id: Option<String>,
+    pub date: String,
+    pub name: Option<String>,
+    pub quantity: Option<f64>,
+    pub amount: Option<f64>,
+    pub price: Option<f64>,
+    pub fees: Option<f64>,
+    pub iso_currency_code: Option<String>,
+    pub unofficial_currency_code: Option<String>,
+    #[serde(rename = "type")]
+    pub transaction_type: Option<String>,
+    pub subtype: Option<String>,
+    /// Plaid uses `cancel_transaction_id` to point at the canceled
+    /// transaction; presence-of-field means this row is the cancellation.
+    #[serde(default)]
+    pub cancel_transaction_id: Option<String>,
+    #[serde(flatten)]
+    pub raw: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlaidInvestmentsTransactionsResponse {
+    pub accounts: Vec<PlaidAccount>,
+    pub investment_transactions: Vec<PlaidInvestmentTransaction>,
+    pub securities: Vec<serde_json::Value>,
+    pub total_investment_transactions: u32,
     pub item: PlaidItem,
 }
 

@@ -20,12 +20,13 @@ const settingsSections = [
         subtitle: "Theme, font, and menu bar",
         icon: <Icons.Monitor className="size-5" />,
       },
-      {
-        title: "Privacy",
-        href: "general",
-        subtitle: "Balance masking and local-first data controls",
-        icon: <Icons.EyeOff className="size-5" />,
-      },
+      // Privacy entry deliberately removed for now. The previous version
+      // pointed to href: "general" — meaning clicking "Privacy" sent the
+      // user to the General page, which has no privacy controls. Dead
+      // nav. When dedicated privacy controls land (balance masking
+      // toggle, local-first opt-outs) we can re-add this entry with a
+      // real route. Until then, balance privacy is exposed via the
+      // dashboard's eye-toggle and that's reachable from anywhere.
     ],
   },
   {
@@ -72,9 +73,9 @@ const settingsSections = [
     title: "AI",
     items: [
       {
-        title: "Providers",
+        title: "Settings",
         href: "ai-providers",
-        subtitle: "Mizan AI or private provider configuration",
+        subtitle: "Mizan AI plus optional bring-your-own providers",
         icon: <Icons.SparklesOutline className="size-5" />,
       },
     ],
@@ -188,7 +189,7 @@ export default function SettingsLayout() {
               <div className="space-y-6">
                 {sections.map((section) => (
                   <div key={section.title} className="space-y-2">
-                    <div className="text-muted-foreground pl-2 text-sm font-light uppercase tracking-widest">
+                    <div className="text-muted-foreground pl-2 text-xs font-semibold uppercase tracking-widest">
                       {section.title}
                     </div>
                     <SidebarNav items={section.items} />

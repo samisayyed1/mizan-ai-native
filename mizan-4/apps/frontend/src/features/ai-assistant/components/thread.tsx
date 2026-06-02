@@ -10,15 +10,20 @@ import {
 
 import type { FC, ReactNode } from "react";
 
+import { useEffect, useState } from "react";
 import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
+import { AgentProgressCard } from "./agent-progress-card";
 import { ComposerAddAttachment, ComposerAttachments, UserMessageAttachments } from "./attachment";
 import { MarkdownText } from "./markdown-text";
 import { ToolFallback } from "./tool-fallback";
 import { TooltipIconButton } from "./tooltip-icon-button";
 
 import { cn } from "@/lib/utils";
+import { useAccounts } from "@/hooks/use-accounts";
 import { Reasoning, ReasoningGroup } from "./reasoning";
+import type { AgentInnerEvent } from "../types";
+import { isAgentMode, setAgentMode } from "../api";
 
 export interface ThreadProps {
   composerActions?: ReactNode;
@@ -86,11 +91,11 @@ const ThreadWelcome: FC = () => {
     <div className="aui-thread-welcome-root max-w-(--thread-max-width) mx-auto my-auto flex w-full grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-8">
-          <div className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-2 animate-in text-2xl font-semibold duration-300 ease-out">
-            Hello there!
+          <div className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-2 animate-in text-2xl font-semibold tracking-tight duration-300 ease-out">
+            What are we looking at today?
           </div>
           <div className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-2 animate-in text-muted-foreground/65 text-2xl delay-100 duration-300 ease-out">
-            How can I help you today?
+            Your wealth, your goals, your zakat — ask me anything.
           </div>
         </div>
       </div>
@@ -100,26 +105,30 @@ const ThreadWelcome: FC = () => {
 };
 
 const ThreadSuggestions: FC = () => {
+  // Adapt the chip set to what the user actually has. Suggesting
+  // "how is my portfolio performing" to someone with zero accounts is
+  // a dead end — they'll get "I don't see any data" back from the
+  // model. Swap to onboarding-flavoured prompts for the empty case.
+  const { accounts, isLoading } = useAccounts();
+  const hasData = !isLoading && (accounts?.length ?? 0) > 0;
+
+  const suggestions = hasData
+    ? [
+        { icon: "TrendingUp" as const, text: "How is my portfolio performing this year?" },
+        { icon: "BarChart" as const, text: "What are my top performing holdings?" },
+        { icon: "FileText" as const, text: "Show my dividend income summary" },
+        { icon: "PieChart" as const, text: "Analyze my asset allocation" },
+      ]
+    : [
+        { icon: "Sparkles" as const, text: "Set up my portfolio from a broker CSV" },
+        { icon: "Target" as const, text: "Help me plan a retirement goal" },
+        { icon: "FileText" as const, text: "What can you do with my portfolio?" },
+        { icon: "ShieldCheck" as const, text: "How does Mizan keep my data private?" },
+      ];
+
   return (
     <div className="aui-thread-welcome-suggestions flex flex-col items-stretch gap-2 pb-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
-      {[
-        {
-          icon: "TrendingUp" as const,
-          text: "How is my portfolio performing this year?",
-        },
-        {
-          icon: "BarChart" as const,
-          text: "What are my top performing holdings?",
-        },
-        {
-          icon: "FileText" as const,
-          text: "Show my dividend income summary",
-        },
-        {
-          icon: "PieChart" as const,
-          text: "Analyze my asset allocation",
-        },
-      ].map((suggestion, index) => {
+      {suggestions.map((suggestion, index) => {
         const Icon = Icons[suggestion.icon];
         return (
           <div
@@ -154,7 +163,7 @@ const Composer: FC<ComposerProps> = ({ composerActions }) => {
       <ComposerPrimitive.AttachmentDropzone className="aui-composer-attachment-dropzone border-input bg-background has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-ring/50 data-[dragging=true]:border-ring data-[dragging=true]:bg-accent/50 dark:bg-background shadow-xs flex w-full flex-col rounded-3xl border px-1 pt-2 outline-none transition-[color,box-shadow] has-[textarea:focus-visible]:ring-[3px] data-[dragging=true]:border-dashed">
         <ComposerAttachments />
         <ComposerPrimitive.Input
-          placeholder="Send a message..."
+          placeholder="Ask Mizan about your wealth, or drop a CSV…"
           className="aui-composer-input placeholder:text-muted-foreground mb-1 max-h-32 min-h-16 w-full resize-none bg-transparent px-3.5 pb-3 pt-1.5 text-base outline-none focus-visible:ring-0"
           rows={1}
           autoFocus
@@ -170,11 +179,59 @@ interface ComposerActionProps {
   composerActions?: ReactNode;
 }
 
+/**
+ * Toggle for "Agent Mode" — switches the next send between the
+ * legacy single-turn chat path and the autonomous Plan→Execute→
+ * Verify→Undo runtime in `stream_agent_chat`. State lives in the
+ * module-level `agentModeEnabled` flag in api/stream.ts so the
+ * runtime's send handler can read it without prop drilling.
+ *
+ * Visual:  [ Agent ◯ ] (off) → [ Agent ● ] (on, accent-coloured)
+ *
+ * When ON: an inline hint replaces the placeholder ("Describe your
+ * goal — the agent will plan + execute autonomously.") and the
+ * send button keeps the same icon (no separate "run agent" button —
+ * the toggle is the modifier).
+ */
+const AgentModeToggle: FC = () => {
+  const [enabled, setEnabled] = useState<boolean>(() => isAgentMode());
+
+  // Mirror local state to the module flag so the runtime sees it.
+  useEffect(() => {
+    setAgentMode(enabled);
+  }, [enabled]);
+
+  return (
+    <TooltipIconButton
+      tooltip={
+        enabled
+          ? "Agent on — Mizan will plan + execute autonomously"
+          : "Turn on Agent to let Mizan run multi-step goals end-to-end"
+      }
+      side="top"
+      type="button"
+      onClick={() => setEnabled((v) => !v)}
+      variant={enabled ? "default" : "ghost"}
+      size="sm"
+      className={cn(
+        "aui-composer-agent-toggle h-7 gap-1 rounded-full px-2.5 text-xs font-medium",
+        enabled && "bg-amber-400 text-amber-950 hover:bg-amber-500"
+      )}
+      aria-pressed={enabled}
+      aria-label={enabled ? "Disable Agent Mode" : "Enable Agent Mode"}
+    >
+      <Icons.Sparkles className="size-3.5" />
+      Agent
+    </TooltipIconButton>
+  );
+};
+
 const ComposerAction: FC<ComposerActionProps> = ({ composerActions }) => {
   return (
     <div className="aui-composer-action-wrapper relative mx-1 mb-2 mt-2 flex items-center justify-between">
       <div className="flex items-center gap-1">
         <ComposerAddAttachment />
+        <AgentModeToggle />
         {composerActions}
       </div>
 
@@ -257,6 +314,42 @@ const TypingIndicator: FC<TypingIndicatorProps> = ({ position }) => {
   );
 };
 
+/**
+ * Pulls every "agent" part out of the current assistant message and
+ * renders one <AgentProgressCard /> per run_id. assistant-ui's
+ * MessagePrimitive.Parts doesn't know how to render custom part
+ * types, so we render agent parts ourselves above the standard
+ * Parts primitive. The agent part itself is opaque to the chat
+ * library — it just sits in the message.content.parts array
+ * alongside text/reasoning/toolCall parts.
+ */
+const AgentParts: FC = () => {
+  const agentParts = useAssistantState(({ message }) => {
+    const parts = message?.content as
+      | readonly { type: string; runId?: string; events?: AgentInnerEvent[] }[]
+      | undefined;
+    if (!parts || !Array.isArray(parts)) return [];
+    return parts.filter(
+      (p): p is { type: "agent"; runId: string; events: AgentInnerEvent[] } =>
+        p?.type === "agent" && typeof p.runId === "string" && Array.isArray(p.events)
+    );
+  });
+
+  if (!agentParts || agentParts.length === 0) return null;
+
+  return (
+    <>
+      {agentParts.map((part) => (
+        <AgentProgressCard
+          key={part.runId}
+          events={part.events}
+          title="Agent run"
+        />
+      ))}
+    </>
+  );
+};
+
 const AssistantMessage: FC = () => {
   return (
     <MessagePrimitive.Root
@@ -265,6 +358,7 @@ const AssistantMessage: FC = () => {
     >
       <div className="aui-assistant-message-content text-foreground wrap-break-word mx-2 text-sm leading-6">
         <TypingIndicator position="initial" />
+        <AgentParts />
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,

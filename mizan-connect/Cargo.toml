@@ -35,9 +35,10 @@ tokio-cron-scheduler = "0.10"
 axum = { version = "0.7", features = ["macros", "json", "tracing", "http2"] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tower = { version = "0.5", features = ["timeout"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "limit", "set-header", "request-id", "util", "timeout", "compression-gzip"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "limit", "set-header", "request-id", "util", "timeout", "compression-gzip", "sensitive-headers"] }
 tower_governor = "0.4"
 governor = "0.6"
+dashmap = "6"
 
 # HTTP client
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip", "stream"] }
@@ -64,16 +65,16 @@ uuid = { version = "1", features = ["v4", "serde"] }
 jsonwebtoken = "9"
 
 # Validation
-validator = { version = "0.18", features = ["derive"] }
+validator = { version = "0.20", features = ["derive"] }
 
 # Tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt", "registry"] }
 
 # Sentry (optional, controlled by env)
-sentry = { version = "0.34", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls", "tower"] }
-sentry-tower = { version = "0.34", features = ["http"] }
-sentry-tracing = "0.34"
+sentry = { version = "0.42", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls", "tower"] }
+sentry-tower = { version = "0.42", features = ["http"] }
+sentry-tracing = "0.42"
 
 # Config / env
 figment = { version = "0.10", features = ["env", "toml"] }
@@ -89,6 +90,9 @@ bytes = "1"
 parking_lot = "0.12"
 secrecy = "0.10"
 base64 = "0.22"
+urlencoding = "2"
+# Constant-time bearer-token compare for the /v1/admin/* surface.
+subtle = "2.6"
 
 # Plaid token encryption
 aes-gcm = "0.10"

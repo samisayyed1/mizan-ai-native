@@ -108,11 +108,11 @@ export function ImportQuotesSection({
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-muted-foreground">Valid:</span>
-                        <span className="font-semibold text-green-600">{preview.validRows}</span>
+                        <span className="font-semibold text-success">{preview.validRows}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-muted-foreground">Invalid:</span>
-                        <span className="font-semibold text-red-600">{preview.invalidRows}</span>
+                        <span className="font-semibold text-destructive">{preview.invalidRows}</span>
                       </div>
                       {preview.duplicateCount > 0 && (
                         <div className="flex items-center gap-1.5">

@@ -97,11 +97,23 @@ fn compute_summary_current_value(
         goal.status_lifecycle.as_str(),
         GOAL_LIFECYCLE_ACHIEVED | GOAL_LIFECYCLE_ARCHIVED
     ) {
-        goal.summary_current_value
-            .unwrap_or_else(|| compute_goal_value_from_shares(funding_rules, valuations))
-    } else {
-        compute_goal_value_from_shares(funding_rules, valuations)
+        return goal
+            .summary_current_value
+            .unwrap_or_else(|| compute_goal_value_from_shares(funding_rules, valuations));
     }
+
+    // Active goal with NO funding rules → preserve whatever was last
+    // set on summary_current_value rather than silently zeroing it out.
+    // (Without this guard, a goal the user created via the assistant or
+    // seeded with a manual current-value got blown away to $0 on every
+    // refresh, because there's no allocation to compute from. The
+    // dashboard widget then showed 0% progress on a goal that was
+    // actually 50% funded — fixed in QA Pass 4.)
+    if funding_rules.is_empty() {
+        return goal.summary_current_value.unwrap_or(0.0);
+    }
+
+    compute_goal_value_from_shares(funding_rules, valuations)
 }
 
 fn retirement_goal_health_from_overview_status(status: &str) -> String {
@@ -1670,5 +1682,37 @@ mod tests {
 
         let current_value = compute_summary_current_value(&goal, &rules, &vals);
         assert!((current_value - 80_000.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn active_summary_value_preserves_manual_when_no_funding_rules() {
+        // QA Pass 3/4 regression: previously, an active goal with NO
+        // funding_rules silently zeroed out summary_current_value on
+        // every refresh (because compute_goal_value_from_shares on an
+        // empty rule list returns 0.0). Goals seeded with a manual
+        // current value — or set via the assistant before allocations
+        // were configured — went to 0% progress on the dashboard.
+        // The fix preserves the persisted value when there's nothing
+        // to compute from.
+        let goal = test_goal("active", Some(11_200.0));
+        let rules: Vec<GoalFundingRule> = vec![]; // no allocation
+        let vals: HashMap<String, f64> = HashMap::new();
+
+        let current_value = compute_summary_current_value(&goal, &rules, &vals);
+        assert!(
+            (current_value - 11_200.0).abs() < 0.01,
+            "summary_current_value must not be zeroed when goal has no allocation"
+        );
+    }
+
+    #[test]
+    fn active_summary_value_zero_when_no_rules_and_no_persisted_value() {
+        // Fresh goal — no rules, no prior summary. Should genuinely be 0.
+        let goal = test_goal("active", None);
+        let rules: Vec<GoalFundingRule> = vec![];
+        let vals: HashMap<String, f64> = HashMap::new();
+
+        let current_value = compute_summary_current_value(&goal, &rules, &vals);
+        assert!(current_value.abs() < 0.01);
     }
 }

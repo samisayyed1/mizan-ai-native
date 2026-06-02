@@ -49,7 +49,9 @@ pub enum LedgerEntryKind {
 pub enum LedgerIntegrityError {
     #[error("entry {0}: prev_hash does not match the previous entry's entry_hash")]
     BrokenChain(String),
-    #[error("entry {0}: entry_hash does not match the canonical SHA-256 of (prev_hash || payload)")]
+    #[error(
+        "entry {0}: entry_hash does not match the canonical SHA-256 of (prev_hash || payload)"
+    )]
     TamperedEntry(String),
     #[error("genesis entry {0} has a non-zero prev_hash")]
     InvalidGenesis(String),
@@ -93,9 +95,46 @@ pub struct LedgerEntry {
 }
 
 impl LedgerEntry {
+    /// Public constructor for storage backends that compute `sequence`
+    /// and `prev_hash` inside their own transaction (e.g. SQLite reads
+    /// the chain tip then inserts). Same hashing semantics as the
+    /// in-memory service uses internally.
+    #[allow(clippy::too_many_arguments)]
+    pub fn assemble_via_service(
+        id: String,
+        sequence: u64,
+        kind: LedgerEntryKind,
+        prev_hash: String,
+        account_id: Option<String>,
+        asset_id: Option<String>,
+        amount: Option<Decimal>,
+        currency: Option<String>,
+        metadata: BTreeMap<String, serde_json::Value>,
+        recorded_at: DateTime<Utc>,
+    ) -> Self {
+        Self::assemble(
+            id,
+            sequence,
+            kind,
+            prev_hash,
+            account_id,
+            asset_id,
+            amount,
+            currency,
+            metadata,
+            recorded_at,
+        )
+    }
+
     /// Construct + hash a fresh entry. `sequence` and `prev_hash` come
     /// from the ledger (the service injects them at `append` time);
     /// callers shouldn't try to compute these themselves.
+    ///
+    /// 10 args is intentional — each one is a stable column on the
+    /// ledger row, and grouping into a sub-struct would just shift
+    /// the verbosity to the call site. The public façade
+    /// `assemble_via_service` has the same shape.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn assemble(
         id: String,
         sequence: u64,

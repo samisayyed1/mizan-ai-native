@@ -37,7 +37,7 @@ export function PortfolioHealthCard() {
         <Icons.PieChart className="text-primary mt-0.5 size-6 shrink-0" />
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold">Portfolio health</h3>
+            <h3 className="text-sm font-semibold tracking-tight">Portfolio health</h3>
             <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide">
               Pro
             </span>
@@ -60,7 +60,7 @@ export function PortfolioHealthCard() {
         <Icons.PieChart className="text-primary mt-0.5 size-6 shrink-0" />
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold">Portfolio health</h3>
+            <h3 className="text-sm font-semibold tracking-tight">Portfolio health</h3>
           </div>
           <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
             See your concentration, FX, cash drag, and allocation-drift scores in one place. Open

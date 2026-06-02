@@ -39,3 +39,8 @@ tasks
 
 # Smoke / scratch artifacts
 artifacts/
+
+# Fly.io API tokens — NEVER committed.
+.env.fly
+mizan-4/.env.fly
+mizan-connect/.env.fly

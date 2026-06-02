@@ -351,12 +351,7 @@ function AssetClassDrilldown({
           Asset Classes
         </Button>
         {onAddForClass ? (
-          <AddHoldingMenu
-            cls={cls}
-            accountId={accountId}
-            onManualAdd={() => onAddForClass(cls)}
-            size="inline"
-          />
+          <AddHoldingMenu cls={cls} onManualAdd={() => onAddForClass(cls)} size="inline" />
         ) : null}
       </div>
 
@@ -367,7 +362,7 @@ function AssetClassDrilldown({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-lg font-semibold leading-tight">{labels.plural}</h2>
+              <h2 className="text-lg font-semibold leading-tight tracking-tight">{labels.plural}</h2>
               {sortedHoldings.length > 0 && (
                 <span className="text-muted-foreground text-xs tabular-nums">
                   {weightPercent.toFixed(1)}% of portfolio
@@ -400,7 +395,7 @@ function AssetClassDrilldown({
       </div>
 
       {sortedHoldings.length === 0 ? (
-        <AssetClassEmptyState cls={cls} accountId={accountId} onAddForClass={onAddForClass} />
+        <AssetClassEmptyState cls={cls} onAddForClass={onAddForClass} />
       ) : (
         <>
           {bucket && bucket.weightPercent > 0 && (
@@ -514,11 +509,10 @@ function PriceAsOf({ asOfDate }: { asOfDate: string }) {
 
 interface AssetClassEmptyStateProps {
   cls: AssetClass;
-  accountId: string;
   onAddForClass?: (cls: AssetClass) => void;
 }
 
-function AssetClassEmptyState({ cls, accountId, onAddForClass }: AssetClassEmptyStateProps) {
+function AssetClassEmptyState({ cls, onAddForClass }: AssetClassEmptyStateProps) {
   const labels = ASSET_CLASS_LABELS[cls];
   const Icon = Icons[ASSET_CLASS_ICON_NAMES[cls] as IconName];
 
@@ -534,12 +528,7 @@ function AssetClassEmptyState({ cls, accountId, onAddForClass }: AssetClassEmpty
         </p>
         {onAddForClass ? (
           <div className="mt-4">
-            <AddHoldingMenu
-              cls={cls}
-              accountId={accountId}
-              onManualAdd={() => onAddForClass(cls)}
-              size="cta"
-            />
+            <AddHoldingMenu cls={cls} onManualAdd={() => onAddForClass(cls)} size="cta" />
           </div>
         ) : null}
       </CardContent>

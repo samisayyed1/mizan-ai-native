@@ -13,6 +13,8 @@ import {
   ArrowUp,
   ArrowUpRight,
   BadgeDollarSign,
+  Bell,
+  BellOff,
   BarChart,
   Baseline,
   Bitcoin,
@@ -237,6 +239,8 @@ const IconsInternal = {
   ChevronsRight: ChevronsRight,
   Circle: Circle,
   Plus: Plus,
+  Bell: Bell,
+  BellOff: BellOff,
   Pencil: Pencil,
   PlusCircle: PlusCircle,
   PanelLeft: PanelLeft,
@@ -783,6 +787,8 @@ export type IconName =
   | "ChevronsRight"
   | "Circle"
   | "Plus"
+  | "Bell"
+  | "BellOff"
   | "Pencil"
   | "PlusCircle"
   | "PanelLeft"

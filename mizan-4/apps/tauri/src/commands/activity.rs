@@ -395,12 +395,53 @@ pub async fn import_activities(
         "CSV import with AI column mapping is included with a Mizan subscription.",
     )?;
 
+    // §A4 — open a sync ledger entry around the import so the user has a
+    // grep-able trail of every CSV they imported, with row counts +
+    // structured error if it failed.
+    use mizan_core::sync_ledger::{SyncRunEntry, SyncRunMode, SyncRunProvider, SyncRunSummary};
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let started_entry = SyncRunEntry::started(
+        run_id.clone(),
+        SyncRunProvider::CsvImport,
+        SyncRunMode::OneOff,
+    );
+    if let Err(e) = state.sync_ledger().append(started_entry.clone()).await {
+        debug!("Sync ledger append (start) failed: {}", e);
+    }
+
     // Domain events handle recalculation and asset enrichment automatically
-    let result = state
-        .activity_service()
-        .import_activities(activities)
-        .await
-        .map_err(|e| e.to_string())?;
+    let result = match state.activity_service().import_activities(activities).await {
+        Ok(r) => {
+            // §A4 — close the SAME entry instance so started_at is preserved
+            // (avoids the "two rows with the same run_id but different start
+            // times" subtle bug if the backing store ever drops idempotency).
+            let finished = started_entry.clone().finish(SyncRunSummary {
+                fetched: r.summary.total,
+                inserted: r.summary.imported,
+                skipped: r.summary.skipped,
+                ..Default::default()
+            });
+            if let Err(e) = state.sync_ledger().append(finished).await {
+                debug!("Sync ledger append (finish) failed: {}", e);
+            }
+            r
+        }
+        Err(e) => {
+            let err_msg = e.to_string();
+            // §A4 — close the same entry with structured §A24 error envelope.
+            let error_json = serde_json::json!({
+                "__mizan_error": true,
+                "code": "CSV_IMPORT_FAILED",
+                "message": err_msg.clone(),
+            })
+            .to_string();
+            let failed = started_entry.fail(error_json);
+            if let Err(emit_err) = state.sync_ledger().append(failed).await {
+                debug!("Sync ledger append (fail) failed: {}", emit_err);
+            }
+            return Err(err_msg);
+        }
+    };
 
     // Fire-and-forget usage report to the cloud ledger (B5).
     state.connect_service().report_usage("csv_intel", 1).await;

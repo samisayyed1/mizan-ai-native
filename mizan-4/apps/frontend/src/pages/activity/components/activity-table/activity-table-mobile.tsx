@@ -42,7 +42,7 @@ export const ActivityTableMobile = ({
   if (activities.length === 0) {
     return (
       <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-        <h3 className="text-lg font-medium">No activities found</h3>
+        <h3 className="text-lg font-semibold tracking-tight">No activities found</h3>
         <p className="text-muted-foreground text-sm">
           Try adjusting your search or filter criteria.
         </p>

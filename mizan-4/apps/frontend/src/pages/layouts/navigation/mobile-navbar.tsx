@@ -62,10 +62,12 @@ export function MobileNavBar({ navigation }: MobileNavBarProps) {
   const secondaryItems = navigation?.secondary ?? [];
   const addonItems = navigation?.addons ?? [];
 
-  // M2 simplification: show all 5 primary tabs in the bottom bar. Search is
-  // still reachable via Cmd/Ctrl+K (or long-press on Home), so dropping the
-  // synthetic search slot frees room for the full nav. Settings + addons live
-  // behind the "more" sheet at the end of the row when present.
+  // M2 simplification: show all primary tabs (Home / Portfolio / Goals /
+  // Add / Assistant) in the bottom bar. Search is still reachable via
+  // Cmd/Ctrl+K (or long-press on Home), so dropping the synthetic search
+  // slot frees room for the full nav. Settings + addons live behind the
+  // "more" sheet at the end of the row when present. CSS grid auto-fits
+  // — adding/removing a primary nav item doesn't need changes here.
   const visibleItems = primaryItems;
   const menuItems = secondaryItems;
 

@@ -41,7 +41,7 @@ export function E2EESetupCard({ onPairingNeeded }: E2EESetupCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base font-medium">Device Sync</CardTitle>
+        <CardTitle className="text-base font-semibold">Device Sync</CardTitle>
         <CardDescription>Sync your data securely across all your devices.</CardDescription>
       </CardHeader>
       <CardContent>

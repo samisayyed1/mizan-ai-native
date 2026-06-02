@@ -119,9 +119,9 @@ fn account_type_options() -> Vec<AccountTypeOption> {
 fn normalize_account_type(raw: &str) -> Option<String> {
     let up = raw.trim().to_uppercase();
     match up.as_str() {
-        "SECURITIES" | "BROKERAGE" | "TAXABLE" | "INVESTMENT" | "INVESTMENTS"
-        | "RETIREMENT" | "401K" | "IRA" | "ROTH" | "ROTH_IRA" | "RRSP" | "TFSA" | "SIPP"
-        | "PENSION" | "STOCK" | "STOCKS" | "EQUITIES" => Some("SECURITIES".to_string()),
+        "SECURITIES" | "BROKERAGE" | "TAXABLE" | "INVESTMENT" | "INVESTMENTS" | "RETIREMENT"
+        | "401K" | "IRA" | "ROTH" | "ROTH_IRA" | "RRSP" | "TFSA" | "SIPP" | "PENSION" | "STOCK"
+        | "STOCKS" | "EQUITIES" => Some("SECURITIES".to_string()),
         "CRYPTOCURRENCY" | "CRYPTO" | "WALLET" | "BTC" | "ETH" => {
             Some("CRYPTOCURRENCY".to_string())
         }
@@ -156,7 +156,7 @@ fn resolve_account(
 
     // 1. Exact id.
     if let Some(a) = accounts.iter().find(|a| a.id == r) {
-        return ResolutionResult::Single(a.clone());
+        return ResolutionResult::Single(Box::new(a.clone()));
     }
 
     // 2. Exact name (case-insensitive).
@@ -167,7 +167,7 @@ fn resolve_account(
         .cloned()
         .collect();
     if name_matches.len() == 1 {
-        return ResolutionResult::Single(name_matches.into_iter().next().unwrap());
+        return ResolutionResult::Single(Box::new(name_matches.into_iter().next().unwrap()));
     }
     if name_matches.len() > 1 {
         return ResolutionResult::Ambiguous(name_matches);
@@ -181,13 +181,17 @@ fn resolve_account(
         .collect();
     match substring_matches.len() {
         0 => ResolutionResult::NotFound,
-        1 => ResolutionResult::Single(substring_matches.into_iter().next().unwrap()),
+        1 => ResolutionResult::Single(Box::new(substring_matches.into_iter().next().unwrap())),
         _ => ResolutionResult::Ambiguous(substring_matches),
     }
 }
 
+// Single + Ambiguous carry a heavyweight Account (~500 bytes) while
+// NotFound + Missing are zero-payload. Box'ing the Single variant
+// equalises the enum size so it fits in the standard 64-byte enum
+// budget without sacrificing pattern-match clarity at the call site.
 enum ResolutionResult {
-    Single(mizan_core::accounts::Account),
+    Single(Box<mizan_core::accounts::Account>),
     Ambiguous(Vec<mizan_core::accounts::Account>),
     NotFound,
     Missing,
@@ -198,15 +202,16 @@ fn opt_str(s: &Option<String>) -> Option<String> {
 }
 
 fn opt_bool_str(b: Option<bool>) -> Option<String> {
-    b.map(|v| if v { "yes".to_string() } else { "no".to_string() })
+    b.map(|v| {
+        if v {
+            "yes".to_string()
+        } else {
+            "no".to_string()
+        }
+    })
 }
 
-fn diff_field<T: PartialEq + ToString>(
-    field: &str,
-    old: &T,
-    new: &T,
-    diffs: &mut Vec<FieldDiff>,
-) {
+fn diff_field<T: PartialEq + ToString>(field: &str, old: &T, new: &T, diffs: &mut Vec<FieldDiff>) {
     if old != new {
         diffs.push(FieldDiff {
             field: field.to_string(),
@@ -216,12 +221,7 @@ fn diff_field<T: PartialEq + ToString>(
     }
 }
 
-fn diff_opt(
-    field: &str,
-    old: &Option<String>,
-    new: &Option<String>,
-    diffs: &mut Vec<FieldDiff>,
-) {
+fn diff_opt(field: &str, old: &Option<String>, new: &Option<String>, diffs: &mut Vec<FieldDiff>) {
     if old != new {
         diffs.push(FieldDiff {
             field: field.to_string(),
@@ -485,7 +485,11 @@ mod tests {
 
     #[tokio::test]
     async fn renames_an_account() {
-        let env = env_with(vec![sample_account("acc-1", "Vanguard taxable", "SECURITIES")]);
+        let env = env_with(vec![sample_account(
+            "acc-1",
+            "Vanguard taxable",
+            "SECURITIES",
+        )]);
         let out = UpdateAccountTool::new(env)
             .build_output(UpdateAccountArgs {
                 account_ref: "Vanguard taxable".into(),
@@ -503,7 +507,11 @@ mod tests {
 
     #[tokio::test]
     async fn resolves_substring_match() {
-        let env = env_with(vec![sample_account("acc-1", "Vanguard taxable", "SECURITIES")]);
+        let env = env_with(vec![sample_account(
+            "acc-1",
+            "Vanguard taxable",
+            "SECURITIES",
+        )]);
         let out = UpdateAccountTool::new(env)
             .build_output(UpdateAccountArgs {
                 account_ref: "vanguard".into(),
@@ -514,7 +522,7 @@ mod tests {
             .unwrap();
         assert!(out.validation.resolved);
         assert!(out.draft.is_default);
-        assert_eq!(out.current.is_default, false);
+        assert!(!out.current.is_default);
     }
 
     #[tokio::test]
