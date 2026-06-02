@@ -242,8 +242,14 @@ jobs:
         working-directory: mizan-connect
         run: cargo machete --skip-target-dir || true
 
-      # Dead-export scan for TypeScript (working agreement §18.1)
+      # Dead-export scan for TypeScript (working agreement §18.1).
+      # Same `version:` requirement as the frontend job — pnpm/action-setup
+      # reads packageManager from repo-root package.json which doesn't
+      # exist; mizan-4/package.json carries the field but the action
+      # doesn't look there.
       - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
