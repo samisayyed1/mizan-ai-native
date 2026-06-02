@@ -169,10 +169,7 @@ pub async fn list_investment_transactions(
 ) -> Result<Json<Vec<PlaidInvestmentTransactionDto>>, AppError> {
     const DEFAULT_LIMIT: i64 = 500;
     const MAX_LIMIT: i64 = 1000;
-    let limit = params
-        .limit
-        .unwrap_or(DEFAULT_LIMIT)
-        .clamp(1, MAX_LIMIT);
+    let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
 
     let rows = repository::list_investment_transactions(
         state.db(),
@@ -886,7 +883,10 @@ mod tests {
 
     #[test]
     fn transactions_sync_updates_available_triggers() {
-        assert!(should_trigger_sync("TRANSACTIONS", "SYNC_UPDATES_AVAILABLE"));
+        assert!(should_trigger_sync(
+            "TRANSACTIONS",
+            "SYNC_UPDATES_AVAILABLE"
+        ));
     }
 
     #[test]
@@ -928,6 +928,9 @@ mod tests {
 
     #[test]
     fn webhook_verification_does_not_trigger() {
-        assert!(!should_trigger_sync("WEBHOOK", "WEBHOOK_UPDATE_ACKNOWLEDGED"));
+        assert!(!should_trigger_sync(
+            "WEBHOOK",
+            "WEBHOOK_UPDATE_ACKNOWLEDGED"
+        ));
     }
 }

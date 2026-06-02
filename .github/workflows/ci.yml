@@ -40,6 +40,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          # pnpm/action-setup reads `packageManager` from the repo-root
+          # package.json. The Mizan monorepo's package.json lives at
+          # mizan-4/package.json, so we declare the version explicitly
+          # here. Keep this in sync with mizan-4/package.json's
+          # `packageManager` field on bumps.
+          version: 9.12.3
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

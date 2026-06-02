@@ -21,9 +21,7 @@ use axum::extract::Request;
 use axum::middleware::Next;
 use axum::response::Response;
 use dashmap::DashMap;
-use governor::{
-    clock::DefaultClock, state::keyed::DefaultKeyedStateStore, Quota, RateLimiter,
-};
+use governor::{clock::DefaultClock, state::keyed::DefaultKeyedStateStore, Quota, RateLimiter};
 use uuid::Uuid;
 
 use crate::auth::AuthenticatedUser;
@@ -78,7 +76,8 @@ impl UserRateLimiter {
     /// background task with a periodic timer.
     pub fn sweep(&self, ttl: Duration) {
         let now = Instant::now();
-        self.last_seen.retain(|_uuid, last| now.duration_since(*last) <= ttl);
+        self.last_seen
+            .retain(|_uuid, last| now.duration_since(*last) <= ttl);
         // governor's RateLimiter doesn't expose per-key removal, but
         // the per-key buckets refill to full naturally, so leaving
         // stale entries just costs a few bytes each. The sweep above

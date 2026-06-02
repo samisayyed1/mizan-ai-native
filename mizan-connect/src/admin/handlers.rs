@@ -122,15 +122,16 @@ pub async fn get_user_state(
                 row.try_get("stripe_subscription_id").ok().flatten();
             let current_period_end: Option<time::OffsetDateTime> =
                 row.try_get("current_period_end").ok().flatten();
-            let cancel_at_period_end: bool =
-                row.try_get("cancel_at_period_end").unwrap_or(false);
+            let cancel_at_period_end: bool = row.try_get("cancel_at_period_end").unwrap_or(false);
             SubscriptionDto {
                 stripe_customer_id,
                 stripe_subscription_id,
                 tier,
                 status,
-                current_period_end: current_period_end
-                    .and_then(|t| t.format(&time::format_description::well_known::Rfc3339).ok()),
+                current_period_end: current_period_end.and_then(|t| {
+                    t.format(&time::format_description::well_known::Rfc3339)
+                        .ok()
+                }),
                 cancel_at_period_end,
             }
         });

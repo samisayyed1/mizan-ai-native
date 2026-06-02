@@ -79,6 +79,9 @@ mod tests {
         assert!(v.get("supabasePublishableKey").is_some());
         assert!(v.get("billingReturnUrl").is_some());
         assert_eq!(v.get("plaidEnabled").and_then(|v| v.as_bool()), Some(true));
-        assert_eq!(v.get("billingEnabled").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            v.get("billingEnabled").and_then(|v| v.as_bool()),
+            Some(true)
+        );
     }
 }

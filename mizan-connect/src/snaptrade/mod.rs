@@ -38,7 +38,10 @@ pub fn router() -> Router<AppState> {
             "/sync/snaptrade/login-portal",
             post(handlers::create_login_portal),
         )
-        .route("/sync/snaptrade/connections", get(handlers::list_connections))
+        .route(
+            "/sync/snaptrade/connections",
+            get(handlers::list_connections),
+        )
         .route(
             "/sync/snaptrade/connections/{authorization_id}",
             delete(handlers::disconnect_connection),

@@ -95,11 +95,8 @@ impl SnapTradeClient {
         user_id: &str,
         user_secret: &str,
     ) -> Result<Vec<BrokerageAuthorization>, AppError> {
-        self.get_signed(
-            "/api/v1/authorizations",
-            Some((user_id, user_secret)),
-        )
-        .await
+        self.get_signed("/api/v1/authorizations", Some((user_id, user_secret)))
+            .await
     }
 
     pub async fn disconnect_authorization(
@@ -109,7 +106,8 @@ impl SnapTradeClient {
         authorization_id: &str,
     ) -> Result<(), AppError> {
         let path = format!("/api/v1/authorizations/{authorization_id}");
-        self.delete_signed(&path, Some((user_id, user_secret))).await
+        self.delete_signed(&path, Some((user_id, user_secret)))
+            .await
     }
 
     // ─── Accounts / holdings / activities ───────────────────────────
@@ -245,11 +243,12 @@ impl SnapTradeClient {
         })?;
 
         if !status.is_success() {
-            let err: SnapTradeErrorBody = serde_json::from_slice(&bytes).unwrap_or(SnapTradeErrorBody {
-                code: None,
-                detail: None,
-                message: None,
-            });
+            let err: SnapTradeErrorBody =
+                serde_json::from_slice(&bytes).unwrap_or(SnapTradeErrorBody {
+                    code: None,
+                    detail: None,
+                    message: None,
+                });
             let detail = err
                 .detail
                 .or(err.message)

@@ -629,9 +629,12 @@ fn build_snaptrade_config(raw: &RawConfig) -> Result<Option<SnapTradeConfig>, Co
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| environment.api_base().to_string());
 
-    let client_id =
-        pick_required("SNAPTRADE_CLIENT_ID", raw.snaptrade_client_id.as_deref(), true)?
-            .unwrap_or_default();
+    let client_id = pick_required(
+        "SNAPTRADE_CLIENT_ID",
+        raw.snaptrade_client_id.as_deref(),
+        true,
+    )?
+    .unwrap_or_default();
     let consumer_key = pick_required(
         "SNAPTRADE_CONSUMER_KEY",
         raw.snaptrade_consumer_key.as_deref(),

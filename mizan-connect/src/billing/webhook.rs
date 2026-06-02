@@ -150,9 +150,7 @@ pub async fn receive_webhook(
             let sub: SubscriptionObject = serde_json::from_value(envelope.data.object.clone())
                 .map_err(|e| AppError::bad_request(format!("subscription payload: {e}")))?;
             let trial_end = ts(sub.trial_end);
-            if let Err(err) =
-                repository::mark_trial_will_end(&mut tx, &sub.id, trial_end).await
-            {
+            if let Err(err) = repository::mark_trial_will_end(&mut tx, &sub.id, trial_end).await {
                 tracing::warn!(
                     stripe_subscription_id = %sub.id,
                     error = %err,

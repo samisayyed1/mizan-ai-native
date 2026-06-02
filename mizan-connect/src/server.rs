@@ -45,12 +45,14 @@ pub fn build_app(state: AppState) -> Router {
         .iter()
         .filter_map(|name| axum::http::HeaderName::from_lowercase(name.as_bytes()).ok())
         .collect();
-    let redact_request_headers = tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer::new(
-        sensitive_header_names.clone(),
-    );
-    let redact_response_headers = tower_http::sensitive_headers::SetSensitiveResponseHeadersLayer::new(
-        sensitive_header_names,
-    );
+    let redact_request_headers =
+        tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer::new(
+            sensitive_header_names.clone(),
+        );
+    let redact_response_headers =
+        tower_http::sensitive_headers::SetSensitiveResponseHeadersLayer::new(
+            sensitive_header_names,
+        );
 
     let trace_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &axum::http::Request<_>| {
@@ -76,9 +78,7 @@ pub fn build_app(state: AppState) -> Router {
             )
         })
         .on_response(
-            |res: &axum::http::Response<_>,
-             latency: std::time::Duration,
-             span: &tracing::Span| {
+            |res: &axum::http::Response<_>, latency: std::time::Duration, span: &tracing::Span| {
                 span.record("status", res.status().as_u16());
                 span.record("latency_ms", latency.as_millis() as u64);
                 tracing::info!(

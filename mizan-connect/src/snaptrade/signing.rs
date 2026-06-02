@@ -42,14 +42,21 @@ pub fn canonical_string(path: &str, query: &str, body: Option<&serde_json::Value
     // insert in alpha order manually.
     let mut map = serde_json::Map::new();
     map.insert("content".to_string(), content);
-    map.insert("path".to_string(), serde_json::Value::String(path.to_string()));
-    map.insert("query".to_string(), serde_json::Value::String(query.to_string()));
+    map.insert(
+        "path".to_string(),
+        serde_json::Value::String(path.to_string()),
+    );
+    map.insert(
+        "query".to_string(),
+        serde_json::Value::String(query.to_string()),
+    );
     // Serialising a 3-key JSON Map cannot fail in practice — every value
     // is itself a `Value` which is already serializable. We still
     // surface a deterministic fallback rather than `expect` so a future
     // refactor that introduces a custom value type doesn't crash the
     // signing path silently.
-    serde_json::to_string(&map).unwrap_or_else(|_| String::from(r#"{"content":null,"path":"","query":""}"#))
+    serde_json::to_string(&map)
+        .unwrap_or_else(|_| String::from(r#"{"content":null,"path":"","query":""}"#))
 }
 
 /// Compute the `Signature` header value for a SnapTrade request.

@@ -117,7 +117,6 @@ pub fn ai_chat_router() -> Router<AppState> {
         .route("/chat/completions", post(ai_proxy::chat))
 }
 
-
 /// Stripe webhook router. Mounted separately from [`router`] so the
 /// outer server can avoid layering the per-IP rate limiter onto it —
 /// Stripe redelivers in bursts (multiple events per event-id retry)

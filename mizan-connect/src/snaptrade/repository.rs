@@ -33,10 +33,7 @@ pub(super) fn encrypt(key: &[u8], plaintext: &str) -> Result<Vec<u8>, AppError> 
     if key.len() != 32 {
         return Err(AppError::new(
             ErrorCode::Internal,
-            format!(
-                "snaptrade token key must be 32 bytes (got {})",
-                key.len()
-            ),
+            format!("snaptrade token key must be 32 bytes (got {})", key.len()),
         ));
     }
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));

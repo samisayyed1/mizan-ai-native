@@ -109,7 +109,9 @@ pub async fn disconnect_connection(
     client
         .disconnect_authorization(&snap_user, &secret, &authorization_id)
         .await?;
-    Ok(Json(serde_json::json!({ "disconnected": authorization_id })))
+    Ok(Json(
+        serde_json::json!({ "disconnected": authorization_id }),
+    ))
 }
 
 pub async fn list_accounts(
@@ -185,18 +187,15 @@ async fn resolve(
         )
     })?;
     let client = SnapTradeClient::new(cfg);
-    let (uid, secret) = repository::load_user_credentials(
-        state,
-        mizan_user_id,
-        &cfg.token_encryption_key,
-    )
-    .await?
-    .ok_or_else(|| {
-        AppError::new(
-            ErrorCode::UnprocessableEntity,
-            "SnapTrade not yet linked for this user — open the login portal first"
-                .to_string(),
-        )
-    })?;
+    let (uid, secret) =
+        repository::load_user_credentials(state, mizan_user_id, &cfg.token_encryption_key)
+            .await?
+            .ok_or_else(|| {
+                AppError::new(
+                    ErrorCode::UnprocessableEntity,
+                    "SnapTrade not yet linked for this user — open the login portal first"
+                        .to_string(),
+                )
+            })?;
     Ok((client, uid, secret))
 }

@@ -264,9 +264,7 @@ mod webhook_verify_tests {
     fn whitespace_around_commas_is_tolerated() {
         let now = 1_700_000_000;
         let hdr = sign("whsec_new", now, b"{}");
-        assert!(
-            StripeClient::verify_webhook("  whsec_old , whsec_new ", &hdr, b"{}", now).is_ok()
-        );
+        assert!(StripeClient::verify_webhook("  whsec_old , whsec_new ", &hdr, b"{}", now).is_ok());
     }
 
     #[test]

@@ -187,10 +187,8 @@ impl From<reqwest::Error> for AppError {
                 // upstream's authoritative response (not our service
                 // being unreachable). The body carries the upstream
                 // status so the desktop can route appropriately.
-                return AppError::bad_gateway(format!(
-                    "upstream rejected request (status {code})"
-                ))
-                .with_source(err);
+                return AppError::bad_gateway(format!("upstream rejected request (status {code})"))
+                    .with_source(err);
             }
         }
         AppError::service_unavailable("upstream request failed").with_source(err)
