@@ -11,6 +11,9 @@ mod log_redaction;
 mod rate_limit;
 mod scheduler;
 mod secret_store;
+// Track I PR-I5.b — production Heartbeats impl for the self-test
+// (network heartbeats injected into mizan_storage_sqlite::self_test).
+mod self_test_heartbeats;
 mod services;
 
 #[cfg(desktop)]
