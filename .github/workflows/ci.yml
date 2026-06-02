@@ -284,6 +284,14 @@ jobs:
       - name: no-f64-in-money-paths lint
         run: ./scripts/lint-no-f64-in-money-paths.sh
 
+      # FX silent-fallback lint (Track H PR-H8).
+      # Working agreement §0 rule 2 + §13 (QA Pass 7 past-bug — dashboard
+      # shipped at $184K instead of ~$236K because an unwrap_or(Decimal::ONE)
+      # paved over a missing SGD/USD rate). The lint catches FX rate
+      # fallbacks in any function whose name hints currency conversion.
+      - name: fx-silent-fallback lint
+        run: ./scripts/lint-fx-silent-fallback.sh
+
       # Migration cache-eviction manifest lint (Track I PR-I2.d).
       # Per ADR 0008 + working-agreement §19.2, every migration ≥ 2026-06-02
       # must carry a `-- caches-evicted:` manifest comment.
