@@ -1,0 +1,27 @@
+# Mizan CODEOWNERS
+#
+# GitHub uses this file to auto-request reviews when a PR touches a
+# matching path. The owner-of-record list + scope rationale lives in
+# `docs/REVIEWERS.md` — this file is the GitHub-side activation only.
+#
+# Syntax: <path pattern> <space-separated GitHub handles>
+# Patterns match like .gitignore but evaluated last-rule-wins per path.
+
+# ── Default ─────────────────────────────────────────────────────────
+*                                              @samisayyed1
+
+# ── Track F (Zakat fiqh al-muamalat) — Uncle Ferox ──────────────────
+# Approved fiqh reviewer per docs/REVIEWERS.md (registered 2026-06-03).
+# Handle below is a placeholder — sami to supply Uncle Ferox's real
+# GitHub handle and replace `@uncle-ferox-placeholder` everywhere
+# below. Until then, PR authors must additionally ping Uncle Ferox by
+# name in the PR description; CODEOWNERS alone is not yet authoritative.
+docs/adr/*zakat*.md                            @samisayyed1 @uncle-ferox-placeholder
+docs/adr/*school*rules*.md                     @samisayyed1 @uncle-ferox-placeholder
+docs/adr/*fiqh*.md                             @samisayyed1 @uncle-ferox-placeholder
+docs/adr/*hawl*.md                             @samisayyed1 @uncle-ferox-placeholder
+docs/adr/*zakatability*.md                     @samisayyed1 @uncle-ferox-placeholder
+docs/adr/0012-aaoifi-screening-criteria.md     @samisayyed1 @uncle-ferox-placeholder
+mizan-4/crates/zakat/src/schools/**            @samisayyed1 @uncle-ferox-placeholder
+mizan-4/crates/zakat/src/rules/**              @samisayyed1 @uncle-ferox-placeholder
+mizan-4/crates/zakat/src/hawl_tracker.rs       @samisayyed1 @uncle-ferox-placeholder
