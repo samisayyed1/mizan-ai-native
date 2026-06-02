@@ -285,7 +285,7 @@ pub async fn get_estimated_historical_valuation(
         today,
     );
 
-    mizan_core::portfolio::synthesis::synthesize_account_history(
+    mizan_synthesis::synthesize_account_history(
         &account_id,
         &account_currency,
         &base_currency,

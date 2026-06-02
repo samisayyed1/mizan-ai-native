@@ -3646,6 +3646,7 @@ dependencies = [
  "mizan-insights",
  "mizan-market-data",
  "mizan-storage-sqlite",
+ "mizan-synthesis",
  "mizan-zakat",
  "rand 0.8.6",
  "reqwest 0.12.28",
@@ -3905,6 +3906,17 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "mizan-synthesis"
+version = "3.4.1"
+dependencies = [
+ "chrono",
+ "log",
+ "mizan-core",
+ "mizan-domain-types",
+ "rust_decimal",
 ]
 
 [[package]]

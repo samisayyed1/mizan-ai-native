@@ -8,7 +8,9 @@ pub mod net_worth;
 pub mod performance;
 pub mod snapshot;
 pub mod split_adjustment;
-pub mod synthesis;
+// Track H PR-H3.d — synthesis moved out of mizan-core into the
+// `mizan-synthesis` crate. Consumers import directly:
+//   use mizan_synthesis::synthesize_account_history;
 pub mod valuation;
 // Track H PR-H3.b — zakat moved out of mizan-core into the
 // `mizan-zakat` crate. Consumers import directly:
