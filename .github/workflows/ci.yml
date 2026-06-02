@@ -203,3 +203,89 @@ jobs:
             --ignore RUSTSEC-2025-0111 \
             --ignore RUSTSEC-2025-0134 \
             --deny warnings
+
+  # Track H §18.1/§18.2/§18.4 hygiene: dead code, dead files, dead deps,
+  # secret scan. Soft-fail mode (informational warnings only) until the
+  # baseline audit pass classifies findings. Promoted to hard-fail in
+  # PR-H9 after findings are resolved.
+  hygiene:
+    name: code hygiene scan (informational)
+    runs-on: ubuntu-latest
+    # Run on every push/PR; never blocks merge yet (continue-on-error).
+    # PR-H9 of Track H removes the continue-on-error after the baseline
+    # audit signs off.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks needs full history
+
+      # Secret scan over full history (working agreement §18.12 baseline req).
+      # GITHUB_TOKEN is required by gitleaks-action v2+ to scan PR diffs;
+      # GITLEAKS_LICENSE is only needed for orgs (samisayyed1 is an
+      # individual user so no license key required).
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      # Dead-dependency scan for Rust (working agreement §18.4)
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-machete
+        run: cargo install --locked cargo-machete
+      - name: Machete mizan-4
+        working-directory: mizan-4
+        run: cargo machete --skip-target-dir || true
+      - name: Machete mizan-connect
+        working-directory: mizan-connect
+        run: cargo machete --skip-target-dir || true
+
+      # Dead-export scan for TypeScript (working agreement §18.1).
+      # Same `version:` requirement as the frontend job — pnpm/action-setup
+      # reads packageManager from repo-root package.json which doesn't
+      # exist; mizan-4/package.json carries the field but the action
+      # doesn't look there.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: mizan-4/pnpm-lock.yaml
+      - name: pnpm install
+        working-directory: mizan-4
+        run: pnpm install --frozen-lockfile
+      - name: knip
+        working-directory: mizan-4
+        # Knip needs config; run with default rules and report-only. The
+        # frontend package.json adds a "knip" script in PR-H6.b that
+        # configures the project boundaries; until then, this is a smoke
+        # test that knip can parse the project.
+        run: pnpm dlx knip --no-exit-code --include exports || true
+      - name: ts-prune
+        working-directory: mizan-4/apps/frontend
+        run: pnpm dlx ts-prune --error 0 || true
+
+      # Cache-policy registration lint (Track I PR-I1.b).
+      # Every cache-shaped table in the schema must declare its TTL +
+      # eviction policy in `crates/storage-sqlite/src/cache_policy.rs::CACHE_POLICIES`.
+      # See ADR 0008.
+      - name: cache-policy registration lint
+        run: ./scripts/lint-cache-policy.sh
+
+      # No-f64-in-money-paths lint (Track H PR-H8.b).
+      # Working agreement §0 + §13 (QA Pass 4 past-bug). `rust_decimal::Decimal`
+      # is mandatory in money paths. The lint catches `f64` in directories
+      # that handle money. Initial run surfaces health-checks findings —
+      # those are captured in the 2026-Q3 baseline audit (Track H PR-H9).
+      - name: no-f64-in-money-paths lint
+        run: ./scripts/lint-no-f64-in-money-paths.sh
+
+      # Migration cache-eviction manifest lint (Track I PR-I2.d).
+      # Per ADR 0008 + working-agreement §19.2, every migration ≥ 2026-06-02
+      # must carry a `-- caches-evicted:` manifest comment.
+      - name: migration cache-manifest lint
+        run: ./scripts/lint-migration-cache-manifest.sh
