@@ -41,3 +41,7 @@ r2d2 = { workspace = true }
 [dev-dependencies]
 tempfile = "3"
 rust_decimal_macros = { workspace = true }
+# Track I PR-I4 — updater_snapshot tests set artificial mtime on snapshot
+# files to verify the 30-day retention janitor. `filetime` is the standard
+# cross-platform way (std::fs::set_modified is unstable). Test-only dep.
+filetime = "0.2"

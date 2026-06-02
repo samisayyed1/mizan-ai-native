@@ -1,10 +1,8 @@
 #[cfg(not(debug_assertions))]
 use chrono::DateTime;
-#[cfg(not(debug_assertions))]
-use log::warn;
-use log::{error, info};
+use log::{error, info, warn};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
 // Helper function to detect if this is an App Store build.
@@ -180,6 +178,44 @@ pub async fn install_update(app_handle: AppHandle) -> Result<(), String> {
         "Downloading update from version {} to {}",
         update.current_version, update.version
     );
+
+    // Track I PR-I4 — pre-update DB snapshot per ADR 0009. Snapshot the
+    // outgoing version's mizan.db so the rollback path (PR-I6) has a
+    // restoration source if the new binary fails its self-test (PR-I5).
+    //
+    // Fail-soft: snapshot failure logs + skips. We do NOT abort the
+    // update on snapshot failure — that would block users from getting
+    // critical security fixes if the disk is momentarily full. The
+    // working-agreement §17 trade-off: 30-day snapshot retention is the
+    // safety net, but its presence is best-effort, not contractual.
+    match app_handle
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+    {
+        Some(app_data_dir) => {
+            let old_version = update.current_version.to_string();
+            match mizan_storage_sqlite::updater_snapshot::create_pre_update_snapshot(
+                &app_data_dir,
+                &old_version,
+            ) {
+                Ok(path) => info!(
+                    "Pre-update snapshot created at {} (rollback safety net for v{})",
+                    path.display(),
+                    old_version
+                ),
+                Err(e) => warn!(
+                    "Pre-update snapshot failed (continuing with update; rollback unavailable for v{}): {}",
+                    old_version, e
+                ),
+            }
+        }
+        None => warn!(
+            "Could not resolve app_data_dir for pre-update snapshot — rollback unavailable for v{}",
+            update.current_version
+        ),
+    }
 
     let handle_chunk = app_handle.clone();
     let handle_finish = app_handle.clone();

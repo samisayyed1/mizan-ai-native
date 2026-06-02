@@ -72,6 +72,11 @@ pub async fn initialize_context(
     // §19.7 (cache eviction workers).
     run_startup_cache_eviction_if_version_changed(pool.as_ref());
 
+    // Track I PR-I4 — prune pre-update DB snapshots older than 30 days
+    // per ADR 0009. Cheap fail-soft janitor; runs alongside the cache
+    // eviction so disk hygiene happens in one well-known place at boot.
+    prune_old_updater_snapshots(app_data_dir);
+
     let (sync_outbox_wake_sender, sync_outbox_wake_receiver) = mpsc::channel(128);
     let writer = write_actor::spawn_writer_with_outbox_observer(
         pool.as_ref().clone(),
@@ -514,6 +519,29 @@ fn run_startup_cache_eviction_if_version_changed(pool: &mizan_storage_sqlite::Db
             "cache_eviction: persist_app_version({current}) failed: {e}; \
              next boot will re-run the eviction sweep"
         );
+    }
+}
+
+/// Track I PR-I4 — prune pre-update DB snapshots older than 30 days.
+/// Fail-soft: any error logs + continues. Snapshots that survive a
+/// failure here get a second chance on the next boot.
+fn prune_old_updater_snapshots(app_data_dir: &str) {
+    use mizan_storage_sqlite::updater_snapshot::prune_old_snapshots;
+    use std::time::SystemTime;
+
+    match prune_old_snapshots(app_data_dir, SystemTime::now()) {
+        Ok(pruned) if pruned.is_empty() => {
+            // Common case — no log needed.
+        }
+        Ok(pruned) => {
+            log::info!(
+                "updater_snapshot: pruned {} snapshot(s) older than 30 days",
+                pruned.len()
+            );
+        }
+        Err(e) => {
+            log::warn!("updater_snapshot: prune failed ({e}); next boot will retry");
+        }
     }
 }
 
