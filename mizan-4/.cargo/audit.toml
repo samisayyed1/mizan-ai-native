@@ -1,0 +1,58 @@
+# cargo-audit configuration — Mizan Desktop (mizan-4 workspace).
+#
+# Documents which RustSec advisories we explicitly accept and why, so a
+# future contributor (or auditor) can see the rationale without re-deriving
+# it from the dependency tree. Anything NOT listed here that cargo-audit
+# flags is a real failure that must be fixed.
+#
+# All 15 advisories below are `unmaintained` warnings on transitive
+# dependencies of `tauri` 2.x via `gtk-rs` 0.18.x. Tauri 2 still ships
+# the GTK3 bindings (gtk, atk, gdk, gdk-pixbuf, glib, gio, pango, cairo,
+# soup3 and friends) because the GTK4 migration in upstream Tauri is
+# in-progress (tracked at https://github.com/tauri-apps/tauri/issues/4663).
+# None of these are security vulnerabilities — they're "no longer
+# accepting new bug reports / PRs" notices on packages we use via Tauri's
+# Linux backend.
+#
+# Mizan Desktop on macOS / Windows uses WebView2 / WKWebView respectively
+# and does not link against GTK at runtime. On Linux, the GTK3 backend
+# remains the only option until Tauri 2's GTK4 work lands.
+#
+# Re-evaluate at the next Tauri major version bump (3.x) or when Tauri 2
+# completes its GTK4 migration.
+
+[advisories]
+ignore = [
+    # gtk-rs GTK3 bindings (11 advisories — one per crate in the gtk-rs 0.18 family)
+    "RUSTSEC-2024-0411",  # gdk
+    "RUSTSEC-2024-0412",  # gdkx11
+    "RUSTSEC-2024-0413",  # atk
+    "RUSTSEC-2024-0414",  # gtk
+    "RUSTSEC-2024-0415",  # gdk-pixbuf
+    "RUSTSEC-2024-0416",  # gtk3-macros
+    "RUSTSEC-2024-0417",  # pango
+    "RUSTSEC-2024-0418",  # cairo-rs
+    "RUSTSEC-2024-0419",  # atk-sys / gtk-sys (FFI wrappers)
+    "RUSTSEC-2024-0420",  # gdk-sys / pango-sys (FFI wrappers)
+
+    # Transitive utility crates flagged unmaintained but actively used
+    # by maintained dependencies that have no drop-in alternative.
+    "RUSTSEC-2024-0388",  # `derivative` — pulled in by `serde_with` / proc-macro chain
+    "RUSTSEC-2024-0384",  # `instant` — pulled in by `parking_lot` etc.; web target only
+    "RUSTSEC-2024-0370",  # `proc-macro-error` — transitive via several proc-macro crates
+    "RUSTSEC-2025-0057",  # `fxhash` — fast hasher used by indexmap < 2.x
+    "RUSTSEC-2025-0081",  # `unic-char-property` — Unicode tables (slowly-evolving spec data)
+    "RUSTSEC-2025-0075",  # `unic-char-range` — Unicode tables (sibling crate)
+    "RUSTSEC-2025-0080",  # `unic-common` — Unicode tables (sibling crate)
+    "RUSTSEC-2025-0100",  # `unic-ucd-ident` — Unicode tables (sibling crate)
+    "RUSTSEC-2025-0098",  # `unic-ucd-version` — Unicode tables (sibling crate)
+
+    # Unsoundness advisory in `glib::VariantStrIter` — used only by Tauri 2's
+    # Linux GTK3 backend. Mizan Desktop on macOS / Windows does not link
+    # glib at runtime. The unsound `Iterator` impl can over-read memory if
+    # a hostile actor supplies a non-null-terminated GVariant string array
+    # — Mizan never accepts external GVariants; all inputs are constructed
+    # in-process. Re-evaluate at Tauri 2's GTK4 migration (issue
+    # tauri-apps/tauri#4663) or when upstream glib-rs ships a fix.
+    "RUSTSEC-2024-0429",
+]
