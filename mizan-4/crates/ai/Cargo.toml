@@ -42,7 +42,12 @@ rust_decimal = { workspace = true }
 
 # Sibling crates
 mizan-core = { path = "../core" }
+# Track H PR-H3.a — agent code emits Truth Ledger entries via the trait
+# in mizan-financial-truth.
+mizan-financial-truth = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# Agent tests use InMemoryTruthLedger as a fake.
+mizan-financial-truth = { workspace = true, features = ["test-utils"] }

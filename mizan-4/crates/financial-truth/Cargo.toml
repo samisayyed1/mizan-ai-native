@@ -1,0 +1,36 @@
+[package]
+name = "mizan-financial-truth"
+version.workspace = true
+edition.workspace = true
+description = "Hash-chained immutable financial ledger (Truth Engine) — first piece of the financial-truth crate per Track H PR-H3.a"
+authors = ["Sami Sayyed"]
+license = "AGPL-3.0"
+
+[features]
+default = []
+# Gate the in-memory ledger impl behind a feature so production binaries
+# don't link test scaffolding. Same pattern tokio uses for its
+# `test-util` feature. Consumers that need `InMemoryTruthLedger` (every
+# test path that wires a fake ledger) opt in with:
+#   mizan-financial-truth = { workspace = true, features = ["test-utils"] }
+test-utils = []
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+rust_decimal = { workspace = true, features = ["serde-with-str"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+# Test-only: `dec!()` macro for ergonomic Decimal literals
+rust_decimal_macros = { workspace = true }
+# Test-only: `block_on` for synchronous test bodies that exercise async
+# trait methods (the InMemoryTruthLedger impls are async).
+futures = { workspace = true }
+
+[lints]
+workspace = true

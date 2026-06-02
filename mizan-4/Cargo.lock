@@ -3607,6 +3607,7 @@ dependencies = [
  "futures",
  "log",
  "mizan-core",
+ "mizan-financial-truth",
  "once_cell",
  "reqwest 0.12.28",
  "rig-core",
@@ -3641,6 +3642,7 @@ dependencies = [
  "mizan-connect",
  "mizan-core",
  "mizan-device-sync",
+ "mizan-financial-truth",
  "mizan-market-data",
  "mizan-storage-sqlite",
  "rand 0.8.6",
@@ -3707,6 +3709,7 @@ dependencies = [
  "hex",
  "jsonpath-rust",
  "log",
+ "mizan-financial-truth",
  "mizan-market-data",
  "num-traits",
  "proptest",
@@ -3754,6 +3757,22 @@ dependencies = [
  "urlencoding",
  "uuid",
  "x25519-dalek",
+]
+
+[[package]]
+name = "mizan-financial-truth"
+version = "3.4.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
@@ -3847,6 +3866,7 @@ dependencies = [
  "mizan-connect",
  "mizan-core",
  "mizan-device-sync",
+ "mizan-financial-truth",
  "num-traits",
  "r2d2",
  "rusqlite",

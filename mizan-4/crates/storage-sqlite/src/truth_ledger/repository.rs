@@ -19,10 +19,25 @@ use crate::db::{get_connection, DbPool, WriteHandle};
 use crate::errors::StorageError;
 use crate::schema::truth_ledger_entries::dsl as ledger_dsl;
 use mizan_core::errors::{Error, Result, ValidationError};
-use mizan_core::truth_engine::{
-    derive_entry_hash, AppendInput, LedgerEntry, LedgerEntryKind, LedgerIntegrityError,
-    TruthLedger, GENESIS_PREV_HASH,
+use mizan_financial_truth::{
+    derive_entry_hash, AppendInput, FinancialTruthError, LedgerEntry, LedgerEntryKind,
+    LedgerIntegrityError, TruthLedger, GENESIS_PREV_HASH,
 };
+
+/// Convert a mizan-core `Error` raised by the SQLite write pipeline into
+/// the `FinancialTruthError` shape the `TruthLedger` trait expects.
+/// Validation errors map structurally; storage / FX / other domain
+/// variants collapse to `InvalidInput(format!("{}", err))` — Track H PR-H3.a
+/// extracted the trait into its own crate (working-agreement §0 rule 1),
+/// so we no longer leak mizan-core's domain Error into the trait surface.
+fn map_to_financial_truth_error(err: Error) -> FinancialTruthError {
+    match err {
+        Error::Validation(ValidationError::InvalidInput(msg)) => {
+            FinancialTruthError::InvalidInput(msg)
+        }
+        other => FinancialTruthError::InvalidInput(format!("storage: {other}")),
+    }
+}
 
 #[derive(Debug, Clone, Queryable, Selectable, Insertable)]
 #[diesel(table_name = crate::schema::truth_ledger_entries)]
@@ -137,16 +152,17 @@ impl SqliteTruthLedger {
 
 #[async_trait]
 impl TruthLedger for SqliteTruthLedger {
-    async fn append(&self, input: AppendInput) -> Result<LedgerEntry> {
+    async fn append(
+        &self,
+        input: AppendInput,
+    ) -> std::result::Result<LedgerEntry, FinancialTruthError> {
         let kind = input.kind.ok_or_else(|| {
-            Error::Validation(ValidationError::InvalidInput(
-                "LedgerEntry kind is required".to_string(),
-            ))
+            FinancialTruthError::InvalidInput("LedgerEntry kind is required".to_string())
         })?;
         if input.id.trim().is_empty() {
-            return Err(Error::Validation(ValidationError::InvalidInput(
+            return Err(FinancialTruthError::InvalidInput(
                 "LedgerEntry id cannot be empty".to_string(),
-            )));
+            ));
         }
 
         let id = input.id.clone();
@@ -213,7 +229,8 @@ impl TruthLedger for SqliteTruthLedger {
                     .map_err(StorageError::from)?;
                 Ok(domain)
             })
-            .await?;
+            .await
+            .map_err(map_to_financial_truth_error)?;
 
         Ok(entry)
     }
@@ -256,10 +273,13 @@ impl TruthLedger for SqliteTruthLedger {
         })?
     }
 
-    async fn all(&self, limit: Option<usize>) -> Result<Vec<LedgerEntry>> {
+    async fn all(
+        &self,
+        limit: Option<usize>,
+    ) -> std::result::Result<Vec<LedgerEntry>, FinancialTruthError> {
         let pool = Arc::clone(&self.pool);
         let limit = limit.map(|n| n as i64);
-        tokio::task::spawn_blocking(move || {
+        let inner: Result<Vec<LedgerEntry>> = tokio::task::spawn_blocking(move || {
             let mut conn = get_connection(&pool)?;
             let mut q = ledger_dsl::truth_ledger_entries
                 .order(ledger_dsl::sequence.asc())
@@ -280,13 +300,19 @@ impl TruthLedger for SqliteTruthLedger {
             Ok(out)
         })
         .await
-        .map_err(|e| Error::Unexpected(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| {
+            FinancialTruthError::InvalidInput(format!("spawn_blocking join error: {e}"))
+        })?;
+        inner.map_err(map_to_financial_truth_error)
     }
 
-    async fn by_account(&self, account_id: &str) -> Result<Vec<LedgerEntry>> {
+    async fn by_account(
+        &self,
+        account_id: &str,
+    ) -> std::result::Result<Vec<LedgerEntry>, FinancialTruthError> {
         let pool = Arc::clone(&self.pool);
         let account_id = account_id.to_string();
-        tokio::task::spawn_blocking(move || {
+        let inner: Result<Vec<LedgerEntry>> = tokio::task::spawn_blocking(move || {
             let mut conn = get_connection(&pool)?;
             let rows: Vec<TruthLedgerEntryDB> = ledger_dsl::truth_ledger_entries
                 .filter(ledger_dsl::account_id.eq(account_id))
@@ -303,7 +329,10 @@ impl TruthLedger for SqliteTruthLedger {
             Ok(out)
         })
         .await
-        .map_err(|e| Error::Unexpected(format!("spawn_blocking join error: {e}")))?
+        .map_err(|e| {
+            FinancialTruthError::InvalidInput(format!("spawn_blocking join error: {e}"))
+        })?;
+        inner.map_err(map_to_financial_truth_error)
     }
 }
 
@@ -312,7 +341,7 @@ mod tests {
     use super::*;
     use crate::db::write_actor::spawn_writer;
     use crate::db::{create_pool, init, run_migrations};
-    use mizan_core::truth_engine::{AppendInput, LedgerEntryKind};
+    use mizan_financial_truth::{AppendInput, LedgerEntryKind};
     use tempfile::tempdir;
 
     fn build_ledger() -> (Arc<DbPool>, SqliteTruthLedger, tempfile::TempDir) {

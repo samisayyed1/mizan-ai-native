@@ -1,8 +1,8 @@
 #[cfg(not(debug_assertions))]
 use chrono::DateTime;
-use log::{error, info};
 #[cfg(not(debug_assertions))]
 use log::warn;
+use log::{error, info};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;

@@ -122,12 +122,12 @@ pub struct ActivityService {
     /// so holdings/balances/performance can replay from the chain in
     /// follow-on PRs. Optional because tests + legacy constructors
     /// don't need to thread one through.
-    truth_ledger: Option<Arc<dyn crate::truth_engine::TruthLedger>>,
+    truth_ledger: Option<Arc<dyn mizan_financial_truth::TruthLedger>>,
     /// §A1/§A2 — durable retry queue. When the ledger append fails after
     /// the activity row already committed (e.g. transient db error on
     /// the ledger insert) we persist the AppendInput here so a startup
     /// drainer can replay it. Optional like the ledger itself.
-    truth_ledger_retry_queue: Option<Arc<dyn crate::truth_engine::TruthLedgerRetryQueue>>,
+    truth_ledger_retry_queue: Option<Arc<dyn mizan_financial_truth::TruthLedgerRetryQueue>>,
 }
 
 #[derive(Clone, Copy)]
@@ -372,7 +372,7 @@ impl ActivityService {
     /// activity writes proceed unchanged.
     pub fn with_truth_ledger(
         mut self,
-        truth_ledger: Arc<dyn crate::truth_engine::TruthLedger>,
+        truth_ledger: Arc<dyn mizan_financial_truth::TruthLedger>,
     ) -> Self {
         self.truth_ledger = Some(truth_ledger);
         self
@@ -385,7 +385,7 @@ impl ActivityService {
     /// by a startup drainer.
     pub fn with_truth_ledger_retry_queue(
         mut self,
-        queue: Arc<dyn crate::truth_engine::TruthLedgerRetryQueue>,
+        queue: Arc<dyn mizan_financial_truth::TruthLedgerRetryQueue>,
     ) -> Self {
         self.truth_ledger_retry_queue = Some(queue);
         self
@@ -399,7 +399,7 @@ impl ActivityService {
     async fn append_activity_to_truth_ledger(
         &self,
         activity: &Activity,
-        kind: crate::truth_engine::LedgerEntryKind,
+        kind: mizan_financial_truth::LedgerEntryKind,
         ledger_id: String,
     ) {
         let Some(ref ledger) = self.truth_ledger else {
@@ -436,7 +436,7 @@ impl ActivityService {
                 serde_json::Value::String(subtype.clone()),
             );
         }
-        let append_input = crate::truth_engine::AppendInput {
+        let append_input = mizan_financial_truth::AppendInput {
             id: ledger_id,
             kind: Some(kind),
             account_id: Some(activity.account_id.clone()),
@@ -3030,7 +3030,7 @@ impl ActivityServiceTrait for ActivityService {
         // migration lands; ledger failures are queued for retry).
         self.append_activity_to_truth_ledger(
             &created,
-            crate::truth_engine::LedgerEntryKind::ActivityRecorded,
+            mizan_financial_truth::LedgerEntryKind::ActivityRecorded,
             format!("activity:{}:created", created.id),
         )
         .await;
@@ -3066,13 +3066,13 @@ impl ActivityServiceTrait for ActivityService {
         let edit_seq = chrono::Utc::now().timestamp_micros();
         self.append_activity_to_truth_ledger(
             &existing,
-            crate::truth_engine::LedgerEntryKind::ActivityReversed,
+            mizan_financial_truth::LedgerEntryKind::ActivityReversed,
             format!("activity:{}:reversed:{}", existing.id, edit_seq),
         )
         .await;
         self.append_activity_to_truth_ledger(
             &updated,
-            crate::truth_engine::LedgerEntryKind::ActivityRecorded,
+            mizan_financial_truth::LedgerEntryKind::ActivityRecorded,
             format!("activity:{}:edited:{}", updated.id, edit_seq),
         )
         .await;
@@ -3124,7 +3124,7 @@ impl ActivityServiceTrait for ActivityService {
         let del_seq = chrono::Utc::now().timestamp_micros();
         self.append_activity_to_truth_ledger(
             &deleted,
-            crate::truth_engine::LedgerEntryKind::ActivityReversed,
+            mizan_financial_truth::LedgerEntryKind::ActivityReversed,
             format!("activity:{}:deleted:{}", deleted.id, del_seq),
         )
         .await;

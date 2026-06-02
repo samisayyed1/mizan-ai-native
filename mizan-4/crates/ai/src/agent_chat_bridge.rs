@@ -47,7 +47,7 @@ use crate::agent::{
 use crate::agent_recipes::{
     build_recipe_addendum, detect_recipe, filter_tools_for_recipe, AgentRecipe,
 };
-use mizan_core::truth_engine::TruthLedger;
+use mizan_financial_truth::TruthLedger;
 
 /// Capability tier of the requesting user. Decided by the chat
 /// dispatcher from the resolved subscription state; the bridge only
@@ -189,7 +189,7 @@ mod tests {
     use crate::agent::{AgentError, DispatchResult, PlanStep};
     use crate::agent_planner::ToolDescriptor;
     use async_trait::async_trait;
-    use mizan_core::truth_engine::InMemoryTruthLedger;
+    use mizan_financial_truth::InMemoryTruthLedger;
 
     struct DummyPlanner;
     #[async_trait]

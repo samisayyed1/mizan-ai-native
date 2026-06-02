@@ -12,9 +12,9 @@ use mizan_core::{
     portfolio, quotes, settings,
     sync_ledger::SyncRunLedger,
     taxonomies,
-    truth_engine::TruthLedger,
 };
 use mizan_device_sync::{engine::DeviceSyncRuntimeState, DeviceEnrollService};
+use mizan_financial_truth::TruthLedger;
 use mizan_storage_sqlite::{
     daily_brief::SqliteDailyBriefService,
     net_worth_snapshot::SqliteNetWorthSnapshotService,

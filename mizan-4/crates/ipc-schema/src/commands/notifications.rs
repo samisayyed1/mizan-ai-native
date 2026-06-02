@@ -15,7 +15,10 @@ pub mod v1 {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[cfg_attr(feature = "ts-export", derive(TS))]
-    #[cfg_attr(feature = "ts-export", ts(export, export_to = "../../../apps/frontend/src/lib/ipc-types/"))]
+    #[cfg_attr(
+        feature = "ts-export",
+        ts(export, export_to = "../../../apps/frontend/src/lib/ipc-types/")
+    )]
     pub struct NotificationsListRequest {
         pub limit: u32,
         pub cursor: Option<String>,
@@ -23,7 +26,10 @@ pub mod v1 {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[cfg_attr(feature = "ts-export", derive(TS))]
-    #[cfg_attr(feature = "ts-export", ts(export, export_to = "../../../apps/frontend/src/lib/ipc-types/"))]
+    #[cfg_attr(
+        feature = "ts-export",
+        ts(export, export_to = "../../../apps/frontend/src/lib/ipc-types/")
+    )]
     pub struct NotificationsListResponse {
         pub items: Vec<NotificationItem>,
         pub next_cursor: Option<String>,
@@ -31,7 +37,10 @@ pub mod v1 {
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[cfg_attr(feature = "ts-export", derive(TS))]
-    #[cfg_attr(feature = "ts-export", ts(export, export_to = "../../../apps/frontend/src/lib/ipc-types/"))]
+    #[cfg_attr(
+        feature = "ts-export",
+        ts(export, export_to = "../../../apps/frontend/src/lib/ipc-types/")
+    )]
     pub struct NotificationItem {
         pub id: String,
         pub category: String,
