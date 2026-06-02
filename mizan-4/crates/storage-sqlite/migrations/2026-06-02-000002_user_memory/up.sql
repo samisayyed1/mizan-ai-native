@@ -84,9 +84,14 @@ CREATE INDEX idx_user_memory_expires_at
     ON user_memory(expires_at)
     WHERE expires_at IS NOT NULL AND deleted_at IS NULL;
 
--- Last-used ordering for LRU eviction when a user's memory exceeds budget
+-- Last-used ordering for LRU eviction when a user's memory exceeds budget.
+-- SQLite implicitly sorts NULLs LAST for `DESC` (and NULLs FIRST for `ASC`),
+-- which matches the LRU semantic — recently-NULL last_used_at means "never
+-- used since creation" and should sort AFTER actually-used rows. Explicit
+-- `NULLS LAST` is rejected on older SQLite (CI's libsqlite3 < 3.30) so we
+-- omit it; the implicit ordering is correct.
 CREATE INDEX idx_user_memory_last_used_at
-    ON user_memory(user_id, last_used_at DESC NULLS LAST)
+    ON user_memory(user_id, last_used_at DESC)
     WHERE deleted_at IS NULL;
 
 -- Category filter (the memory editor UI filters by preference/goal/context/constraint)
