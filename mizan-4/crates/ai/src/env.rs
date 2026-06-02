@@ -421,7 +421,7 @@ pub mod test_env {
             config: &mizan_core::activities::ParseConfig,
         ) -> CoreResult<mizan_core::activities::ParsedCsvResult> {
             // Delegate to the actual core parser for testing
-            mizan_core::activities::parse_csv(content, config)
+            Ok(mizan_core::activities::parse_csv(content, config)?)
         }
 
         async fn prepare_activities_for_save(

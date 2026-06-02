@@ -1,0 +1,26 @@
+[package]
+name = "mizan-csv-import"
+version.workspace = true
+edition.workspace = true
+description = "CSV parsing with auto-detection for delimiter, encoding, decimal/thousands separators"
+authors = ["Sami Sayyed"]
+license = "AGPL-3.0"
+
+[features]
+default = []
+test-utils = []
+
+[dependencies]
+# True leaf crate per ADR 0003 — zero internal deps. The mizan-core
+# error type wraps CsvImportError via a `From` impl living in mizan-core
+# (avoiding a dependency cycle since mizan-core needs ParseConfig for
+# the activities module).
+csv = "1"
+chardetng = "0.1"
+encoding_rs = "0.8"
+log = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

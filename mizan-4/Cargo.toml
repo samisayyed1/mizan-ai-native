@@ -98,3 +98,7 @@ mizan-insights = { path = "crates/insights" }
 # valuation from current holdings + quote history) extracted out of
 # mizan-core. Six back-edges; full leaf in PR-H3.d.1/2.
 mizan-synthesis = { path = "crates/synthesis" }
+# Track H PR-H3.e — CSV parser extracted out of mizan-core as a TRUE
+# LEAF (zero internal deps). mizan-core owns the From-impl that maps
+# CsvImportError into mizan_core::errors::Error.
+mizan-csv-import = { path = "crates/csv-import" }

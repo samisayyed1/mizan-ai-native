@@ -44,11 +44,11 @@ pub fn normalize_context_kind_value(raw: &str) -> &str {
     }
 }
 
-use crate::activities::csv_parser::ParseConfig;
 use crate::assets::NewAsset;
 use crate::Result;
 use crate::{activities::activities_errors::ActivityError, QuoteMode};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use mizan_csv_import::ParseConfig;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

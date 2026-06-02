@@ -14,7 +14,6 @@ use crate::activities::activities_constants::{
 };
 use crate::activities::activities_errors::ActivityError;
 use crate::activities::activities_model::*;
-use crate::activities::csv_parser::{self, ParseConfig, ParsedCsvResult};
 use crate::activities::idempotency::compute_idempotency_key;
 use crate::activities::{ActivityRepositoryTrait, ActivityServiceTrait};
 use crate::activities::{
@@ -33,6 +32,7 @@ use crate::quotes::constants::DATA_SOURCE_MANUAL;
 use crate::quotes::{Quote, QuoteServiceTrait};
 use crate::Result;
 use log::warn;
+use mizan_csv_import::{self as csv_parser, ParseConfig, ParsedCsvResult};
 
 /// Cache key: (symbol, exchange_mic, instrument_type) → provider quote currency
 type QuoteCcyCache = HashMap<(String, Option<String>, Option<String>), Option<String>>;
@@ -1072,7 +1072,7 @@ impl ActivityService {
 
     /// Parses CSV content with the given configuration.
     pub fn parse_csv(&self, content: &[u8], config: &ParseConfig) -> Result<ParsedCsvResult> {
-        csv_parser::parse_csv(content, config)
+        Ok(csv_parser::parse_csv(content, config)?)
     }
 }
 
@@ -4383,7 +4383,7 @@ impl ActivityServiceTrait for ActivityService {
         content: &[u8],
         config: &csv_parser::ParseConfig,
     ) -> Result<csv_parser::ParsedCsvResult> {
-        csv_parser::parse_csv(content, config)
+        Ok(csv_parser::parse_csv(content, config)?)
     }
 
     /// Upserts multiple activities (insert or update on conflict).

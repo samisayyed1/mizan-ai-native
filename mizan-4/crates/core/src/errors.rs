@@ -226,6 +226,20 @@ impl From<ChronoParseError> for Error {
     }
 }
 
+// Track H PR-H3.e — the CSV parser lives in `mizan-csv-import` as a
+// true leaf crate. Its error type maps cleanly onto Validation, so call
+// sites returning `mizan_core::Result` can propagate parser errors via
+// `?` without ever owning a `CsvImportError` value.
+impl From<mizan_csv_import::CsvImportError> for Error {
+    fn from(err: mizan_csv_import::CsvImportError) -> Self {
+        match err {
+            mizan_csv_import::CsvImportError::InvalidInput(msg) => {
+                Error::Validation(ValidationError::InvalidInput(msg))
+            }
+        }
+    }
+}
+
 impl From<Error> for String {
     fn from(err: Error) -> Self {
         err.to_string()

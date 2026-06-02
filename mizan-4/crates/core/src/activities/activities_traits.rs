@@ -253,8 +253,8 @@ pub trait ActivityServiceTrait: Send + Sync {
     fn parse_csv(
         &self,
         content: &[u8],
-        config: &super::csv_parser::ParseConfig,
-    ) -> Result<super::csv_parser::ParsedCsvResult>;
+        config: &mizan_csv_import::ParseConfig,
+    ) -> Result<mizan_csv_import::ParsedCsvResult>;
 
     /// Upserts multiple activities (insert or update on conflict).
     /// Used by broker sync to efficiently sync activities.

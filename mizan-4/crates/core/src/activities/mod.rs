@@ -6,7 +6,9 @@ mod activities_model;
 mod activities_service;
 mod activities_traits;
 mod compiler;
-mod csv_parser;
+// Track H PR-H3.e — csv_parser moved out of mizan-core into the
+// `mizan-csv-import` crate. Re-exported below from mizan_csv_import so
+// existing `mizan_core::activities::ParseConfig` consumers keep working.
 mod fd_scheduler;
 mod idempotency;
 mod import_run_model;
@@ -36,7 +38,9 @@ pub use activities_model::{
 pub use activities_service::ActivityService;
 pub use activities_traits::{ActivityRepositoryTrait, ActivityServiceTrait};
 pub use compiler::{ActivityCompiler, DefaultActivityCompiler};
-pub use csv_parser::{parse_csv, ParseConfig, ParseError, ParsedCsvResult};
+// Track H PR-H3.e — re-export the public CSV parser surface from
+// mizan_csv_import. Same path (`mizan_core::activities::{parse_csv,
+// ParseConfig, ...}`) so downstream consumers compile unchanged.
 pub use fd_scheduler::{generate_fd_schedule, FdParams, FdPaymentFrequency, FdSchedulerError};
 pub use idempotency::{
     compute_activity_idempotency_key, compute_idempotency_key, generate_manual_idempotency_key,
@@ -45,4 +49,5 @@ pub use import_run_model::{
     ImportRun, ImportRunMode, ImportRunRepositoryTrait, ImportRunStatus, ImportRunSummary,
     ImportRunType, ReviewMode,
 };
+pub use mizan_csv_import::{parse_csv, CsvImportError, ParseConfig, ParseError, ParsedCsvResult};
 pub use rsp_scheduler::{generate_rsp_schedule, RspFrequency, RspParams, RspSchedulerError};
