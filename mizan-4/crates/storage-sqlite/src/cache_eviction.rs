@@ -116,6 +116,30 @@ impl SweepReport {
     }
 }
 
+/// Errors a real (non-test) `EvictionContext` impl can return when it
+/// tries to execute SQL.
+#[derive(Debug, Clone)]
+pub struct EvictionError {
+    pub message: String,
+}
+
+impl std::fmt::Display for EvictionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "eviction execution failed: {}", self.message)
+    }
+}
+
+impl std::error::Error for EvictionError {}
+
+impl EvictionError {
+    #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
 /// Synchronous eviction run on app-version-mismatch boot.
 ///
 /// Called from `apps/tauri/src/main.rs` BEFORE the WebView is allowed to
@@ -123,33 +147,54 @@ impl SweepReport {
 /// working agreement §19.1 / §19.7: stale cache rows from a prior binary
 /// version must not leak into the new version's UI.
 ///
-/// **Not yet wired into the Tauri startup sequence.** This is the skeleton
-/// landed in PR-I2. The wiring happens in PR-I2.e — the Tauri main loop
-/// changes are larger than a 500-line PR can absorb without compromising
-/// reviewability, so we ship the worker contract first, then wire in a
-/// follow-up.
-pub fn run_synchronous(_ctx: &dyn EvictionContext) -> SweepReport {
+/// Track H PR-I2.e wired this into the Tauri startup sequence — called
+/// from `apps/tauri/src/context/providers.rs::initialize_context` right
+/// after `db::run_migrations`. See [`SqliteEvictionContext`] for the
+/// real production context.
+///
+/// `cutoff_micros` is the wall-clock cutoff in unix-microseconds (i.e.
+/// `now() - policy.ttl`). Passed in by the caller so this function stays
+/// test-deterministic (no clock access here).
+pub fn run_synchronous(ctx: &dyn EvictionContext, cutoff_micros: i64) -> SweepReport {
     let mut report = SweepReport::default();
     for policy in CACHE_POLICIES {
-        // KeepMarkStale needs no worker action — the badge layer
-        // computes staleness at read time. Report ok with zero rows
-        // even in the skeleton.
-        if matches!(policy.eviction, EvictionStrategy::KeepMarkStale) {
-            report
-                .outcomes
-                .push(EvictionOutcome::ok(policy.table, 0, Duration::ZERO));
-            continue;
-        }
-        // PR-I2.a..d will implement Delete / RollupThenDelete /
-        // ArchiveThenDelete per-strategy. Until then, every other policy
-        // yields a Skipped outcome so the report shape is testable and
-        // the wiring can land before the SQL queries are written.
-        report.outcomes.push(EvictionOutcome::skipped(
-            policy.table,
-            "PR-I2 skeleton — per-strategy SQL implementation pending",
-        ));
+        let outcome = evict_table_sync(policy, ctx, cutoff_micros);
+        report.outcomes.push(outcome);
     }
     report
+}
+
+/// Synchronous variant of [`evict_table`] — the dispatcher used by
+/// startup eviction. Rollup + Archive strategies are not yet wired into
+/// the sync path (they require async cold-storage uploads and a `Rollup`
+/// trait registration) so they emit Skipped outcomes; the 3am daily
+/// sweep (run_one_sweep) is the place those land in PR-I2.{b,c}.full.
+fn evict_table_sync(
+    policy: &CachePolicy,
+    ctx: &dyn EvictionContext,
+    cutoff_micros: i64,
+) -> EvictionOutcome {
+    match policy.eviction {
+        EvictionStrategy::Delete => {
+            let sql = delete_sql_for(policy);
+            let started = std::time::Instant::now();
+            match ctx.execute_delete(&sql, cutoff_micros) {
+                Ok(rows) => EvictionOutcome::ok(policy.table, rows, started.elapsed()),
+                Err(e) => {
+                    EvictionOutcome::skipped(policy.table, &format!("Delete strategy failed: {e}"))
+                }
+            }
+        }
+        EvictionStrategy::RollupThenDelete => EvictionOutcome::skipped(
+            policy.table,
+            "PR-I2.b.full RollupThenDelete execution pending (sync path)",
+        ),
+        EvictionStrategy::ArchiveThenDelete => EvictionOutcome::skipped(
+            policy.table,
+            "PR-I2.c.full ArchiveThenDelete execution pending (sync path)",
+        ),
+        EvictionStrategy::KeepMarkStale => EvictionOutcome::ok(policy.table, 0, Duration::ZERO),
+    }
 }
 
 /// Run a single sweep across all registered cache tables. The 3am daily
@@ -281,16 +326,24 @@ async fn evict_table(policy: &CachePolicy, _ctx: &dyn EvictionContext) -> Evicti
 }
 
 /// Injectable context for eviction operations. Tests pass a mock; the
-/// real desktop wires the SQLite pool + Mizan Connect client.
+/// real desktop wires the SQLite pool + Mizan Connect client via
+/// [`SqliteEvictionContext`] in `cache_eviction_sqlite.rs`.
 ///
-/// Defined as a trait so the eviction worker can be tested without a
-/// real database. The actual impl ships in PR-I2.e alongside the Tauri
-/// main-loop wiring.
+/// PR-I2.e ships the production impl alongside the Tauri main-loop
+/// wiring. The default `execute_delete` returns `EvictionError` so the
+/// test-only `NoopContext` (which doesn't override it) records Skipped
+/// outcomes rather than silently zeroing — keeping the contract honest.
 pub trait EvictionContext: Sync {
-    /// Access to the SQLite connection pool for `DELETE FROM ...` queries.
-    /// Returns a placeholder until PR-I2.e wires the real pool.
-    fn pool_handle(&self) -> &'static str {
-        "PR-I2 skeleton context"
+    /// Execute a `DELETE FROM <table> WHERE <age_column> < ?` SQL string
+    /// against the underlying connection pool, binding `cutoff_micros`
+    /// as the single bind parameter. Returns the number of rows affected.
+    ///
+    /// The SQL is the output of [`delete_sql_for`] — never user input,
+    /// always validated by the policy registry at compile time.
+    fn execute_delete(&self, _sql: &str, _cutoff_micros: i64) -> Result<u64, EvictionError> {
+        Err(EvictionError::new(
+            "no-op EvictionContext does not execute SQL — wire a real context (e.g. SqliteEvictionContext)",
+        ))
     }
 }
 
@@ -349,19 +402,25 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::*;
 
+    /// Arbitrary fixed cutoff for the tests below. PR-I2.e disallows
+    /// `Date::now()` / `Instant::now()` at clock-binding sites so the
+    /// caller supplies cutoff_micros — this test value is just a recent
+    /// unix-micros timestamp (2026-06-03T00:00:00Z, computed externally
+    /// to avoid any clock call here).
+    const FIXED_CUTOFF: i64 = 1_780_704_000_000_000;
+
     #[test]
     fn synchronous_returns_a_report_with_one_outcome_per_policy() {
-        let report = run_synchronous(&NoopContext);
+        let report = run_synchronous(&NoopContext, FIXED_CUTOFF);
         assert_eq!(report.outcomes.len(), CACHE_POLICIES.len());
     }
 
     #[test]
-    fn skeleton_report_is_not_clean_yet() {
-        // Until PR-I2.a–c land, every Delete/Rollup/Archive policy yields
-        // a Skipped outcome. KeepMarkStale yields ok. So the report is NOT
-        // clean (most outcomes have an error message).
-        let report = run_synchronous(&NoopContext);
-        // At least one outcome must carry the skeleton-pending error.
+    fn noop_context_yields_skipped_for_delete_strategies() {
+        // The default trait impl returns Err — the worker turns that into
+        // a Skipped outcome. Non-Delete strategies (KeepMarkStale, plus
+        // Rollup/Archive which are pending) yield their own skip messages.
+        let report = run_synchronous(&NoopContext, FIXED_CUTOFF);
         assert!(report.outcomes.iter().any(|o| o.error.is_some()));
     }
 
@@ -369,7 +428,7 @@ mod tests {
     fn keep_mark_stale_outcomes_are_clean() {
         // quotes + fx_rates use KeepMarkStale — they should NOT be in the
         // failed-tables list.
-        let report = run_synchronous(&NoopContext);
+        let report = run_synchronous(&NoopContext, FIXED_CUTOFF);
         let failed = report.failed_tables();
         assert!(
             !failed.contains(&"quotes"),
@@ -379,6 +438,71 @@ mod tests {
             !failed.contains(&"fx_rates"),
             "fx_rates uses KeepMarkStale and should not be reported as failed"
         );
+    }
+
+    #[test]
+    fn delete_strategy_uses_context_when_provided() {
+        // FakeContext counts executions + returns synthetic row counts.
+        struct FakeContext(std::sync::Mutex<Vec<(String, i64)>>);
+        impl EvictionContext for FakeContext {
+            fn execute_delete(&self, sql: &str, cutoff_micros: i64) -> Result<u64, EvictionError> {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((sql.to_string(), cutoff_micros));
+                Ok(7)
+            }
+        }
+        let ctx = FakeContext(std::sync::Mutex::new(Vec::new()));
+        let report = run_synchronous(&ctx, FIXED_CUTOFF);
+        // Every Delete policy should now contribute an Ok outcome with 7 rows.
+        let delete_outcomes: Vec<&EvictionOutcome> = report
+            .outcomes
+            .iter()
+            .filter(|o| {
+                CACHE_POLICIES
+                    .iter()
+                    .find(|p| p.table == o.table)
+                    .is_some_and(|p| matches!(p.eviction, EvictionStrategy::Delete))
+            })
+            .collect();
+        assert!(
+            !delete_outcomes.is_empty(),
+            "registry must contain at least one Delete-strategy policy for this test to be meaningful"
+        );
+        for o in &delete_outcomes {
+            assert!(o.error.is_none(), "Delete policy should succeed: {o:?}");
+            assert_eq!(o.rows_evicted, 7);
+        }
+        let calls = ctx.0.lock().unwrap();
+        assert_eq!(calls.len(), delete_outcomes.len());
+        assert!(calls.iter().all(|(_, c)| *c == FIXED_CUTOFF));
+    }
+
+    #[test]
+    fn delete_strategy_records_skipped_on_context_error() {
+        struct ErrCtx;
+        impl EvictionContext for ErrCtx {
+            fn execute_delete(&self, _sql: &str, _cutoff: i64) -> Result<u64, EvictionError> {
+                Err(EvictionError::new("simulated DB outage"))
+            }
+        }
+        let report = run_synchronous(&ErrCtx, FIXED_CUTOFF);
+        let delete_failures: Vec<_> = report
+            .outcomes
+            .iter()
+            .filter(|o| {
+                CACHE_POLICIES
+                    .iter()
+                    .find(|p| p.table == o.table)
+                    .is_some_and(|p| matches!(p.eviction, EvictionStrategy::Delete))
+            })
+            .collect();
+        for o in &delete_failures {
+            assert!(o.error.is_some());
+            let msg = o.error.as_ref().unwrap();
+            assert!(msg.contains("simulated DB outage"), "got: {msg}");
+        }
     }
 
     #[tokio::test]
