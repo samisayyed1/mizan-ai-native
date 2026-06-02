@@ -1,3 +1,9 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stderr
+)]
 //! Entitlements parity guard.
 //!
 //! The cloud's `mizan_connect::billing::entitlements::entitlements_for`

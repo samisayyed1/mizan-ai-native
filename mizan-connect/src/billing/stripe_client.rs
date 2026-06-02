@@ -222,6 +222,7 @@ impl StripeClient {
 
 #[cfg(test)]
 mod webhook_verify_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::*;
     // Mac trait is brought in via the top-of-file `use hmac::{Hmac, Mac};`
     // and inherited by this nested module via super::*.

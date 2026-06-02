@@ -546,7 +546,10 @@ pub async fn disconnect_snaptrade_authorization(
     authorization_id: String,
     state: State<'_, Arc<ServiceContext>>,
 ) -> Result<(), String> {
-    info!("Disconnecting SnapTrade authorization: {}", authorization_id);
+    info!(
+        "Disconnecting SnapTrade authorization: {}",
+        authorization_id
+    );
     let client = state.connect_service().get_api_client().await?;
     let _ = client
         .disconnect_snaptrade_authorization(&authorization_id)

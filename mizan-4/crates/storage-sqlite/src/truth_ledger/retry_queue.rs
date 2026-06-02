@@ -112,15 +112,13 @@ impl SqliteTruthLedgerRetryQueue {
                     .map_err(StorageError::from)?;
                 match existing {
                     Some(row) => {
-                        diesel::update(
-                            q_dsl::truth_ledger_retry_queue.filter(q_dsl::id.eq(&id)),
-                        )
-                        .set((
-                            q_dsl::attempts.eq(row.attempts + 1),
-                            q_dsl::last_error.eq(Some(reason)),
-                        ))
-                        .execute(conn)
-                        .map_err(StorageError::from)?;
+                        diesel::update(q_dsl::truth_ledger_retry_queue.filter(q_dsl::id.eq(&id)))
+                            .set((
+                                q_dsl::attempts.eq(row.attempts + 1),
+                                q_dsl::last_error.eq(Some(reason)),
+                            ))
+                            .execute(conn)
+                            .map_err(StorageError::from)?;
                     }
                     None => {
                         let new_row = RetryRow {
@@ -174,7 +172,8 @@ impl SqliteTruthLedgerRetryQueue {
                 Ok(w) => w,
                 Err(e) => {
                     stats.failed += 1;
-                    self.bump_attempt(&row.id, &format!("decode failed: {e}")).await?;
+                    self.bump_attempt(&row.id, &format!("decode failed: {e}"))
+                        .await?;
                     continue;
                 }
             };
@@ -197,11 +196,9 @@ impl SqliteTruthLedgerRetryQueue {
         let id = id.to_string();
         self.writer
             .exec(move |conn| -> Result<()> {
-                diesel::delete(
-                    q_dsl::truth_ledger_retry_queue.filter(q_dsl::id.eq(&id)),
-                )
-                .execute(conn)
-                .map_err(StorageError::from)?;
+                diesel::delete(q_dsl::truth_ledger_retry_queue.filter(q_dsl::id.eq(&id)))
+                    .execute(conn)
+                    .map_err(StorageError::from)?;
                 Ok(())
             })
             .await

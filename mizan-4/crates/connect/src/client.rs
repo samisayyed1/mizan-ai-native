@@ -580,7 +580,10 @@ impl ConnectApiClient {
         account_id: Option<&str>,
         limit: Option<u32>,
     ) -> Result<Vec<serde_json::Value>> {
-        let url = format!("{}/api/v1/sync/plaid/investment-transactions", self.base_url);
+        let url = format!(
+            "{}/api/v1/sync/plaid/investment-transactions",
+            self.base_url
+        );
         let mut params: Vec<(&str, String)> = Vec::with_capacity(3);
         if let Some(s) = since {
             params.push(("since", s.to_string()));
@@ -630,8 +633,11 @@ impl ConnectApiClient {
     /// `redirect_uri` in the system browser; SnapTrade redirects back via
     /// the deep link configured on the cloud (`SNAPTRADE_CUSTOM_REDIRECT`).
     pub async fn create_snaptrade_login_portal(&self) -> Result<SnapTradeLoginPortalResponse> {
-        self.post_json("/api/v1/sync/snaptrade/login-portal", &serde_json::json!({}))
-            .await
+        self.post_json(
+            "/api/v1/sync/snaptrade/login-portal",
+            &serde_json::json!({}),
+        )
+        .await
     }
 
     pub async fn list_snaptrade_connections(&self) -> Result<Vec<SnapTradeConnection>> {
@@ -759,28 +765,26 @@ impl BrokerApiClient for ConnectApiClient {
 
         let connections: Vec<BrokerConnection> = raw
             .into_iter()
-            .map(|c| {
-                BrokerConnection {
-                    id: c.item_id.clone(),
-                    brokerage: Some(BrokerConnectionBrokerage {
-                        id: c.institution_id,
-                        slug: None,
-                        name: c.institution_name.clone(),
-                        display_name: c.institution_name,
-                        aws_s3_logo_url: None,
-                        aws_s3_square_logo_url: None,
-                    }),
-                    connection_type: Some("plaid".to_string()),
-                    status: Some(if c.last_error.is_some() {
-                        "needs_attention".to_string()
-                    } else {
-                        c.status
-                    }),
-                    disabled: false,
-                    disabled_date: None,
-                    updated_at: c.last_successful_sync_at.or(Some(c.updated_at)),
-                    name: Some(format!("{} accounts", c.account_count)),
-                }
+            .map(|c| BrokerConnection {
+                id: c.item_id.clone(),
+                brokerage: Some(BrokerConnectionBrokerage {
+                    id: c.institution_id,
+                    slug: None,
+                    name: c.institution_name.clone(),
+                    display_name: c.institution_name,
+                    aws_s3_logo_url: None,
+                    aws_s3_square_logo_url: None,
+                }),
+                connection_type: Some("plaid".to_string()),
+                status: Some(if c.last_error.is_some() {
+                    "needs_attention".to_string()
+                } else {
+                    c.status
+                }),
+                disabled: false,
+                disabled_date: None,
+                updated_at: c.last_successful_sync_at.or(Some(c.updated_at)),
+                name: Some(format!("{} accounts", c.account_count)),
             })
             .collect();
 
@@ -1198,7 +1202,10 @@ mod tests {
             .mount(&server)
             .await;
         let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
-        let err = client.sync_plaid_data().await.expect_err("envelope errors → Err");
+        let err = client
+            .sync_plaid_data()
+            .await
+            .expect_err("envelope errors → Err");
         assert!(
             err.to_string().contains("ITEM_LOGIN_REQUIRED"),
             "should surface Plaid-3 preserved error code; got: {err}"
@@ -1217,6 +1224,9 @@ mod tests {
             .mount(&server)
             .await;
         let client = ConnectApiClient::new(&server.uri(), "mizan-test-jwt").unwrap();
-        client.sync_plaid_data().await.expect("bare array success path → Ok");
+        client
+            .sync_plaid_data()
+            .await
+            .expect("bare array success path → Ok");
     }
 }

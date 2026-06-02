@@ -107,9 +107,9 @@ fn account_type_options() -> Vec<AccountTypeOption> {
 fn normalize_account_type(raw: &str) -> String {
     let up = raw.trim().to_uppercase();
     match up.as_str() {
-        "SECURITIES" | "BROKERAGE" | "TAXABLE" | "INVESTMENT" | "INVESTMENTS"
-        | "RETIREMENT" | "401K" | "IRA" | "ROTH" | "ROTH_IRA" | "RRSP" | "TFSA" | "SIPP"
-        | "PENSION" | "STOCK" | "STOCKS" | "EQUITIES" => "SECURITIES".to_string(),
+        "SECURITIES" | "BROKERAGE" | "TAXABLE" | "INVESTMENT" | "INVESTMENTS" | "RETIREMENT"
+        | "401K" | "IRA" | "ROTH" | "ROTH_IRA" | "RRSP" | "TFSA" | "SIPP" | "PENSION" | "STOCK"
+        | "STOCKS" | "EQUITIES" => "SECURITIES".to_string(),
 
         "CRYPTOCURRENCY" | "CRYPTO" | "WALLET" | "BTC" | "ETH" => "CRYPTOCURRENCY".to_string(),
 
@@ -146,7 +146,9 @@ fn available_currencies(base: &str, hint: Option<&str>) -> Vec<String> {
     if let Some(h) = hint {
         push_unique(&mut out, h);
     }
-    for code in ["USD", "EUR", "GBP", "CAD", "INR", "AED", "SGD", "AUD", "JPY"] {
+    for code in [
+        "USD", "EUR", "GBP", "CAD", "INR", "AED", "SGD", "AUD", "JPY",
+    ] {
         push_unique(&mut out, code);
     }
     out
@@ -181,7 +183,10 @@ impl<E: AiEnvironment> CreateAccountTool<E> {
         let account_type = normalize_account_type(&args.account_type);
         let name = args.name.trim().to_string();
         // If user said "retirement" but didn't separately set a group, capture it.
-        let group_hint = args.group.clone().or_else(|| infer_group_hint(&args.account_type));
+        let group_hint = args
+            .group
+            .clone()
+            .or_else(|| infer_group_hint(&args.account_type));
 
         let mut missing_fields: Vec<String> = Vec::new();
         if name.is_empty() {
@@ -202,9 +207,7 @@ impl<E: AiEnvironment> CreateAccountTool<E> {
 
         let mut warnings: Vec<String> = Vec::new();
         let name_lower = name.to_lowercase();
-        if !name_lower.is_empty()
-            && existing.iter().any(|a| a.name.to_lowercase() == name_lower)
-        {
+        if !name_lower.is_empty() && existing.iter().any(|a| a.name.to_lowercase() == name_lower) {
             warnings.push(format!(
                 "An account named \"{}\" already exists — consider update_account instead.",
                 name
@@ -233,8 +236,13 @@ impl<E: AiEnvironment> CreateAccountTool<E> {
                 account_type,
                 currency: currency.clone(),
                 is_default: args.is_default,
-                group: group_hint.map(|g| g.trim().to_string()).filter(|g| !g.is_empty()),
-                notes: args.notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
+                group: group_hint
+                    .map(|g| g.trim().to_string())
+                    .filter(|g| !g.is_empty()),
+                notes: args
+                    .notes
+                    .map(|n| n.trim().to_string())
+                    .filter(|n| !n.is_empty()),
                 provider: "MANUAL".to_string(),
             },
             validation,

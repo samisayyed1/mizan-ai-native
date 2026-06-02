@@ -16,7 +16,5 @@
 mod model;
 mod service;
 
-pub use model::{
-    NetWorthBreakdownEntry, NetWorthSnapshot, NetWorthSnapshotInput, SnapshotSource,
-};
+pub use model::{NetWorthBreakdownEntry, NetWorthSnapshot, NetWorthSnapshotInput, SnapshotSource};
 pub use service::{InMemoryNetWorthSnapshotService, NetWorthSnapshotService};

@@ -104,8 +104,12 @@ pub async fn synthesize_account_history(
                             "Synthesis ({}): excluding cash holding {} {} from history floor — \
                              no {} → {} rate available ({}). Add the FX pair under \
                              Settings → Market Data → Exchange Rates.",
-                            account_id, h.quantity, h.local_currency,
-                            h.local_currency, account_currency, e
+                            account_id,
+                            h.quantity,
+                            h.local_currency,
+                            h.local_currency,
+                            account_currency,
+                            e
                         );
                         None
                     }

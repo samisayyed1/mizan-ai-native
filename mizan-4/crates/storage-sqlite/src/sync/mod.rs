@@ -16,8 +16,8 @@ pub mod broker_ingest {
     pub use super::import_run::{ImportRunDB, ImportRunRepository};
     pub use super::platform::{Platform, PlatformDB, PlatformRepository};
     pub use super::state::{
-        BrokerSyncState, BrokerSyncStateDB, BrokerSyncStateRepository, PlaidInvestmentsCheckpoint,
-        PlaidSyncCheckpoint, LegacyBrokerCheckpoint, SyncStatus,
+        BrokerSyncState, BrokerSyncStateDB, BrokerSyncStateRepository, LegacyBrokerCheckpoint,
+        PlaidInvestmentsCheckpoint, PlaidSyncCheckpoint, SyncStatus,
     };
 }
 
@@ -30,8 +30,8 @@ pub use app_sync::{
 pub use import_run::{ImportRunDB, ImportRunRepository};
 pub use platform::{Platform, PlatformDB, PlatformRepository};
 pub use state::{
-    BrokerSyncState, BrokerSyncStateDB, BrokerSyncStateRepository, PlaidInvestmentsCheckpoint,
-    PlaidSyncCheckpoint, LegacyBrokerCheckpoint, SyncStatus,
+    BrokerSyncState, BrokerSyncStateDB, BrokerSyncStateRepository, LegacyBrokerCheckpoint,
+    PlaidInvestmentsCheckpoint, PlaidSyncCheckpoint, SyncStatus,
 };
 
 pub fn should_sync_outbox_for_account_create(provider_account_id: Option<&str>) -> bool {

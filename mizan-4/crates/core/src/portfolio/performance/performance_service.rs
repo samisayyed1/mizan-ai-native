@@ -1226,8 +1226,9 @@ mod tests {
             valuation("2026-01-04", dec!(2310), dec!(2000), dec!(2310), dec!(2000)),
         ];
 
-        let (twr, mwr) = PerformanceService::compute_compounded_daily_returns(&history, |_, _, _| {})
-            .expect("3 windows");
+        let (twr, mwr) =
+            PerformanceService::compute_compounded_daily_returns(&history, |_, _, _| {})
+                .expect("3 windows");
 
         assert_eq!(
             twr.round_dp(4),
@@ -1270,8 +1271,9 @@ mod tests {
             valuation("2026-01-03", dec!(1500), dec!(2000), dec!(1500), dec!(2000)),
             valuation("2026-01-04", dec!(1575), dec!(2000), dec!(1575), dec!(2000)),
         ];
-        let (twr, mwr) = PerformanceService::compute_compounded_daily_returns(&history, |_, _, _| {})
-            .expect("3 windows");
+        let (twr, mwr) =
+            PerformanceService::compute_compounded_daily_returns(&history, |_, _, _| {})
+                .expect("3 windows");
         assert_eq!(twr.round_dp(4), dec!(-0.475));
         assert_eq!(mwr.round_dp(4), dec!(-0.475));
     }

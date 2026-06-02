@@ -68,7 +68,9 @@ fn outcome_from_str(s: &str) -> SyncRunOutcome {
 }
 
 fn millis_to_dt(ms: i64) -> DateTime<Utc> {
-    Utc.timestamp_millis_opt(ms).single().unwrap_or_else(Utc::now)
+    Utc.timestamp_millis_opt(ms)
+        .single()
+        .unwrap_or_else(Utc::now)
 }
 
 fn dt_to_millis(dt: DateTime<Utc>) -> i64 {

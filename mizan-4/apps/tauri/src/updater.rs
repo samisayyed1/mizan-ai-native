@@ -1,15 +1,24 @@
+#[cfg(not(debug_assertions))]
 use chrono::DateTime;
-use log::{error, info, warn};
+use log::{error, info};
+#[cfg(not(debug_assertions))]
+use log::warn;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;
 
-// Helper function to detect if this is an App Store build
+// Helper function to detect if this is an App Store build.
+// Only used in the release-build update-check path (see `check_for_update`'s
+// `cfg(not(debug_assertions))` branch); marked `cfg(not(debug_assertions))` so
+// debug builds don't fire the dead_code warning.
+#[cfg(not(debug_assertions))]
 fn is_app_store_build() -> bool {
     cfg!(feature = "appstore")
 }
 
-// Helper function to retrieve platform-specific store URLs
+// Helper function to retrieve platform-specific store URLs.
+// Release-build only — see comment on `is_app_store_build`.
+#[cfg(not(debug_assertions))]
 fn app_store_url() -> Option<&'static str> {
     #[cfg(target_os = "macos")]
     {
@@ -40,7 +49,10 @@ pub struct UpdateInfo {
     pub screenshots: Option<Vec<String>>,
 }
 
-/// Extract changelog_url from raw_json
+/// Extract changelog_url from raw_json.
+/// Release-build only — debug builds short-circuit `check_for_update` so this
+/// helper is never reached. `cfg` gating keeps debug builds warning-free.
+#[cfg(not(debug_assertions))]
 fn extract_changelog_url(raw_json: &serde_json::Value) -> Option<String> {
     raw_json
         .get("changelog_url")
@@ -48,7 +60,8 @@ fn extract_changelog_url(raw_json: &serde_json::Value) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Extract screenshots from raw_json
+/// Extract screenshots from raw_json. Release-build only.
+#[cfg(not(debug_assertions))]
 fn extract_screenshots(raw_json: &serde_json::Value) -> Option<Vec<String>> {
     raw_json.get("screenshots").and_then(|v| {
         v.as_array().map(|arr| {
@@ -80,55 +93,55 @@ pub async fn check_for_update(
     {
         let _ = (app_handle, instance_id); // silence unused-var warning in dev
         info!("Update check skipped: debug build (cargo run / tauri dev)");
-        return Ok(None);
+        Ok(None)
     }
 
     #[cfg(not(debug_assertions))]
     {
-    let is_appstore = is_app_store_build();
+        let is_appstore = is_app_store_build();
 
-    let update = app_handle
-        .updater_builder()
-        .header("X-Instance-Id", instance_id)
-        .map_err(|e| format!("Failed to set header: {}", e))?
-        .build()
-        .map_err(|e| format!("Failed to build updater: {}", e))?
-        .check()
-        .await
-        .map_err(|e| {
-            warn!("Update check failed: {}", e);
-            format!("Failed to check for updates: {}", e)
-        })?;
+        let update = app_handle
+            .updater_builder()
+            .header("X-Instance-Id", instance_id)
+            .map_err(|e| format!("Failed to set header: {}", e))?
+            .build()
+            .map_err(|e| format!("Failed to build updater: {}", e))?
+            .check()
+            .await
+            .map_err(|e| {
+                warn!("Update check failed: {}", e);
+                format!("Failed to check for updates: {}", e)
+            })?;
 
-    match update {
-        Some(update) => {
-            let current_version = app_handle.package_info().version.to_string();
-            if update.version != current_version {
-                let pub_date = update.date.and_then(|d| {
-                    let seconds = d.unix_timestamp();
-                    let nanos = d.nanosecond();
-                    DateTime::from_timestamp(seconds, nanos).map(|dt| dt.to_rfc3339())
-                });
+        match update {
+            Some(update) => {
+                let current_version = app_handle.package_info().version.to_string();
+                if update.version != current_version {
+                    let pub_date = update.date.and_then(|d| {
+                        let seconds = d.unix_timestamp();
+                        let nanos = d.nanosecond();
+                        DateTime::from_timestamp(seconds, nanos).map(|dt| dt.to_rfc3339())
+                    });
 
-                let changelog_url = extract_changelog_url(&update.raw_json);
-                let screenshots = extract_screenshots(&update.raw_json);
+                    let changelog_url = extract_changelog_url(&update.raw_json);
+                    let screenshots = extract_screenshots(&update.raw_json);
 
-                Ok(Some(UpdateInfo {
-                    current_version,
-                    latest_version: update.version.to_string(),
-                    notes: update.body.clone(),
-                    pub_date,
-                    is_app_store_build: is_appstore,
-                    store_url: app_store_url().map(|url| url.to_string()),
-                    changelog_url,
-                    screenshots,
-                }))
-            } else {
-                Ok(None)
+                    Ok(Some(UpdateInfo {
+                        current_version,
+                        latest_version: update.version.to_string(),
+                        notes: update.body.clone(),
+                        pub_date,
+                        is_app_store_build: is_appstore,
+                        store_url: app_store_url().map(|url| url.to_string()),
+                        changelog_url,
+                        screenshots,
+                    }))
+                } else {
+                    Ok(None)
+                }
             }
+            None => Ok(None),
         }
-        None => Ok(None),
-    }
     } // close cfg(not(debug_assertions))
 }
 

@@ -63,7 +63,12 @@ impl<E: AiEnvironment + 'static> ToolSetDispatcher<E> {
 /// `entryIds` as synonyms because not every tool was authored against
 /// the canonical shape yet.
 fn extract_ledger_entries(output: &Value) -> Vec<String> {
-    const KEYS: &[&str] = &["ledgerEntryIds", "ledger_entries", "ledgerEntries", "entryIds"];
+    const KEYS: &[&str] = &[
+        "ledgerEntryIds",
+        "ledger_entries",
+        "ledgerEntries",
+        "entryIds",
+    ];
     for key in KEYS {
         if let Some(arr) = output.get(key).and_then(|v| v.as_array()) {
             return arr
@@ -77,11 +82,7 @@ fn extract_ledger_entries(output: &Value) -> Vec<String> {
 
 #[async_trait]
 impl<E: AiEnvironment + 'static> AgentToolDispatcher for ToolSetDispatcher<E> {
-    async fn dispatch(
-        &self,
-        tool_name: &str,
-        args: Value,
-    ) -> Result<DispatchResult, AgentError> {
+    async fn dispatch(&self, tool_name: &str, args: Value) -> Result<DispatchResult, AgentError> {
         // Each branch deserialises args into the tool's specific
         // argument type and calls the tool. Errors surface as
         // AgentError::Internal with the source error to_string so the
@@ -91,9 +92,7 @@ impl<E: AiEnvironment + 'static> AgentToolDispatcher for ToolSetDispatcher<E> {
                 let parsed: $args_ty = serde_json::from_value(args.clone()).map_err(|e| {
                     AgentError::Internal(format!(
                         "{}: failed to deserialise args ({}): {}",
-                        tool_name,
-                        e,
-                        args
+                        tool_name, e, args
                     ))
                 })?;
                 let output = $tool
@@ -117,10 +116,16 @@ impl<E: AiEnvironment + 'static> AgentToolDispatcher for ToolSetDispatcher<E> {
         match tool_name {
             // ─── Read-only tools ────────────────────────────────────
             "get_holdings" => {
-                invoke!(self.tool_set.holdings, crate::tools::holdings::GetHoldingsArgs)
+                invoke!(
+                    self.tool_set.holdings,
+                    crate::tools::holdings::GetHoldingsArgs
+                )
             }
             "get_accounts" => {
-                invoke!(self.tool_set.accounts, crate::tools::accounts::GetAccountsArgs)
+                invoke!(
+                    self.tool_set.accounts,
+                    crate::tools::accounts::GetAccountsArgs
+                )
             }
             "get_cash_balances" => invoke!(
                 self.tool_set.cash_balances,

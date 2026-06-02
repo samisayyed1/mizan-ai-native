@@ -428,10 +428,7 @@ impl ActivityService {
             );
         }
         if let Some(f) = activity.fee {
-            metadata.insert(
-                "fee".to_string(),
-                serde_json::Value::String(f.to_string()),
-            );
+            metadata.insert("fee".to_string(), serde_json::Value::String(f.to_string()));
         }
         if let Some(ref subtype) = activity.subtype {
             metadata.insert(

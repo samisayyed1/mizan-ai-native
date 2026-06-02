@@ -43,8 +43,7 @@ pub(super) fn largest_remainder_percentages<K: std::hash::Hash + Eq + Clone>(
         .iter()
         .map(|(k, v)| {
             let exact = (*v / total) * dec!(100);
-            let floored =
-                exact.trunc_with_scale(2);
+            let floored = exact.trunc_with_scale(2);
             let remainder = exact - floored;
             (k.clone(), floored, remainder)
         })
@@ -75,10 +74,7 @@ pub(super) fn largest_remainder_percentages<K: std::hash::Hash + Eq + Clone>(
             deficit_cents -= 1;
         }
     }
-    working
-        .into_iter()
-        .map(|(k, pct, _)| (k, pct))
-        .collect()
+    working.into_iter().map(|(k, pct, _)| (k, pct)).collect()
 }
 
 use crate::errors::Result;
@@ -255,8 +251,7 @@ impl AllocationService {
             .filter(|(_, v)| **v > Decimal::ZERO)
             .map(|(k, v)| (k.clone(), *v))
             .collect();
-        let top_level_percent_map =
-            largest_remainder_percentages(&top_level_pairs, total_value);
+        let top_level_percent_map = largest_remainder_percentages(&top_level_pairs, total_value);
 
         // Children are per-parent; compute LRM-rounded percentages
         // PER top-level scope (so each pie slice's children sum to
@@ -268,8 +263,7 @@ impl AllocationService {
             .filter(|(cid, (v, top_id))| **cid != *top_id && *v > Decimal::ZERO)
             .map(|(cid, (v, _))| (cid.clone(), *v))
             .collect();
-        let children_percent_map =
-            largest_remainder_percentages(&children_pairs, total_value);
+        let children_percent_map = largest_remainder_percentages(&children_pairs, total_value);
 
         // Build children map: top_level_id -> Vec<CategoryAllocation>
         let mut children_map: HashMap<String, Vec<CategoryAllocation>> = HashMap::new();
@@ -800,13 +794,24 @@ mod lrm_tests {
             vec![dec!(1)],
             vec![dec!(1), dec!(1)],
             vec![dec!(1), dec!(1), dec!(1)],
-            vec![dec!(1), dec!(1), dec!(1), dec!(1), dec!(1), dec!(1), dec!(1)],
+            vec![
+                dec!(1),
+                dec!(1),
+                dec!(1),
+                dec!(1),
+                dec!(1),
+                dec!(1),
+                dec!(1),
+            ],
             // 7 thirds + 1 large
             vec![dec!(1); 7].into_iter().chain([dec!(50)]).collect(),
             // Drift-classic: 7 + 3 + 2
             vec![dec!(7), dec!(3), dec!(2)],
             // Many small + one giant
-            vec![dec!(0.01); 50].into_iter().chain([dec!(99.5)]).collect(),
+            vec![dec!(0.01); 50]
+                .into_iter()
+                .chain([dec!(99.5)])
+                .collect(),
         ];
         for (idx, shape) in shapes.iter().enumerate() {
             let total: Decimal = shape.iter().copied().sum();

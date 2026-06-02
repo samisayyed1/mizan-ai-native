@@ -26,8 +26,8 @@ use mizan_connect::{
         SyncConnectionsResponse, UserInfo,
     },
     ensure_valid_access_token, fetch_subscription_plans_public, ConnectApiClient,
-    SyncProgressPayload, SyncProgressReporter, SyncResult, TokenLifecycleConfig, TokenLifecycleError,
-    CLOUD_ACCESS_TOKEN_KEY, CLOUD_REFRESH_TOKEN_KEY,
+    SyncProgressPayload, SyncProgressReporter, SyncResult, TokenLifecycleConfig,
+    TokenLifecycleError, CLOUD_ACCESS_TOKEN_KEY, CLOUD_REFRESH_TOKEN_KEY,
 };
 use mizan_core::accounts::TrackingMode;
 use mizan_device_sync::{EnableSyncResult, SyncState, SyncStateResult};
@@ -1393,7 +1393,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/connect/session/restore", get(restore_sync_session))
         // List operations (fetch from cloud without syncing)
         .route("/connect/connections", get(list_broker_connections))
-        .route("/connect/connections/{connection_id}", delete(delete_broker_connection))
+        .route(
+            "/connect/connections/{connection_id}",
+            delete(delete_broker_connection),
+        )
         .route("/connect/accounts", get(list_broker_accounts))
         .route("/connect/plaid/link-token", post(create_plaid_link_token))
         .route(

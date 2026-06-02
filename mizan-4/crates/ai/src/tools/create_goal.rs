@@ -132,7 +132,9 @@ fn available_currencies(base: &str, hint: Option<&str>) -> Vec<String> {
     if let Some(h) = hint {
         push(&mut out, h);
     }
-    for code in ["USD", "EUR", "GBP", "CAD", "INR", "AED", "SGD", "AUD", "JPY"] {
+    for code in [
+        "USD", "EUR", "GBP", "CAD", "INR", "AED", "SGD", "AUD", "JPY",
+    ] {
         push(&mut out, code);
     }
     out
@@ -207,9 +209,7 @@ impl<E: AiEnvironment> CreateGoalTool<E> {
 
         let mut warnings: Vec<String> = Vec::new();
         let lower = title.to_lowercase();
-        if !lower.is_empty()
-            && existing.iter().any(|g| g.title.to_lowercase() == lower)
-        {
+        if !lower.is_empty() && existing.iter().any(|g| g.title.to_lowercase() == lower) {
             warnings.push(format!(
                 "You already have a goal titled \"{}\". Consider editing it instead.",
                 title

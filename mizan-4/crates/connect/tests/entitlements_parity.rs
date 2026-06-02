@@ -36,7 +36,11 @@ fn fixtures() -> Vec<(Option<&'static str>, Option<&'static str>, &'static str)>
         (Some("silver"), Some("trialing"), "silver/trialing"),
         (Some("silver"), Some("past_due"), "silver/past_due"),
         (Some("silver"), Some("canceled"), "silver/canceled"),
-        (Some("basic"), Some("active"), "basic/active (legacy → silver)"),
+        (
+            Some("basic"),
+            Some("active"),
+            "basic/active (legacy → silver)",
+        ),
         (Some("gold"), Some("active"), "gold/active"),
         (Some("gold"), Some("trialing"), "gold/trialing"),
         (Some("gold"), Some("past_due"), "gold/past_due"),
@@ -45,7 +49,11 @@ fn fixtures() -> Vec<(Option<&'static str>, Option<&'static str>, &'static str)>
         (Some("advisor"), Some("active"), "advisor/active"),
         (Some("pro"), Some("active"), "pro/active (legacy → gold)"),
         (Some("plus"), Some("active"), "plus/active (legacy → gold)"),
-        (Some("essentials"), Some("active"), "essentials/active (legacy → gold)"),
+        (
+            Some("essentials"),
+            Some("active"),
+            "essentials/active (legacy → gold)",
+        ),
         (Some("duo"), Some("active"), "duo/active (legacy → gold)"),
     ]
 }

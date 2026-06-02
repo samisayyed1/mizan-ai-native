@@ -189,7 +189,7 @@ function AdvancedProvidersDisclosure({
   providers,
   children,
 }: {
-  providers: Array<{ id: string; enabled: boolean }>;
+  providers: { id: string; enabled: boolean }[];
   children: React.ReactNode;
 }) {
   const configuredCount = providers.filter((p) => p.enabled).length;

@@ -9,8 +9,8 @@
 //! idempotency, but the engine produces the keys so the storage layer
 //! never has to know about insight semantics.
 
-use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use serde_json::json;
 
 use super::input::{DividendEvent, GoalProgress, InsightsInput, SyncFailureInput};
@@ -110,7 +110,11 @@ fn eval_big_move(input: &InsightsInput) -> Option<Notification> {
                 .unwrap_or(std::cmp::Ordering::Equal)
         })?;
 
-    let dir_word = if dec_to_f64(mover.change_pct) >= 0.0 { "up" } else { "down" };
+    let dir_word = if dec_to_f64(mover.change_pct) >= 0.0 {
+        "up"
+    } else {
+        "down"
+    };
     let pct = fmt_pct_signed(mover.change_pct);
     let title = format!("{} {} today", mover.symbol, pct);
     let body = format!(
@@ -181,7 +185,10 @@ fn eval_single_goal(g: &GoalProgress, input: &InsightsInput) -> Option<Notificat
         format!("{} — {} of target", g.title, label)
     };
     let body = if *threshold >= 1.0 {
-        format!("You hit your target for {}. Time to plan what's next.", g.title)
+        format!(
+            "You hit your target for {}. Time to plan what's next.",
+            g.title
+        )
     } else {
         format!(
             "You're now at {} of your {} target. Keep going.",
@@ -202,7 +209,12 @@ fn eval_single_goal(g: &GoalProgress, input: &InsightsInput) -> Option<Notificat
         "targetValueBase": g.target_value_base,
         "milestone": label,
     });
-    let dedupe = format!("goal_milestone:{}:{}:{}", g.goal_id, label, today_str(input));
+    let dedupe = format!(
+        "goal_milestone:{}:{}:{}",
+        g.goal_id,
+        label,
+        today_str(input)
+    );
     Some(fresh(
         NotificationKind::GoalMilestone,
         severity,
@@ -259,11 +271,11 @@ fn eval_net_worth_dip_or_ath(input: &InsightsInput) -> Vec<Notification> {
         if prev > 0.0 {
             let change = (curr - prev) / prev;
             if change <= -NW_DIP_THRESHOLD_PCT {
-                    let payload = json!({
-                        "netWorthBase": last.net_worth_base,
-                        "weekAgoNetWorthBase": week_ago.net_worth_base,
-                        "changePct": change,
-                    });
+                let payload = json!({
+                    "netWorthBase": last.net_worth_base,
+                    "weekAgoNetWorthBase": week_ago.net_worth_base,
+                    "changePct": change,
+                });
                 out.push(fresh(
                     NotificationKind::NetWorthDip,
                     NotificationSeverity::Warning,

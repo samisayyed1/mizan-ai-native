@@ -49,7 +49,9 @@ pub enum LedgerEntryKind {
 pub enum LedgerIntegrityError {
     #[error("entry {0}: prev_hash does not match the previous entry's entry_hash")]
     BrokenChain(String),
-    #[error("entry {0}: entry_hash does not match the canonical SHA-256 of (prev_hash || payload)")]
+    #[error(
+        "entry {0}: entry_hash does not match the canonical SHA-256 of (prev_hash || payload)"
+    )]
     TamperedEntry(String),
     #[error("genesis entry {0} has a non-zero prev_hash")]
     InvalidGenesis(String),
@@ -111,7 +113,15 @@ impl LedgerEntry {
         recorded_at: DateTime<Utc>,
     ) -> Self {
         Self::assemble(
-            id, sequence, kind, prev_hash, account_id, asset_id, amount, currency, metadata,
+            id,
+            sequence,
+            kind,
+            prev_hash,
+            account_id,
+            asset_id,
+            amount,
+            currency,
+            metadata,
             recorded_at,
         )
     }

@@ -163,8 +163,7 @@ pub async fn export_user_data_json(
         fx_rates,
     };
 
-    serde_json::to_string_pretty(&export)
-        .map_err(|e| format!("Failed to serialise export: {}", e))
+    serde_json::to_string_pretty(&export).map_err(|e| format!("Failed to serialise export: {}", e))
 }
 
 /// Check for updates and return update info if available.

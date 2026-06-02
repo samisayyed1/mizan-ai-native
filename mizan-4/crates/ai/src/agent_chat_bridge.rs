@@ -194,11 +194,7 @@ mod tests {
     struct DummyPlanner;
     #[async_trait]
     impl AgentPlanner for DummyPlanner {
-        async fn plan(
-            &self,
-            _g: &str,
-            _c: &PlannerContext,
-        ) -> Result<Vec<PlanStep>, AgentError> {
+        async fn plan(&self, _g: &str, _c: &PlannerContext) -> Result<Vec<PlanStep>, AgentError> {
             Ok(vec![PlanStep {
                 id: "a".to_string(),
                 tool: "noop".to_string(),
@@ -274,7 +270,10 @@ mod tests {
             BridgeDecision::LockedRecipe { recipe } => {
                 assert_eq!(recipe.id, "portfolio_from_csv");
             }
-            _ => panic!("expected LockedRecipe, got {:?}", std::any::type_name_of_val(&decision)),
+            _ => panic!(
+                "expected LockedRecipe, got {:?}",
+                std::any::type_name_of_val(&decision)
+            ),
         }
     }
 

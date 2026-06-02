@@ -126,7 +126,9 @@ fn available_currencies(base: &str, hint: Option<&str>) -> Vec<String> {
     if let Some(h) = hint {
         push(&mut out, h);
     }
-    for code in ["USD", "EUR", "GBP", "CAD", "INR", "AED", "SGD", "AUD", "JPY"] {
+    for code in [
+        "USD", "EUR", "GBP", "CAD", "INR", "AED", "SGD", "AUD", "JPY",
+    ] {
         push(&mut out, code);
     }
     out
@@ -206,14 +208,12 @@ impl<E: AiEnvironment> AddAlternativeAssetTool<E> {
         // Per-kind metadata sanity checks (warnings only — UI lets user edit).
         let mut metadata = args.metadata.unwrap_or_default();
         match kind.as_str() {
-            "property"
-                if !metadata.contains_key("sub_type") => {
-                    metadata.insert("sub_type".to_string(), "residence".to_string());
-                }
-            "vehicle"
-                if !metadata.contains_key("sub_type") => {
-                    metadata.insert("sub_type".to_string(), "car".to_string());
-                }
+            "property" if !metadata.contains_key("sub_type") => {
+                metadata.insert("sub_type".to_string(), "residence".to_string());
+            }
+            "vehicle" if !metadata.contains_key("sub_type") => {
+                metadata.insert("sub_type".to_string(), "car".to_string());
+            }
             "precious" => {
                 if !metadata.contains_key("metal_type") {
                     warnings.push(
@@ -339,8 +339,14 @@ mod tests {
         assert!(out.validation.is_valid);
         assert_eq!(out.draft.kind, "property");
         // default sub_type added
-        assert_eq!(out.draft.metadata.get("sub_type").map(|s| s.as_str()), Some("residence"));
-        assert_eq!(out.draft.metadata.get("address").map(|s| s.as_str()), Some("123 Main St"));
+        assert_eq!(
+            out.draft.metadata.get("sub_type").map(|s| s.as_str()),
+            Some("residence")
+        );
+        assert_eq!(
+            out.draft.metadata.get("address").map(|s| s.as_str()),
+            Some("123 Main St")
+        );
     }
 
     #[tokio::test]
@@ -355,7 +361,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out.draft.kind, "vehicle");
-        assert_eq!(out.draft.metadata.get("sub_type").map(|s| s.as_str()), Some("car"));
+        assert_eq!(
+            out.draft.metadata.get("sub_type").map(|s| s.as_str()),
+            Some("car")
+        );
     }
 
     #[tokio::test]
@@ -371,8 +380,15 @@ mod tests {
             .unwrap();
         assert_eq!(out.draft.kind, "precious");
         // default unit added
-        assert_eq!(out.draft.metadata.get("unit").map(|s| s.as_str()), Some("oz"));
-        assert!(out.validation.warnings.iter().any(|w| w.contains("metal_type")));
+        assert_eq!(
+            out.draft.metadata.get("unit").map(|s| s.as_str()),
+            Some("oz")
+        );
+        assert!(out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.contains("metal_type")));
     }
 
     #[tokio::test]

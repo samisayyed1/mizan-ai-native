@@ -5,11 +5,11 @@
 use std::sync::Arc;
 
 use futures::StreamExt;
+use mizan_ai::types::MessageAttachment;
 use mizan_ai::{
     AiError, AiStreamEvent, ChatMessage, ChatThread, ListThreadsRequest, SendMessageRequest,
     ThreadPage,
 };
-use mizan_ai::types::MessageAttachment;
 use serde::{Deserialize, Serialize};
 use tauri::{ipc::Channel, State};
 
@@ -121,7 +121,7 @@ pub async fn stream_agent_chat(
     };
     use mizan_ai::agent_chat_bridge::{wrap_agent_event_for_sse, AgentTier};
     use mizan_ai::agent_dispatcher::ToolSetDispatcher;
-    use mizan_ai::agent_recipes::{detect_recipe, PORTFOLIO_FROM_CSV, ALL_RECIPES};
+    use mizan_ai::agent_recipes::{detect_recipe, ALL_RECIPES, PORTFOLIO_FROM_CSV};
     use uuid::Uuid;
 
     let thread_id = request

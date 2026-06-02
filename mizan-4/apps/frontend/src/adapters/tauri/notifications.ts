@@ -19,7 +19,7 @@ export const listNotifications = async (limit?: number): Promise<NotificationsPa
 export const notificationsUnreadCount = async (): Promise<number> => {
   try {
     return await invoke<number>("notifications_unread_count");
-  } catch (err) {
+  } catch (_err) {
     logger.error("Error fetching unread notification count");
     // Bell-badge call site treats this as a soft failure — return 0
     // rather than break the chrome on a transient IPC blip.

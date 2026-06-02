@@ -98,7 +98,10 @@ fn big_move_picks_largest_abs_change() {
     });
     let out = evaluate(&i);
     assert_eq!(out.len(), 1);
-    assert!(out[0].title.contains("BBB"), "should have picked the -10% mover");
+    assert!(
+        out[0].title.contains("BBB"),
+        "should have picked the -10% mover"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -136,7 +139,11 @@ fn goal_at_100_uses_success_severity() {
     let out = evaluate(&i);
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].severity, NotificationSeverity::Success);
-    assert!(out[0].title.contains("reached"), "title was {}", out[0].title);
+    assert!(
+        out[0].title.contains("reached"),
+        "title was {}",
+        out[0].title
+    );
 }
 
 #[test]
@@ -226,7 +233,9 @@ fn cash_drag_silent_under_days_threshold() {
     i.cash_pct_of_net_worth = Some(dec!(0.15));
     i.cash_high_for_days = Some(10);
     assert!(
-        !evaluate(&i).iter().any(|n| n.kind == NotificationKind::CashDrag),
+        !evaluate(&i)
+            .iter()
+            .any(|n| n.kind == NotificationKind::CashDrag),
         "must wait for 30+ days above threshold"
     );
 }
@@ -250,7 +259,9 @@ fn dividend_event_emits_per_activity() {
         amount_base: dec!(42.50),
     });
     let out = evaluate(&i);
-    let div = out.iter().find(|n| n.kind == NotificationKind::DividendPosted);
+    let div = out
+        .iter()
+        .find(|n| n.kind == NotificationKind::DividendPosted);
     assert!(div.is_some(), "expected dividend notification");
     let div = div.unwrap();
     assert_eq!(div.severity, NotificationSeverity::Success);
@@ -269,7 +280,9 @@ fn interest_event_uses_interest_label() {
         amount_base: dec!(12.00),
     });
     let out = evaluate(&i);
-    let div = out.iter().find(|n| n.kind == NotificationKind::DividendPosted);
+    let div = out
+        .iter()
+        .find(|n| n.kind == NotificationKind::DividendPosted);
     assert!(div.is_some());
     assert!(
         div.unwrap().title.starts_with("Interest"),

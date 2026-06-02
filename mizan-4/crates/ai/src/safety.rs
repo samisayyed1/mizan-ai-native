@@ -90,7 +90,10 @@ impl AiSafetyRuntime {
         turn_index: u32,
         tool_name: &str,
     ) -> Result<ToolCallAuditEntry, ToolCallAuditEntry> {
-        let mut counters = self.counters.lock().expect("safety counters mutex poisoned");
+        let mut counters = self
+            .counters
+            .lock()
+            .expect("safety counters mutex poisoned");
         let counter = counters
             .entry((thread_id.to_string(), turn_index))
             .or_insert(0);
@@ -162,7 +165,10 @@ impl AiSafetyRuntime {
     /// Reset a thread's per-turn counter — call when a new user message
     /// starts a fresh turn. Cheap O(1) hash drop.
     pub fn end_turn(self: &Arc<Self>, thread_id: &str, turn_index: u32) {
-        let mut counters = self.counters.lock().expect("safety counters mutex poisoned");
+        let mut counters = self
+            .counters
+            .lock()
+            .expect("safety counters mutex poisoned");
         counters.remove(&(thread_id.to_string(), turn_index));
     }
 }

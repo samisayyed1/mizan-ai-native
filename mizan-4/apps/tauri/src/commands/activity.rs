@@ -398,9 +398,7 @@ pub async fn import_activities(
     // §A4 — open a sync ledger entry around the import so the user has a
     // grep-able trail of every CSV they imported, with row counts +
     // structured error if it failed.
-    use mizan_core::sync_ledger::{
-        SyncRunEntry, SyncRunMode, SyncRunProvider, SyncRunSummary,
-    };
+    use mizan_core::sync_ledger::{SyncRunEntry, SyncRunMode, SyncRunProvider, SyncRunSummary};
     let run_id = uuid::Uuid::new_v4().to_string();
     let started_entry = SyncRunEntry::started(
         run_id.clone(),
