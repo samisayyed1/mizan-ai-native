@@ -220,10 +220,14 @@ jobs:
         with:
           fetch-depth: 0   # gitleaks needs full history
 
-      # Secret scan over full history (working agreement §18.12 baseline req)
+      # Secret scan over full history (working agreement §18.12 baseline req).
+      # GITHUB_TOKEN is required by gitleaks-action v2+ to scan PR diffs;
+      # GITLEAKS_LICENSE is only needed for orgs (samisayyed1 is an
+      # individual user so no license key required).
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       # Dead-dependency scan for Rust (working agreement §18.4)
