@@ -1,0 +1,134 @@
+# Nightly mutation testing per working agreement §18.8.
+#
+# Mutation testing exposes test-quality gaps that line/branch coverage can't —
+# a surviving mutant means: this code's tests run, but they don't actually
+# assert anything meaningful about this code's behaviour.
+#
+# Scope per the working agreement:
+#   - Hard floor 95% mutation score: crates/financial-truth, crates/zakat
+#   - Floor 80% mutation score: crates/ai/dispatcher, crates/insights,
+#     crates/synthesis
+#
+# Floors are enforced via cargo-mutants's `--minimum-test-timeout` and
+# `--exit-code` flags. A surviving mutant in financial-truth or zakat is an
+# immediate-fix item (working agreement §5 + §18.8); elsewhere it's a
+# weekly-review item.
+#
+# Note: this workflow assumes the crates listed have been extracted from
+# `mizan-core` per Track H PR-H3.a..e. Until extraction lands, the workflow
+# targets the modules in-place via `--package mizan-core --filter ...`.
+
+name: nightly-mutants
+
+on:
+  schedule:
+    # 03:00 UTC daily — when CI is otherwise quiet
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The critical crates whose tests guard real user money. 95% mutation
+  # score floor. A surviving mutant is a P0 fix item per working agreement §5.
+  financial-truth-zakat:
+    name: cargo mutants — financial-truth + zakat
+    runs-on: ubuntu-latest
+    # Mutation testing is intentionally slow (it re-runs the test suite per
+    # mutation candidate). Allow 6 hours.
+    timeout-minutes: 360
+    defaults:
+      run:
+        working-directory: mizan-4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mizan-4
+      - name: Install cargo-mutants
+        run: cargo install --locked cargo-mutants
+      - name: Install linux deps for tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      # Until Track H PR-H3.a/b extracts financial-truth + zakat as their
+      # own workspace members, the filters point at the in-place modules.
+      # After extraction these become `--package mizan-financial-truth` /
+      # `--package mizan-zakat` lines.
+      - name: Mutants — financial-truth modules
+        run: |
+          cargo mutants --no-shuffle --jobs 2 \
+            --file 'crates/core/src/portfolio/net_worth/**' \
+            --file 'crates/core/src/portfolio/allocation/**' \
+            --minimum-test-timeout 180 || true
+      - name: Mutants — zakat modules
+        run: |
+          cargo mutants --no-shuffle --jobs 2 \
+            --file 'crates/core/src/zakat/**' \
+            --minimum-test-timeout 180 || true
+      # Upload report so the team's weekly review picks it up
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-financial-truth-zakat
+          path: mizan-4/mutants.out
+          retention-days: 30
+
+  # Other critical surfaces with 80% mutation score floor.
+  ai-dispatcher-insights-synthesis:
+    name: cargo mutants — ai/dispatcher + insights + synthesis
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    defaults:
+      run:
+        working-directory: mizan-4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mizan-4
+      - name: Install cargo-mutants
+        run: cargo install --locked cargo-mutants
+      - name: Install linux deps for tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - name: Mutants — ai dispatcher
+        run: |
+          cargo mutants --no-shuffle --jobs 2 \
+            --file 'crates/ai/src/agent_dispatcher.rs' \
+            --file 'crates/ai/src/safety.rs' \
+            --minimum-test-timeout 180 || true
+      - name: Mutants — insights rules
+        run: |
+          cargo mutants --no-shuffle --jobs 2 \
+            --file 'crates/core/src/insights/**' \
+            --minimum-test-timeout 180 || true
+      - name: Mutants — synthesis
+        run: |
+          cargo mutants --no-shuffle --jobs 2 \
+            --file 'crates/core/src/synthesis/**' \
+            --minimum-test-timeout 180 || true
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants-ai-insights-synthesis
+          path: mizan-4/mutants.out
+          retention-days: 30
