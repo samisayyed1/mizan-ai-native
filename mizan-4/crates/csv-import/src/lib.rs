@@ -2,12 +2,38 @@
 //!
 //! Provides flexible CSV parsing with auto-detection for delimiter,
 //! encoding, and various formatting options.
+//!
+//! # Crate boundary (Track H PR-H3.e)
+//!
+//! Extracted out of `mizan-core::activities::csv_parser` so the
+//! coverage floor + mutation-testing rules can be enforced per crate
+//! (working-agreement §5 + §6).
+//!
+//! Unlike PR-H3.b/c/d, this crate is a **true leaf** — zero internal
+//! deps. The error type is `CsvImportError`, and mizan-core defines an
+//! `impl From<CsvImportError> for mizan_core::errors::Error` so call
+//! sites that return `mizan_core::Result` can still propagate parser
+//! errors via `?`. This pattern avoids the dependency cycle that would
+//! otherwise form (mizan-core needs ParseConfig for the activities
+//! module while csv-import needed Error for return types).
 
 use csv::{ReaderBuilder, Terminator};
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{Error, ValidationError};
-use crate::Result;
+/// Errors emitted by the CSV parser. Variants map directly to
+/// `mizan_core::errors::Error::Validation(...)` via a `From` impl that
+/// lives in mizan-core (avoiding a dependency cycle: the parser must
+/// be a true leaf of the workspace so other crates can depend on it
+/// without pulling mizan-core in).
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+pub enum CsvImportError {
+    /// Top-level validation failure (empty file, no rows after skip, etc).
+    #[error("invalid CSV input: {0}")]
+    InvalidInput(String),
+}
+
+/// Convenience alias used by the public parse entry points.
+pub type Result<T> = std::result::Result<T, CsvImportError>;
 
 /// Configuration for CSV parsing.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -320,19 +346,19 @@ fn parse_csv_content(
     }
 
     if all_records.is_empty() {
-        return Err(Error::Validation(ValidationError::InvalidInput(
+        return Err(CsvImportError::InvalidInput(
             "CSV file is empty or contains no valid records".to_string(),
-        )));
+        ));
     }
 
     // Skip top rows
     let start_index = skip_top;
     if start_index >= all_records.len() {
-        return Err(Error::Validation(ValidationError::InvalidInput(format!(
+        return Err(CsvImportError::InvalidInput(format!(
             "Cannot skip {} rows from a file with {} rows",
             skip_top,
             all_records.len()
-        ))));
+        )));
     }
 
     // Skip bottom rows
@@ -343,9 +369,9 @@ fn parse_csv_content(
     };
 
     if start_index >= end_index {
-        return Err(Error::Validation(ValidationError::InvalidInput(
+        return Err(CsvImportError::InvalidInput(
             "No rows remaining after applying skip settings".to_string(),
-        )));
+        ));
     }
 
     let working_records: Vec<Vec<String>> = all_records[start_index..end_index].to_vec();
@@ -361,9 +387,9 @@ fn parse_csv_content(
     };
 
     if filtered_records.is_empty() {
-        return Err(Error::Validation(ValidationError::InvalidInput(
+        return Err(CsvImportError::InvalidInput(
             "No non-empty rows found in CSV".to_string(),
-        )));
+        ));
     }
 
     // Extract headers

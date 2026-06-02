@@ -35,6 +35,10 @@ mizan-market-data = { path = "../market-data" }
 # crate. activities_service depends on the public traits (TruthLedger,
 # TruthLedgerRetryQueue) + types.
 mizan-financial-truth = { workspace = true }
+# Track H PR-H3.e — CSV parser extracted out of mizan-core. mizan-core
+# depends on mizan-csv-import (not the other way round) — see ADR 0003
+# and the From impl in errors.rs.
+mizan-csv-import = { workspace = true }
 
 # Additional dependencies not in workspace
 yahoo_finance_api = "4.1"
@@ -43,6 +47,9 @@ rand = { workspace = true }
 rand_distr = "0.4"
 rayon = "1"
 urlencoding = "2"
+# csv/chardetng/encoding_rs moved to mizan-csv-import in PR-H3.e — kept
+# here for any remaining direct use elsewhere in mizan-core; remove in
+# the next sweep once we confirm nothing else in mizan-core touches them.
 csv = "1.4.0"
 chardetng = "0.1"
 encoding_rs = "0.8"

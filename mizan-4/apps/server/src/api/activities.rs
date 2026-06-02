@@ -381,7 +381,8 @@ async fn parse_csv_endpoint(
         crate::error::ApiError::BadRequest("Missing file in multipart request".to_string())
     })?;
 
-    let result = mizan_core::activities::parse_csv(&content, &config)?;
+    let result =
+        mizan_core::activities::parse_csv(&content, &config).map_err(mizan_core::Error::from)?;
     Ok(Json(result))
 }
 
