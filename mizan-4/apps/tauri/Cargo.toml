@@ -68,6 +68,8 @@ dotenvy = "0.15.7"
 keyring = "2.0"
 base64 = "0.22"
 urlencoding = "2.1.3"
+# Track I PR-I8.a — webview_assets bundle-hash verification per ADR 0017.
+blake3 = "1"
 
 # Crypto
 chacha20poly1305 = { workspace = true }
