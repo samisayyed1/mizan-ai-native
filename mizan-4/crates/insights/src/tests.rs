@@ -13,7 +13,7 @@ use super::input::{
     SyncFailureInput,
 };
 use super::rules::evaluate;
-use crate::notifications::{NotificationKind, NotificationSeverity};
+use mizan_core::notifications::{NotificationKind, NotificationSeverity};
 
 fn base_input() -> InsightsInput {
     InsightsInput {

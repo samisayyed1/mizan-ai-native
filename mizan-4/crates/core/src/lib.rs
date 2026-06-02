@@ -16,7 +16,9 @@ pub mod events;
 pub mod fx;
 pub mod goals;
 pub mod health;
-pub mod insights;
+// Track H PR-H3.c — insights moved out of mizan-core into the
+// `mizan-insights` crate. Consumers import directly:
+//   use mizan_insights::{evaluate, InsightsInput, ...};
 pub mod limits;
 pub mod mizan_error;
 pub mod net_worth_snapshot;

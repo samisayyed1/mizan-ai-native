@@ -14,7 +14,7 @@ use rust_decimal::Decimal;
 use serde_json::json;
 
 use super::input::{DividendEvent, GoalProgress, InsightsInput, SyncFailureInput};
-use crate::notifications::{Notification, NotificationKind, NotificationSeverity};
+use mizan_core::notifications::{Notification, NotificationKind, NotificationSeverity};
 
 /// Threshold for the BigMove rule: any holding moving > this in absolute
 /// daily change emits. 5% picks up real movers without spamming the user

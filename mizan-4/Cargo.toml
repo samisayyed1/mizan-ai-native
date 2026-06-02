@@ -90,3 +90,7 @@ mizan-domain-types = { path = "crates/domain-types" }
 # crate. mizan-zakat → mizan-core dep is temporary; PR-H3.b.1 refactors
 # the API to take &[HoldingsView] slices and drops the back-edge.
 mizan-zakat = { path = "crates/zakat" }
+# Track H PR-H3.c — deterministic insights engine (Notify-2) extracted
+# out of mizan-core. mizan-insights → mizan-core dep is temporary; the
+# Notification type lifts to mizan-domain-types in PR-H3.c.1.
+mizan-insights = { path = "crates/insights" }

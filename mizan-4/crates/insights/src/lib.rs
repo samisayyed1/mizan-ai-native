@@ -21,6 +21,15 @@
 //! The "AI-native" mental model: deterministic engine = the *senses*,
 //! AI = the *voice*. The senses are never wrong; the voice describes
 //! what the senses saw.
+//!
+//! # Crate boundary (Track H PR-H3.c)
+//!
+//! Extracted out of `mizan-core::insights` so the 95% coverage floor +
+//! mutation-testing rules can be enforced per crate. The engine still
+//! emits `mizan_core::notifications::Notification` values — that type
+//! lives in mizan-core today. Lifting Notification into
+//! `mizan-domain-types` would let mizan-insights become a true leaf
+//! crate; tracked as PR-H3.c.1 follow-up.
 
 mod input;
 mod rules;
@@ -33,3 +42,20 @@ pub use input::{
     SyncFailureInput,
 };
 pub use rules::evaluate;
+
+use thiserror::Error;
+
+/// Engine-level error surface. Today the rules engine is infallible —
+/// every `evaluate(&InsightsInput)` returns `Vec<Notification>` directly
+/// — but the error type is declared at the crate boundary so future
+/// rules that need fallible work (e.g. reading from a precomputed cache)
+/// have a stable surface to grow into.
+#[derive(Debug, Error)]
+pub enum InsightsError {
+    /// A rule received malformed input (e.g. negative price, NaN-like
+    /// state) that the typed input couldn't have caught.
+    #[error("invalid insights input: {0}")]
+    InvalidInput(String),
+}
+
+pub type Result<T> = std::result::Result<T, InsightsError>;
