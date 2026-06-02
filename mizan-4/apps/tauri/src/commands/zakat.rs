@@ -10,7 +10,7 @@ use std::sync::Arc;
 use rust_decimal::Decimal;
 use tauri::State;
 
-use mizan_core::portfolio::zakat::ZakatReport;
+use mizan_zakat::ZakatReport;
 
 use crate::context::ServiceContext;
 

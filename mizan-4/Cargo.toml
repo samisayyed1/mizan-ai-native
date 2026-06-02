@@ -85,3 +85,8 @@ mizan-financial-truth = { path = "crates/financial-truth" }
 # per ADR 0003. Leaf crate with no internal deps; every Track H
 # extraction (zakat, insights, synthesis, csv-import) depends on this.
 mizan-domain-types = { path = "crates/domain-types" }
+# Track H PR-H3.b — zakat extracted out of mizan-core into its own crate
+# so the 95% coverage floor + mutation-testing rules can be enforced per
+# crate. mizan-zakat → mizan-core dep is temporary; PR-H3.b.1 refactors
+# the API to take &[HoldingsView] slices and drops the back-edge.
+mizan-zakat = { path = "crates/zakat" }

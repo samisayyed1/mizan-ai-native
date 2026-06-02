@@ -285,9 +285,7 @@ pub async fn initialize_context(
         fx_service.clone(),
     ));
 
-    let zakat_service = Arc::new(mizan_core::portfolio::zakat::ZakatService::new(
-        holdings_service.clone(),
-    ));
+    let zakat_service = Arc::new(mizan_zakat::ZakatService::new(holdings_service.clone()));
 
     let alternative_asset_repository = Arc::new(AlternativeAssetRepository::new(
         pool.clone(),

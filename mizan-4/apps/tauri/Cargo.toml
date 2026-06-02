@@ -21,6 +21,8 @@ mizan-ai = { workspace = true }
 # Track H PR-H3.a — context provider wires the retry-queue trait that
 # lives in mizan-financial-truth.
 mizan-financial-truth = { workspace = true }
+# Track H PR-H3.b — Zakat engine extracted out of mizan-core.
+mizan-zakat = { workspace = true }
 
 # Tauri
 # `devtools` enables right-click → Inspect in production builds. v3.3.1

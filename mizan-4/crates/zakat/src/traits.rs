@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 
-use super::zakat_model::{ZakatInputs, ZakatReport};
-use crate::errors::Result;
+use super::model::{ZakatInputs, ZakatReport};
+use mizan_core::errors::Result;
 
 /// What the Tauri command + the assistant tool call into.
 ///

@@ -3645,6 +3645,7 @@ dependencies = [
  "mizan-financial-truth",
  "mizan-market-data",
  "mizan-storage-sqlite",
+ "mizan-zakat",
  "rand 0.8.6",
  "reqwest 0.12.28",
  "rust_decimal",
@@ -3888,6 +3889,21 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "mizan-zakat"
+version = "3.4.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "mizan-core",
+ "mizan-domain-types",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
