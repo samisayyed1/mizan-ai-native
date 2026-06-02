@@ -3760,6 +3760,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mizan-domain-types"
+version = "3.4.1"
+dependencies = [
+ "chrono",
+ "rust_decimal",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "mizan-financial-truth"
 version = "3.4.1"
 dependencies = [
