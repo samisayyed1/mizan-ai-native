@@ -1,0 +1,19 @@
+[package]
+name = "mizan-domain-types"
+version.workspace = true
+edition.workspace = true
+description = "Cross-cutting domain types shared by every Mizan crate (leaf — no internal deps)"
+authors = ["Sami Sayyed"]
+license = "AGPL-3.0"
+
+[features]
+default = []
+
+[dependencies]
+chrono = { workspace = true, features = ["serde"] }
+rust_decimal = { workspace = true, features = ["serde-with-str"] }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

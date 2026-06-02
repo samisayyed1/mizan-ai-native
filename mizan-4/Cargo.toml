@@ -81,3 +81,7 @@ mizan-ai = { path = "crates/ai" }
 # own crate so the 95% coverage floor + mutation-testing rules can be
 # enforced per crate (working-agreement §6).
 mizan-financial-truth = { path = "crates/financial-truth" }
+# Track H PR-H3.0 — cross-cutting domain types lifted out of mizan-core
+# per ADR 0003. Leaf crate with no internal deps; every Track H
+# extraction (zakat, insights, synthesis, csv-import) depends on this.
+mizan-domain-types = { path = "crates/domain-types" }
