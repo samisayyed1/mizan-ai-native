@@ -14,6 +14,7 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
+use crate::middleware::client_version::ClientVersionLayer;
 use crate::middleware::request_id::RequestIdLayer;
 use crate::middleware::{security_headers, timeout};
 use crate::state::AppState;
@@ -188,6 +189,10 @@ pub fn build_app(state: AppState) -> Router {
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .layer(timeout::layer())
+        // Track I PR-I7 — parse X-Mizan-Client-Version into a task-local
+        // for handlers + tracing. Goes between RequestId (so traces carry
+        // both) and the timeout layer.
+        .layer(ClientVersionLayer)
         .layer(RequestIdLayer)
         .layer(redact_response_headers)
         .layer(trace_layer)
