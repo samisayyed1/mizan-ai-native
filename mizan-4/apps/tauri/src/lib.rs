@@ -15,6 +15,9 @@ mod secret_store;
 // (network heartbeats injected into mizan_storage_sqlite::self_test).
 mod self_test_heartbeats;
 mod services;
+// Track I PR-I8.a — Vite content-hash bundle verification scaffold per
+// ADR 0017. PR-I8.b adds the tauri-build embedding + production wiring.
+mod webview_assets;
 
 #[cfg(desktop)]
 mod menu;
@@ -99,6 +102,34 @@ mod desktop {
 
     /// Performs synchronous setup on desktop: initializes context, menu, and registers listeners.
     pub fn setup(handle: AppHandle, app_data_dir: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Track I PR-I8.a — Vite bundle-hash verification scaffold (ADR 0017).
+        // No-op in I8.a: returns Skipped because no manifest is embedded yet.
+        // PR-I8.b adds the tauri-build hook + flips this to enforce.
+        match crate::webview_assets::verify_embedded_bundle() {
+            Ok(crate::webview_assets::BundleVerification::Skipped { reason }) => {
+                log::info!("webview_assets: {reason}");
+            }
+            Ok(crate::webview_assets::BundleVerification::Clean { entries_verified }) => {
+                log::info!("webview_assets: bundle hash verified ({entries_verified} entries)");
+            }
+            Ok(crate::webview_assets::BundleVerification::Mismatched {
+                missing,
+                mismatched,
+            }) => {
+                // PR-I8.b will wipe the WebView cache + reload here. Until
+                // then we log loudly so beta-channel users surface the
+                // failure mode for analysis.
+                log::error!(
+                    "webview_assets: bundle hash MISMATCH — missing={missing:?}, \
+                     mismatched={} entries (PR-I8.b will wipe + reload)",
+                    mismatched.len()
+                );
+            }
+            Err(e) => {
+                log::warn!("webview_assets: verifier error: {e}");
+            }
+        }
+
         // Initialize context synchronously (required before any commands can work)
         let init_result = tauri::async_runtime::block_on(async {
             context::initialize_context(app_data_dir).await
