@@ -151,8 +151,8 @@ impl<E: AiEnvironment + 'static> InsightsDigestServiceTrait for InsightsDigestSe
 
         let response = match provider_id {
             "anthropic" => {
-                let key = effective_key
-                    .ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
+                let key =
+                    effective_key.ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
                 let mut builder = anthropic::Client::<HttpClient>::builder().api_key(&key);
                 if let Some(url) = provider_url {
                     builder = builder.base_url(&url);
@@ -169,8 +169,8 @@ impl<E: AiEnvironment + 'static> InsightsDigestServiceTrait for InsightsDigestSe
                     .map_err(|e| AiError::Provider(e.to_string()))?
             }
             "gemini" | "google" => {
-                let key = effective_key
-                    .ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
+                let key =
+                    effective_key.ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
                 let mut builder = gemini::Client::<HttpClient>::builder().api_key(&key);
                 if let Some(url) = provider_url {
                     builder = builder.base_url(&url);
@@ -186,8 +186,8 @@ impl<E: AiEnvironment + 'static> InsightsDigestServiceTrait for InsightsDigestSe
                     .map_err(|e| AiError::Provider(e.to_string()))?
             }
             "groq" => {
-                let key = effective_key
-                    .ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
+                let key =
+                    effective_key.ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
                 let mut builder = groq::Client::<HttpClient>::builder().api_key(&key);
                 if let Some(url) = provider_url {
                     builder = builder.base_url(&url);
@@ -218,8 +218,8 @@ impl<E: AiEnvironment + 'static> InsightsDigestServiceTrait for InsightsDigestSe
                     .map_err(|e| AiError::Provider(e.to_string()))?
             }
             "openrouter" => {
-                let key = effective_key
-                    .ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
+                let key =
+                    effective_key.ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
                 let mut builder = openrouter::Client::<HttpClient>::builder().api_key(&key);
                 if let Some(url) = provider_url {
                     builder = builder.base_url(&url);
@@ -238,8 +238,8 @@ impl<E: AiEnvironment + 'static> InsightsDigestServiceTrait for InsightsDigestSe
             // `mizan` (managed) provider takes since the cloud's
             // /v1/chat/completions endpoint is OpenAI-compat.
             _ => {
-                let key = effective_key
-                    .ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
+                let key =
+                    effective_key.ok_or_else(|| AiError::MissingApiKey(provider_id.to_string()))?;
                 let mut builder = openai::Client::<HttpClient>::builder().api_key(&key);
                 if let Some(url) = provider_url {
                     builder = builder.base_url(&url);

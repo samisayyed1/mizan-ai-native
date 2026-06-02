@@ -181,7 +181,7 @@ impl NetWorthService {
         // total_assets look better than reality.
         let mut breakdown: Vec<BreakdownItem> = category_totals
             .into_iter()
-            .filter(|(_, value)| value.abs() > Decimal::ONE)  // skip noise < $1
+            .filter(|(_, value)| value.abs() > Decimal::ONE) // skip noise < $1
             .map(|(category, value)| BreakdownItem {
                 category: Self::category_key(category).to_string(),
                 name: Self::category_display_name(category).to_string(),

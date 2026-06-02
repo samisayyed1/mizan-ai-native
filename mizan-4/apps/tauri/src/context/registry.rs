@@ -278,26 +278,22 @@ impl ServiceContext {
 /// Each row survives app restarts + powers the support bundle / audit
 /// surfaces. The retry queue is returned alongside so the boot path can
 /// drain stale appends before they go stale.
-pub fn build_v31_foundation_defaults(
-    pool: Arc<DbPool>,
-    writer: WriteHandle,
-) -> V31Foundations {
-    let sync_ledger: Arc<dyn SyncRunLedger> = Arc::new(SqliteSyncRunLedger::new(
-        Arc::clone(&pool),
-        writer.clone(),
-    ));
+pub fn build_v31_foundation_defaults(pool: Arc<DbPool>, writer: WriteHandle) -> V31Foundations {
+    let sync_ledger: Arc<dyn SyncRunLedger> =
+        Arc::new(SqliteSyncRunLedger::new(Arc::clone(&pool), writer.clone()));
     let nw_snapshot: Arc<dyn NetWorthSnapshotService> = Arc::new(
         SqliteNetWorthSnapshotService::new(Arc::clone(&pool), writer.clone()),
     );
-    let daily_brief: Arc<dyn DailyBriefService> =
-        Arc::new(SqliteDailyBriefService::new(Arc::clone(&pool), writer.clone()));
-    let notifications: Arc<dyn NotificationService> = Arc::new(
-        SqliteNotificationService::new(Arc::clone(&pool), writer.clone()),
-    );
-    let truth_ledger: Arc<dyn TruthLedger> = Arc::new(SqliteTruthLedger::new(
+    let daily_brief: Arc<dyn DailyBriefService> = Arc::new(SqliteDailyBriefService::new(
         Arc::clone(&pool),
         writer.clone(),
     ));
+    let notifications: Arc<dyn NotificationService> = Arc::new(SqliteNotificationService::new(
+        Arc::clone(&pool),
+        writer.clone(),
+    ));
+    let truth_ledger: Arc<dyn TruthLedger> =
+        Arc::new(SqliteTruthLedger::new(Arc::clone(&pool), writer.clone()));
     let retry_queue = Arc::new(SqliteTruthLedgerRetryQueue::new(pool, writer));
     V31Foundations {
         ai_safety: Arc::new(AiSafetyRuntime::new()),

@@ -139,7 +139,9 @@ impl DailyBriefService for SqliteDailyBriefService {
                     .first::<DailyBriefDB>(conn)
                     .optional()
                     .map_err(StorageError::from)?;
-                let Some(row) = existing else { return Ok(()); };
+                let Some(row) = existing else {
+                    return Ok(());
+                };
                 let mut brief = match serde_json::from_str::<DailyBrief>(&row.payload_json) {
                     Ok(b) => b,
                     Err(_) => return Ok(()),

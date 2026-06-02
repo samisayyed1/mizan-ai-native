@@ -8,8 +8,8 @@ pub mod broker;
 pub mod broker_ingest;
 pub mod client;
 pub mod entitlements;
-pub mod platform;
 pub mod plaid_ingest;
+pub mod platform;
 pub mod token_lifecycle;
 
 // Re-export commonly used types

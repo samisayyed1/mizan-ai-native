@@ -59,9 +59,7 @@ pub struct ToolDescriptor {
 /// into the planner. Async because the underlying call is a network
 /// round-trip.
 pub type LlmCallFn = Arc<
-    dyn Fn(String) -> futures::future::BoxFuture<'static, Result<String, AgentError>>
-        + Send
-        + Sync,
+    dyn Fn(String) -> futures::future::BoxFuture<'static, Result<String, AgentError>> + Send + Sync,
 >;
 
 /// Provider-agnostic planner. Holds the tool catalog + an LLM-call
@@ -159,10 +157,16 @@ impl PromptBasedPlanner {
             MAX_TOOL_CALLS_PER_RUN, MAX_TOOL_CALLS_PER_RUN
         ));
         out.push_str("- `dependsOn` ids must reference earlier `id`s in the same plan. No cycles. No self-references.\n");
-        out.push_str("- Tool names must come from the Available tools list verbatim. No invention.\n");
-        out.push_str("- Args must match each tool's schema. Don't include keys the schema doesn't list.\n");
+        out.push_str(
+            "- Tool names must come from the Available tools list verbatim. No invention.\n",
+        );
+        out.push_str(
+            "- Args must match each tool's schema. Don't include keys the schema doesn't list.\n",
+        );
         out.push_str("- The FINAL step should be a verification (`verify` field set) so the runtime can assert the goal was met.\n");
-        out.push_str("- DO NOT include explanatory prose outside the JSON. Just the JSON array.\n\n");
+        out.push_str(
+            "- DO NOT include explanatory prose outside the JSON. Just the JSON array.\n\n",
+        );
 
         if !context.attachments.is_empty() {
             out.push_str("### User-attached files\n\n");
@@ -408,7 +412,11 @@ mod tests {
         PromptBasedPlanner::new(
             vec![
                 descriptor("create_account", "Create a brokerage / cash account", true),
-                descriptor("record_activities", "Add one or more activities to an account", true),
+                descriptor(
+                    "record_activities",
+                    "Add one or more activities to an account",
+                    true,
+                ),
             ],
             Arc::new(move |_prompt| Box::pin(async move { Ok(response.to_string()) })),
         )
@@ -441,7 +449,10 @@ Sure, here's the plan:
 ```
 "#;
         let p = planner_with_response(response);
-        let plan = p.plan("set up US Stocks", &PlannerContext::default()).await.unwrap();
+        let plan = p
+            .plan("set up US Stocks", &PlannerContext::default())
+            .await
+            .unwrap();
         assert_eq!(plan.len(), 2);
         assert_eq!(plan[0].id, "a");
         assert_eq!(plan[1].depends_on, vec!["a".to_string()]);

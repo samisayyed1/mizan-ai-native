@@ -29,9 +29,7 @@ pub async fn list_notifications(
     limit: Option<usize>,
     state: State<'_, Arc<ServiceContext>>,
 ) -> Result<NotificationsPage, String> {
-    let limit = limit
-        .unwrap_or(DEFAULT_LIMIT)
-        .clamp(1, MAX_LIMIT);
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     debug!("list_notifications(limit={limit})");
     state
         .notification_service()
@@ -100,7 +98,9 @@ pub async fn debug_emit_test_notification(
         kind: NotificationKind::AiDigest,
         severity: NotificationSeverity::Info,
         title: "Mizan AI digest — debug".to_string(),
-        body: "This is a deterministic test notification. If you see this in production, file a bug.".to_string(),
+        body:
+            "This is a deterministic test notification. If you see this in production, file a bug."
+                .to_string(),
         deep_link: Some("mizan://dashboard".to_string()),
         payload_json: "{}".to_string(),
         // Per-second uniqueness so the test command can be run multiple

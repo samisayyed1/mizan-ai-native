@@ -531,10 +531,14 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
         {/* Content section */}
         <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-12 md:px-6 md:pb-6 md:pt-6 lg:px-10 lg:pb-8 lg:pt-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-20">
-            {/* Left column: Breakdown */}
+            {/* Left column: Composition — net-worth breakdown by asset class.
+                 Spec §12 directs "Breakdown" page-label terminology be removed
+                 from the UI now that this page is canonically named "Net Worth";
+                 the section heading uses "Composition" to avoid the redundant
+                 "Net Worth → Breakdown" stacking. */}
             <div className="lg:col-span-2">
               <div className="mb-4 mt-8 w-full lg:mt-0">
-                <h2 className="text-md pb-2 font-semibold tracking-tight">Breakdown</h2>
+                <h2 className="text-md pb-2 font-semibold tracking-tight">Composition</h2>
 
                 {isLoading ? (
                   <div className="border-border/70 bg-card shadow-sm rounded-xl border p-4 md:p-5">

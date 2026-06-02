@@ -68,6 +68,12 @@ pub fn sign(consumer_key: &secrecy::SecretString, canonical: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::useless_vec,
+        clippy::panic
+    )]
     use super::*;
     use secrecy::SecretString;
     use serde_json::json;

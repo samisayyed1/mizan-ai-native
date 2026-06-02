@@ -5915,10 +5915,7 @@ mod tests {
             fx_rate: None,
             metadata: None,
         };
-        service
-            .update_activity(update)
-            .await
-            .expect("update ok");
+        service.update_activity(update).await.expect("update ok");
 
         let entries = ledger.all(None).await.unwrap();
         // create + reversed-old + recorded-new = 3
@@ -5964,7 +5961,11 @@ mod tests {
             .expect("activity write must succeed even when ledger fails");
 
         let queued = queue.snapshot();
-        assert_eq!(queued.len(), 1, "exactly one retry slot for the failed append");
+        assert_eq!(
+            queued.len(),
+            1,
+            "exactly one retry slot for the failed append"
+        );
         let (input, reason) = &queued[0];
         assert_eq!(input.id, format!("activity:{}:created", created.id));
         assert_eq!(input.kind, Some(LedgerEntryKind::ActivityRecorded));
@@ -5991,7 +5992,9 @@ mod tests {
         let queue: Arc<dyn TruthLedgerRetryQueue> = Arc::new(FailingQueue);
         let (service, _repo) = ledger_wired_service(ledger, Some(queue));
 
-        let result = service.create_activity(standard_buy("buy-5", "acc-1")).await;
+        let result = service
+            .create_activity(standard_buy("buy-5", "acc-1"))
+            .await;
         assert!(
             result.is_ok(),
             "activity write must succeed even when both ledger and queue fail: {result:?}"

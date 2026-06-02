@@ -175,8 +175,7 @@ mod tests {
     #[tokio::test]
     async fn close_preserves_started_at() {
         let (ledger, _dir) = build();
-        let started =
-            SyncRunEntry::started("run-1", SyncRunProvider::Plaid, SyncRunMode::Initial);
+        let started = SyncRunEntry::started("run-1", SyncRunProvider::Plaid, SyncRunMode::Initial);
         let original_started_at = started.started_at;
         ledger.append(started.clone()).await.unwrap();
 

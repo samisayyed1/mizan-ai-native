@@ -160,6 +160,12 @@ pub async fn ensure_user_registered(
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::useless_vec,
+        clippy::panic
+    )]
     use super::*;
 
     #[test]

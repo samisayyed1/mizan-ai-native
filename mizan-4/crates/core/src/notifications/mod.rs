@@ -24,7 +24,5 @@
 mod model;
 mod service;
 
-pub use model::{
-    Notification, NotificationKind, NotificationSeverity, NotificationsPage,
-};
+pub use model::{Notification, NotificationKind, NotificationSeverity, NotificationsPage};
 pub use service::{InMemoryNotificationService, NotificationService};

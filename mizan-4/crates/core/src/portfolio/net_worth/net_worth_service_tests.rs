@@ -1314,12 +1314,7 @@ impl FxServiceTrait for FailingFxService {
     fn get_latest_exchange_rate(&self, _f: &str, _t: &str) -> Result<Decimal> {
         Err(crate::errors::Error::Repository("no fx rate".into()))
     }
-    fn get_exchange_rate_for_date(
-        &self,
-        _f: &str,
-        _t: &str,
-        _d: NaiveDate,
-    ) -> Result<Decimal> {
+    fn get_exchange_rate_for_date(&self, _f: &str, _t: &str, _d: NaiveDate) -> Result<Decimal> {
         Err(crate::errors::Error::Repository("no fx rate".into()))
     }
     fn convert_currency(&self, amount: Decimal, f: &str, t: &str) -> Result<Decimal> {
@@ -1346,12 +1341,7 @@ impl FxServiceTrait for FailingFxService {
     async fn add_exchange_rate(&self, _n: NewExchangeRate) -> Result<ExchangeRate> {
         unimplemented!()
     }
-    async fn update_exchange_rate(
-        &self,
-        _f: &str,
-        _t: &str,
-        _r: Decimal,
-    ) -> Result<ExchangeRate> {
+    async fn update_exchange_rate(&self, _f: &str, _t: &str, _r: Decimal) -> Result<ExchangeRate> {
         unimplemented!()
     }
     async fn delete_exchange_rate(&self, _id: &str) -> Result<()> {
@@ -1403,11 +1393,7 @@ async fn test_fx_conversion_failure_excludes_cash_instead_of_silent_passthrough(
     );
     // Breakdown must NOT contain a phantom cash row.
     assert!(
-        !result
-            .assets
-            .breakdown
-            .iter()
-            .any(|b| b.category == "cash"),
+        !result.assets.breakdown.iter().any(|b| b.category == "cash"),
         "Cash category should be absent when FX lookup fails (not present at face value)",
     );
 }

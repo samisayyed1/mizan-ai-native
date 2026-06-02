@@ -76,7 +76,15 @@ fn assert_seed_data_intact(db_path: &str) {
             r#"SELECT name, account_type, "group", currency, account_number
                FROM accounts WHERE id = 'acct-roundtrip-1'"#,
             params![],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .expect("account row missing after restore");
     assert_eq!(
@@ -130,7 +138,10 @@ fn backup_then_restore_preserves_all_data() {
     seed_recognisable_data(&get_db_path(&source_app_dir)).expect("seed source");
 
     let backup_path = backup_database(&source_app_dir).expect("backup");
-    assert!(std::path::Path::new(&backup_path).exists(), "backup file missing");
+    assert!(
+        std::path::Path::new(&backup_path).exists(),
+        "backup file missing"
+    );
 
     // ── Target machine: empty data dir simulating "I bought a new
     // laptop." Initialise + migrate so the directory layout exists,

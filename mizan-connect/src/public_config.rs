@@ -62,6 +62,7 @@ async fn public_config(State(state): State<AppState>) -> Json<PublicConfigRespon
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use super::PublicConfigResponse;
 
     #[test]

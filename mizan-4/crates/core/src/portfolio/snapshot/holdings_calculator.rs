@@ -178,11 +178,15 @@ impl HoldingsCalculator {
                 }
                 Err(e) => {
                     error!(
-                         "Holdings Calc (Book Cost): Cannot convert {} {} → {} on {} ({}). \
+                        "Holdings Calc (Book Cost): Cannot convert {} {} → {} on {} ({}). \
                           Excluding this position's cost basis from the account-level total. \
                           Silent unconverted fallback would mis-state cost basis vs market value.",
-                         position.total_cost_basis, position_currency, account_currency, target_date, e
-                     );
+                        position.total_cost_basis,
+                        position_currency,
+                        account_currency,
+                        target_date,
+                        e
+                    );
                     // Intentionally do NOT add the unconverted amount; leave
                     // this position out of final_cost_basis_acct.
                 }
@@ -1104,8 +1108,14 @@ impl HoldingsCalculator {
                      unconverted fallback would mis-state the dashboard. Add the FX \
                      pair under Settings → Market Data → Exchange Rates to fix \
                      permanently. (per-currency cash_balances map retains the truth.)",
-                    context, activity.id, activity_currency, account_currency, activity_date, e,
-                    amount, activity_currency
+                    context,
+                    activity.id,
+                    activity_currency,
+                    account_currency,
+                    activity_date,
+                    e,
+                    amount,
+                    activity_currency
                 );
                 None
             }
@@ -1183,8 +1193,14 @@ impl HoldingsCalculator {
                      unconverted fallback would corrupt net_contribution and \
                      realized-gain math. Add the FX pair under Settings → Market \
                      Data → Exchange Rates to fix permanently.",
-                    context, activity.id, position_currency, account_currency, activity_date, e,
-                    amount, position_currency
+                    context,
+                    activity.id,
+                    position_currency,
+                    account_currency,
+                    activity_date,
+                    e,
+                    amount,
+                    position_currency
                 );
                 None
             }

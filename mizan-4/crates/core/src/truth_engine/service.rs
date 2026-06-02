@@ -8,11 +8,11 @@ use rust_decimal::Decimal;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+#[cfg(test)]
+use super::model::canonical_payload;
 use super::model::{
     derive_entry_hash, LedgerEntry, LedgerEntryKind, LedgerIntegrityError, GENESIS_PREV_HASH,
 };
-#[cfg(test)]
-use super::model::canonical_payload;
 use crate::Result;
 
 /// Builder-style input for appending — the service computes sequence,
@@ -93,11 +93,11 @@ impl Default for InMemoryTruthLedger {
 #[async_trait]
 impl TruthLedger for InMemoryTruthLedger {
     async fn append(&self, input: AppendInput) -> Result<LedgerEntry> {
-        let kind = input
-            .kind
-            .ok_or_else(|| crate::Error::Validation(crate::errors::ValidationError::InvalidInput(
+        let kind = input.kind.ok_or_else(|| {
+            crate::Error::Validation(crate::errors::ValidationError::InvalidInput(
                 "LedgerEntry kind is required".to_string(),
-            )))?;
+            ))
+        })?;
         if input.id.trim().is_empty() {
             return Err(crate::Error::Validation(
                 crate::errors::ValidationError::InvalidInput(
@@ -209,10 +209,9 @@ mod tests {
         let l = InMemoryTruthLedger::new();
         // futures::executor avoids needing a tokio runtime for this one
         // assertion. Other tests use the #[tokio::test] macro.
-        let entry = futures::executor::block_on(
-            l.append(input("e1", LedgerEntryKind::AccountCreated)),
-        )
-        .unwrap();
+        let entry =
+            futures::executor::block_on(l.append(input("e1", LedgerEntryKind::AccountCreated)))
+                .unwrap();
         let p1 = canonical_payload(&entry);
         let p2 = canonical_payload(&entry);
         assert_eq!(p1, p2, "canonical payload must be deterministic");

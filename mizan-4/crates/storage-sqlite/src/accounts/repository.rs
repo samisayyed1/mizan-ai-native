@@ -155,8 +155,7 @@ impl AccountRepositoryTrait for AccountRepository {
             query = query.filter(id.eq_any(ids));
         } else {
             // No explicit IDs → omit the synthetic.
-            query = query
-                .filter(id.ne(mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID));
+            query = query.filter(id.ne(mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID));
         }
 
         let results = query

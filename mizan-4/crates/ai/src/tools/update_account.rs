@@ -119,9 +119,9 @@ fn account_type_options() -> Vec<AccountTypeOption> {
 fn normalize_account_type(raw: &str) -> Option<String> {
     let up = raw.trim().to_uppercase();
     match up.as_str() {
-        "SECURITIES" | "BROKERAGE" | "TAXABLE" | "INVESTMENT" | "INVESTMENTS"
-        | "RETIREMENT" | "401K" | "IRA" | "ROTH" | "ROTH_IRA" | "RRSP" | "TFSA" | "SIPP"
-        | "PENSION" | "STOCK" | "STOCKS" | "EQUITIES" => Some("SECURITIES".to_string()),
+        "SECURITIES" | "BROKERAGE" | "TAXABLE" | "INVESTMENT" | "INVESTMENTS" | "RETIREMENT"
+        | "401K" | "IRA" | "ROTH" | "ROTH_IRA" | "RRSP" | "TFSA" | "SIPP" | "PENSION" | "STOCK"
+        | "STOCKS" | "EQUITIES" => Some("SECURITIES".to_string()),
         "CRYPTOCURRENCY" | "CRYPTO" | "WALLET" | "BTC" | "ETH" => {
             Some("CRYPTOCURRENCY".to_string())
         }
@@ -202,15 +202,16 @@ fn opt_str(s: &Option<String>) -> Option<String> {
 }
 
 fn opt_bool_str(b: Option<bool>) -> Option<String> {
-    b.map(|v| if v { "yes".to_string() } else { "no".to_string() })
+    b.map(|v| {
+        if v {
+            "yes".to_string()
+        } else {
+            "no".to_string()
+        }
+    })
 }
 
-fn diff_field<T: PartialEq + ToString>(
-    field: &str,
-    old: &T,
-    new: &T,
-    diffs: &mut Vec<FieldDiff>,
-) {
+fn diff_field<T: PartialEq + ToString>(field: &str, old: &T, new: &T, diffs: &mut Vec<FieldDiff>) {
     if old != new {
         diffs.push(FieldDiff {
             field: field.to_string(),
@@ -220,12 +221,7 @@ fn diff_field<T: PartialEq + ToString>(
     }
 }
 
-fn diff_opt(
-    field: &str,
-    old: &Option<String>,
-    new: &Option<String>,
-    diffs: &mut Vec<FieldDiff>,
-) {
+fn diff_opt(field: &str, old: &Option<String>, new: &Option<String>, diffs: &mut Vec<FieldDiff>) {
     if old != new {
         diffs.push(FieldDiff {
             field: field.to_string(),
@@ -489,7 +485,11 @@ mod tests {
 
     #[tokio::test]
     async fn renames_an_account() {
-        let env = env_with(vec![sample_account("acc-1", "Vanguard taxable", "SECURITIES")]);
+        let env = env_with(vec![sample_account(
+            "acc-1",
+            "Vanguard taxable",
+            "SECURITIES",
+        )]);
         let out = UpdateAccountTool::new(env)
             .build_output(UpdateAccountArgs {
                 account_ref: "Vanguard taxable".into(),
@@ -507,7 +507,11 @@ mod tests {
 
     #[tokio::test]
     async fn resolves_substring_match() {
-        let env = env_with(vec![sample_account("acc-1", "Vanguard taxable", "SECURITIES")]);
+        let env = env_with(vec![sample_account(
+            "acc-1",
+            "Vanguard taxable",
+            "SECURITIES",
+        )]);
         let out = UpdateAccountTool::new(env)
             .build_output(UpdateAccountArgs {
                 account_ref: "vanguard".into(),

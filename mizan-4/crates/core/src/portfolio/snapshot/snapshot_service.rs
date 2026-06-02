@@ -910,8 +910,12 @@ impl SnapshotService {
                             "Cannot convert position cost basis for asset {} ({} {} → {}) for \
                              TOTAL on {} ({}). Excluding from TOTAL portfolio cost basis — \
                              silent unconverted fallback would mis-state the dashboard.",
-                            pos.asset_id, pos.total_cost_basis, pos.currency,
-                            base_portfolio_currency, target_date, e
+                            pos.asset_id,
+                            pos.total_cost_basis,
+                            pos.currency,
+                            base_portfolio_currency,
+                            target_date,
+                            e
                         );
                         // Intentionally NOT adding pos.total_cost_basis to the
                         // running total. The same-currency branch the old code

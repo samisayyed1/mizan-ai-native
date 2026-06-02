@@ -212,7 +212,7 @@ function TreemapTile(props: TreemapTileProps) {
 
 interface TreemapTooltipProps {
   active?: boolean;
-  payload?: Array<{ payload: HeatmapDatum }>;
+  payload?: { payload: HeatmapDatum }[];
   currency: string;
   mode: ReturnMode;
 }
@@ -372,7 +372,7 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
                 content={(props) => (
                   <TreemapTooltip
                     active={props.active}
-                    payload={props.payload as Array<{ payload: HeatmapDatum }>}
+                    payload={props.payload as { payload: HeatmapDatum }[]}
                     currency={baseCurrency}
                     mode={mode}
                   />

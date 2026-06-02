@@ -106,6 +106,7 @@ pub async fn enforce_per_user_limit(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::*;
 
     #[test]

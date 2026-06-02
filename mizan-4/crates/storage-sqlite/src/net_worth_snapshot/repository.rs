@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use diesel::prelude::*;
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use rust_decimal::Decimal;
 
@@ -178,10 +178,7 @@ mod tests {
         run_migrations(&db_path).unwrap();
         let pool = create_pool(&db_path).unwrap();
         let writer = spawn_writer(pool.as_ref().clone()).unwrap();
-        (
-            SqliteNetWorthSnapshotService::new(pool, writer),
-            dir,
-        )
+        (SqliteNetWorthSnapshotService::new(pool, writer), dir)
     }
 
     fn sample(date: NaiveDate, assets: i64, liab: i64) -> NetWorthSnapshotInput {

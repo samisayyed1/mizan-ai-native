@@ -74,7 +74,9 @@ fn kind_from_str(s: &str) -> Option<LedgerEntryKind> {
 }
 
 fn millis_to_dt(ms: i64) -> DateTime<Utc> {
-    Utc.timestamp_millis_opt(ms).single().unwrap_or_else(Utc::now)
+    Utc.timestamp_millis_opt(ms)
+        .single()
+        .unwrap_or_else(Utc::now)
 }
 
 /// Translate a stored row into the domain `LedgerEntry`. Returns the
@@ -136,11 +138,11 @@ impl SqliteTruthLedger {
 #[async_trait]
 impl TruthLedger for SqliteTruthLedger {
     async fn append(&self, input: AppendInput) -> Result<LedgerEntry> {
-        let kind = input
-            .kind
-            .ok_or_else(|| Error::Validation(ValidationError::InvalidInput(
+        let kind = input.kind.ok_or_else(|| {
+            Error::Validation(ValidationError::InvalidInput(
                 "LedgerEntry kind is required".to_string(),
-            )))?;
+            ))
+        })?;
         if input.id.trim().is_empty() {
             return Err(Error::Validation(ValidationError::InvalidInput(
                 "LedgerEntry id cannot be empty".to_string(),
@@ -400,13 +402,10 @@ mod tests {
         // Tamper with the stored entry_hash directly — bypass the
         // service entirely so verify() detects the inconsistency.
         let mut conn = crate::db::get_connection(&pool).unwrap();
-        diesel::update(
-            ledger_dsl::truth_ledger_entries
-                .filter(ledger_dsl::id.eq("x".to_string())),
-        )
-        .set(ledger_dsl::entry_hash.eq("f".repeat(64)))
-        .execute(&mut conn)
-        .unwrap();
+        diesel::update(ledger_dsl::truth_ledger_entries.filter(ledger_dsl::id.eq("x".to_string())))
+            .set(ledger_dsl::entry_hash.eq("f".repeat(64)))
+            .execute(&mut conn)
+            .unwrap();
 
         let err = ledger.verify().await.unwrap_err();
         assert!(
@@ -433,5 +432,4 @@ mod tests {
         assert_eq!(acc1[0].id, "a");
         assert_eq!(acc1[1].id, "c");
     }
-
 }

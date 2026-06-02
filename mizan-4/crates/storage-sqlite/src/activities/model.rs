@@ -471,8 +471,7 @@ impl From<ActivityDB> for Activity {
                     // start of any range — far more obvious than the
                     // previous "silently rewrite to Utc::now()" behaviour
                     // which was directly responsible for the SPLIT bug.
-                    DateTime::<Utc>::from_timestamp(0, 0)
-                        .expect("epoch is a valid timestamp")
+                    DateTime::<Utc>::from_timestamp(0, 0).expect("epoch is a valid timestamp")
                 }),
             settlement_date: db.settlement_date.as_ref().and_then(|s| {
                 DateTime::parse_from_rfc3339(s)
@@ -864,7 +863,10 @@ mod write_path_timezone_tests {
         let db: ActivityDB = bare_date_new_activity().into();
         let ts =
             chrono::DateTime::parse_from_rfc3339(&db.activity_date).expect("RFC3339 round-trip");
-        assert_eq!(ts.with_timezone(&Utc).date_naive().to_string(), "2026-05-26");
+        assert_eq!(
+            ts.with_timezone(&Utc).date_naive().to_string(),
+            "2026-05-26"
+        );
         assert_eq!(
             ts.with_timezone(&Utc).hour(),
             12,
@@ -934,8 +936,9 @@ mod write_path_timezone_tests {
     fn noon_utc_round_trips_to_same_date_at_all_common_offsets() {
         use chrono::FixedOffset;
         let db: ActivityDB = bare_date_new_activity().into();
-        let utc_ts =
-            chrono::DateTime::parse_from_rfc3339(&db.activity_date).unwrap().with_timezone(&Utc);
+        let utc_ts = chrono::DateTime::parse_from_rfc3339(&db.activity_date)
+            .unwrap()
+            .with_timezone(&Utc);
         // Offsets in hours from UTC, covering the worst-case Western and
         // Eastern zones the pre-fix bug would have broken.
         let offsets_hours: &[i32] = &[

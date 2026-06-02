@@ -157,10 +157,7 @@ impl<E: AiEnvironment> UpdateLiabilityTool<E> {
         }
 
         // Drop fields that don't actually change anything (empty strings → None).
-        let name = args
-            .name
-            .as_ref()
-            .map(|s| s.trim().to_string());
+        let name = args.name.as_ref().map(|s| s.trim().to_string());
         let liability_type = match args.liability_type.as_deref() {
             Some(s) if s.trim().is_empty() => None,
             Some(s) => match normalize_subtype(s) {
@@ -205,10 +202,7 @@ impl<E: AiEnvironment> UpdateLiabilityTool<E> {
             None => None,
         };
 
-        let notes = args
-            .notes
-            .as_ref()
-            .map(|s| s.trim().to_string());
+        let notes = args.notes.as_ref().map(|s| s.trim().to_string());
 
         let has_changes = name.is_some()
             || args.principal.is_some()
@@ -219,9 +213,7 @@ impl<E: AiEnvironment> UpdateLiabilityTool<E> {
             || notes.is_some();
 
         if !has_changes && missing_fields.is_empty() {
-            warnings.push(
-                "No fields changed — pass at least one field to update.".to_string(),
-            );
+            warnings.push("No fields changed — pass at least one field to update.".to_string());
         }
 
         Ok(UpdateLiabilityOutput {
@@ -256,12 +248,13 @@ impl<E: AiEnvironment + 'static> Tool for UpdateLiabilityTool<E> {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Edit an existing liability (mortgage, loan, credit card). Use this — \
+            description:
+                "Edit an existing liability (mortgage, loan, credit card). Use this — \
                 NOT create_liability — when the user wants to modify a liability they already \
                 have, especially to replace one of the pre-seeded Example liabilities with their \
                 real numbers (edit-first UX per Feroz 25 May 2026). Returns a DRAFT preview the \
                 user confirms — never writes directly. Currency is immutable (carried for display)."
-                .to_string(),
+                    .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -361,7 +354,11 @@ mod tests {
             .await
             .unwrap();
         assert!(out.draft.originated_at.is_none());
-        assert!(out.validation.warnings.iter().any(|w| w.contains("originatedAt")));
+        assert!(out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.contains("originatedAt")));
     }
 
     #[tokio::test]
@@ -393,10 +390,6 @@ mod tests {
             .await
             .unwrap();
         assert!(!out.validation.is_valid);
-        assert!(out
-            .validation
-            .missing_fields
-            .iter()
-            .any(|f| f == "assetId"));
+        assert!(out.validation.missing_fields.iter().any(|f| f == "assetId"));
     }
 }

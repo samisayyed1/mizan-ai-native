@@ -105,12 +105,8 @@ fn normalize_subtype(raw: &str) -> String {
             "student_loan".to_string()
         }
         "credit_card" | "credit-card" | "creditcard" | "cc" => "credit_card".to_string(),
-        "personal_loan" | "personal-loan" | "personalloan" | "loan" => {
-            "personal_loan".to_string()
-        }
-        "auto_loan" | "auto-loan" | "car_loan" | "car-loan" | "autoloan" => {
-            "auto_loan".to_string()
-        }
+        "personal_loan" | "personal-loan" | "personalloan" | "loan" => "personal_loan".to_string(),
+        "auto_loan" | "auto-loan" | "car_loan" | "car-loan" | "autoloan" => "auto_loan".to_string(),
         "heloc" | "home_equity" | "home-equity" | "equity_line" => "heloc".to_string(),
         _ => "other".to_string(),
     }
@@ -136,7 +132,9 @@ fn available_currencies(base: &str, hint: Option<&str>) -> Vec<String> {
     if let Some(h) = hint {
         push(&mut out, h);
     }
-    for code in ["USD", "EUR", "GBP", "CAD", "INR", "AED", "SGD", "AUD", "JPY"] {
+    for code in [
+        "USD", "EUR", "GBP", "CAD", "INR", "AED", "SGD", "AUD", "JPY",
+    ] {
         push(&mut out, code);
     }
     out
@@ -368,7 +366,11 @@ mod tests {
             .await
             .unwrap();
         assert!(!out.validation.is_valid);
-        assert!(out.validation.missing_fields.iter().any(|f| f == "principal"));
+        assert!(out
+            .validation
+            .missing_fields
+            .iter()
+            .any(|f| f == "principal"));
     }
 
     #[tokio::test]

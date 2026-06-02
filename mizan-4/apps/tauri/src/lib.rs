@@ -230,13 +230,10 @@ mod desktop {
                 // reason.
                 let valuation_service = startup_chain_context.valuation_service();
                 let account_service = startup_chain_context.account_service();
-                if let Ok(accounts) = account_service.list_accounts(Some(true), Some(false), None)
-                {
+                if let Ok(accounts) = account_service.list_accounts(Some(true), Some(false), None) {
                     let mut account_ids: Vec<String> =
                         accounts.iter().map(|a| a.id.clone()).collect();
-                    account_ids.push(
-                        mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID.to_string(),
-                    );
+                    account_ids.push(mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID.to_string());
                     for account_id in account_ids {
                         if let Err(e) = valuation_service
                             .calculate_valuation_history(
@@ -247,7 +244,8 @@ mod desktop {
                         {
                             log::warn!(
                                 "Startup valuation history recompute for {}: {}",
-                                account_id, e
+                                account_id,
+                                e
                             );
                         }
                     }
@@ -296,8 +294,7 @@ mod desktop {
             // First tick happens after 4h — the startup tick above
             // already fired ≤ a few seconds ago, so we don't want to
             // immediately re-fire and waste a DB roundtrip.
-            let mut ticker =
-                tokio::time::interval(std::time::Duration::from_secs(4 * 3600));
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(4 * 3600));
             // `interval` fires immediately by default — skip the first
             // tick so the loop body only runs after the 4h wait.
             ticker.tick().await;

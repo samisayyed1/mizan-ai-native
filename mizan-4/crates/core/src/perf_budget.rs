@@ -23,16 +23,13 @@ use std::time::{Duration, Instant};
 /// Panics on budget violation rather than returning Err — perf budgets
 /// are test-time invariants and the message is meant to surface in the
 /// test runner.
-pub fn within_budget<F: FnOnce() -> R, R>(
-    label: &str,
-    budget: Duration,
-    f: F,
-) -> (R, Duration) {
+pub fn within_budget<F: FnOnce() -> R, R>(label: &str, budget: Duration, f: F) -> (R, Duration) {
     let start = Instant::now();
     let result = f();
     let elapsed = start.elapsed();
 
-    let effective_budget = if std::env::var("MIZAN_PERF_BUDGET_STRICT").ok().as_deref() == Some("1") {
+    let effective_budget = if std::env::var("MIZAN_PERF_BUDGET_STRICT").ok().as_deref() == Some("1")
+    {
         // Strict mode tightens to the expected latency. Operators use
         // this when investigating "this got slower" — the failure
         // surfaces at the first real regression instead of waiting

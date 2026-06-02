@@ -16,14 +16,13 @@
 
 pub mod accounts;
 pub mod activities;
+pub mod add_alternative_asset;
 pub mod allocation;
 pub mod cash_balances;
 pub mod constants;
-pub mod add_alternative_asset;
 pub mod create_account;
 pub mod create_goal;
 pub mod create_liability;
-pub mod update_account;
 pub mod csv_intel;
 pub mod goals;
 pub mod health;
@@ -33,6 +32,7 @@ pub mod income;
 pub mod performance;
 pub mod record_activities;
 pub mod record_activity;
+pub mod update_account;
 pub mod update_liability;
 pub mod valuation;
 
@@ -42,13 +42,12 @@ pub use constants::*;
 // Re-export tools
 pub use accounts::GetAccountsTool;
 pub use activities::SearchActivitiesTool;
+pub use add_alternative_asset::AddAlternativeAssetTool;
 pub use allocation::GetAssetAllocationTool;
 pub use cash_balances::GetCashBalancesTool;
-pub use add_alternative_asset::AddAlternativeAssetTool;
 pub use create_account::CreateAccountTool;
 pub use create_goal::CreateGoalTool;
 pub use create_liability::CreateLiabilityTool;
-pub use update_account::UpdateAccountTool;
 pub use goals::GetGoalsTool;
 pub use health::GetHealthStatusTool;
 pub use holdings::GetHoldingsTool;
@@ -57,6 +56,7 @@ pub use income::GetIncomeTool;
 pub use performance::GetPerformanceTool;
 pub use record_activities::RecordActivitiesTool;
 pub use record_activity::RecordActivityTool;
+pub use update_account::UpdateAccountTool;
 pub use update_liability::UpdateLiabilityTool;
 pub use valuation::GetValuationHistoryTool;
 

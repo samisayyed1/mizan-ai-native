@@ -213,9 +213,7 @@ pub async fn run_startup_fx_refresh(handle: &AppHandle, context: &std::sync::Arc
 pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc<ServiceContext>) {
     use log::{debug, info, warn};
     use mizan_core::quotes::SyncMode;
-    use mizan_core::sync_ledger::{
-        SyncRunEntry, SyncRunMode, SyncRunProvider, SyncRunSummary,
-    };
+    use mizan_core::sync_ledger::{SyncRunEntry, SyncRunMode, SyncRunProvider, SyncRunSummary};
 
     info!("Running startup market-data quote sync...");
 
@@ -259,9 +257,11 @@ pub async fn run_startup_quote_sync(handle: &AppHandle, context: &std::sync::Arc
             // Emit a lightweight event so the frontend's TICKER_QUOTES +
             // HOLDINGS queries refetch immediately and the dashboard shows
             // live prices without waiting for the 6 h periodic.
-            if let Err(e) =
-                tauri::Emitter::emit(handle, "quotes:startup-sync-complete", &result.quotes_synced)
-            {
+            if let Err(e) = tauri::Emitter::emit(
+                handle,
+                "quotes:startup-sync-complete",
+                &result.quotes_synced,
+            ) {
                 debug!("Failed to emit quotes:startup-sync-complete event: {}", e);
             }
         }
@@ -472,7 +472,10 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
             })
             .collect::<Vec<_>>(),
         Err(e) => {
-            debug!("Insights: NW range failed: {} — running with empty history", e);
+            debug!(
+                "Insights: NW range failed: {} — running with empty history",
+                e
+            );
             Vec::new()
         }
     };
@@ -623,7 +626,10 @@ async fn run_ai_digest(
         }
     };
     if !ent.managed_ai {
-        debug!("AI digest: managed_ai disabled (plan={}). Skipping.", ent.plan);
+        debug!(
+            "AI digest: managed_ai disabled (plan={}). Skipping.",
+            ent.plan
+        );
         return Ok(());
     }
 
@@ -767,13 +773,13 @@ async fn hydrate_holding_moves(
     use mizan_core::insights::HoldingDayMove;
     use rust_decimal::Decimal;
 
-    let accounts = match context
-        .account_service()
-        .get_active_non_archived_accounts()
-    {
+    let accounts = match context.account_service().get_active_non_archived_accounts() {
         Ok(a) => a,
         Err(e) => {
-            debug!("Insights/BigMove: get_active_accounts failed: {} — skipping", e);
+            debug!(
+                "Insights/BigMove: get_active_accounts failed: {} — skipping",
+                e
+            );
             return Vec::new();
         }
     };
@@ -952,7 +958,10 @@ fn hydrate_dividend_events(
     let activities = match context.activity_service().get_income_activities() {
         Ok(a) => a,
         Err(e) => {
-            debug!("Insights/Dividend: get_income_activities failed: {} — skipping", e);
+            debug!(
+                "Insights/Dividend: get_income_activities failed: {} — skipping",
+                e
+            );
             return Vec::new();
         }
     };
@@ -961,8 +970,7 @@ fn hydrate_dividend_events(
         .into_iter()
         .filter(|a| a.activity_date >= cutoff)
         .filter(|a| {
-            a.activity_type == ACTIVITY_TYPE_DIVIDEND
-                || a.activity_type == ACTIVITY_TYPE_INTEREST
+            a.activity_type == ACTIVITY_TYPE_DIVIDEND || a.activity_type == ACTIVITY_TYPE_INTEREST
         })
         .filter_map(|a| {
             let amount_local = a.amount.unwrap_or(Decimal::ZERO);
@@ -977,10 +985,7 @@ fn hydrate_dividend_events(
             };
             // The symbol is the source ID if available; otherwise
             // fall back to the asset_id placeholder or "Cash".
-            let symbol = a
-                .asset_id
-                .clone()
-                .unwrap_or_else(|| "Cash".to_string());
+            let symbol = a.asset_id.clone().unwrap_or_else(|| "Cash".to_string());
             Some(DividendEvent {
                 activity_id: a.id,
                 kind: a.activity_type,
@@ -1106,8 +1111,7 @@ fn hydrate_goal_progress(
                     .unwrap_or(Decimal::ZERO),
                 current_value_base: Decimal::from_f64_retain(current_value_base)
                     .unwrap_or(Decimal::ZERO),
-                target_value_base: target_value_base
-                    .and_then(Decimal::from_f64_retain),
+                target_value_base: target_value_base.and_then(Decimal::from_f64_retain),
             })
         })
         .collect()

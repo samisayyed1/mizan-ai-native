@@ -244,7 +244,9 @@ pub async fn ingest_plaid_investment_transactions(
                     "Plaid ingest: prepare_activities_for_sync failed for account {}: {}",
                     account_id, e
                 );
-                summary.per_account_errors.insert(account_id.clone(), e.to_string());
+                summary
+                    .per_account_errors
+                    .insert(account_id.clone(), e.to_string());
                 continue;
             }
         };
@@ -297,9 +299,7 @@ pub async fn ingest_plaid_investment_transactions(
         summary.accounts_touched.len()
     );
 
-    let bulk = activity_service
-        .upsert_activities_bulk(all_upserts)
-        .await?;
+    let bulk = activity_service.upsert_activities_bulk(all_upserts).await?;
     summary.created = bulk.created;
     summary.updated = bulk.updated;
     summary.skipped = bulk.skipped;
@@ -453,7 +453,10 @@ fn map_single(
         Some(ActivityStatus::Posted)
     };
 
-    let notes = match (needs_review_reason, raw.get("name").and_then(|v| v.as_str())) {
+    let notes = match (
+        needs_review_reason,
+        raw.get("name").and_then(|v| v.as_str()),
+    ) {
         (Some(reason), Some(name)) => Some(format!("{reason}: {name}")),
         (Some(reason), None) => Some(reason.to_string()),
         (None, Some(name)) => Some(name.to_string()),
@@ -569,7 +572,14 @@ mod tests {
     #[test]
     fn maps_buy_with_symbol_to_buy_with_asset_input() {
         let accounts = vec![fake_account("local-1", Some("plaid-acct-1"))];
-        let txn = fake_txn("buy", "plaid-acct-1", Some("AAPL"), "1500.00", Some("10"), Some("150"));
+        let txn = fake_txn(
+            "buy",
+            "plaid-acct-1",
+            Some("AAPL"),
+            "1500.00",
+            Some("10"),
+            Some("150"),
+        );
         let (mapped, summary) = map_plaid_investment_transactions(&[txn], &accounts);
         assert_eq!(mapped.len(), 1);
         assert_eq!(summary.mapped, 1);
@@ -577,7 +587,10 @@ mod tests {
         let m = &mapped[0];
         assert_eq!(m.local_account_id, "local-1");
         assert_eq!(m.activity.activity_type, "BUY");
-        assert_eq!(m.activity.asset.as_ref().and_then(|a| a.symbol.clone()), Some("AAPL".to_string()));
+        assert_eq!(
+            m.activity.asset.as_ref().and_then(|a| a.symbol.clone()),
+            Some("AAPL".to_string())
+        );
         assert_eq!(m.activity.quantity, Some(Decimal::from(10)));
         assert_eq!(m.activity.unit_price, Some(Decimal::from(150)));
         assert_eq!(m.activity.amount, Some(Decimal::from(1500))); // unsigned at the boundary
@@ -588,7 +601,14 @@ mod tests {
     fn maps_sell_with_negative_plaid_amount_to_unsigned_sell_amount() {
         let accounts = vec![fake_account("local-1", Some("plaid-acct-1"))];
         // Plaid emits sells as negative from broker POV (funds entering)
-        let txn = fake_txn("sell", "plaid-acct-1", Some("AAPL"), "-2000.00", Some("10"), Some("200"));
+        let txn = fake_txn(
+            "sell",
+            "plaid-acct-1",
+            Some("AAPL"),
+            "-2000.00",
+            Some("10"),
+            Some("200"),
+        );
         let (mapped, _) = map_plaid_investment_transactions(&[txn], &accounts);
         assert_eq!(mapped[0].activity.activity_type, "SELL");
         assert_eq!(mapped[0].activity.amount, Some(Decimal::from(2000)));
@@ -620,17 +640,36 @@ mod tests {
     #[test]
     fn buy_without_symbol_is_flagged_needs_review() {
         let accounts = vec![fake_account("local-1", Some("plaid-acct-1"))];
-        let txn = fake_txn("buy", "plaid-acct-1", None, "1500.00", Some("10"), Some("150"));
+        let txn = fake_txn(
+            "buy",
+            "plaid-acct-1",
+            None,
+            "1500.00",
+            Some("10"),
+            Some("150"),
+        );
         let (mapped, summary) = map_plaid_investment_transactions(&[txn], &accounts);
         assert_eq!(summary.needs_review, 1);
         assert_eq!(mapped[0].activity.needs_review, Some(true));
-        assert!(mapped[0].activity.notes.as_deref().unwrap().contains("no security symbol"));
+        assert!(mapped[0]
+            .activity
+            .notes
+            .as_deref()
+            .unwrap()
+            .contains("no security symbol"));
     }
 
     #[test]
     fn unknown_plaid_account_is_skipped_with_summary_increment() {
         let accounts = vec![fake_account("local-1", Some("plaid-acct-other"))];
-        let txn = fake_txn("buy", "plaid-acct-1", Some("AAPL"), "1500.00", Some("10"), Some("150"));
+        let txn = fake_txn(
+            "buy",
+            "plaid-acct-1",
+            Some("AAPL"),
+            "1500.00",
+            Some("10"),
+            Some("150"),
+        );
         let (mapped, summary) = map_plaid_investment_transactions(&[txn], &accounts);
         assert!(mapped.is_empty());
         assert_eq!(summary.skipped_unknown_account, 1);
@@ -639,10 +678,20 @@ mod tests {
     #[test]
     fn cancelled_flag_propagates_to_void_status() {
         let accounts = vec![fake_account("local-1", Some("plaid-acct-1"))];
-        let mut txn = fake_txn("buy", "plaid-acct-1", Some("AAPL"), "1500.00", Some("10"), Some("150"));
+        let mut txn = fake_txn(
+            "buy",
+            "plaid-acct-1",
+            Some("AAPL"),
+            "1500.00",
+            Some("10"),
+            Some("150"),
+        );
         txn["cancelled"] = json!(true);
         let (mapped, _) = map_plaid_investment_transactions(&[txn], &accounts);
-        assert!(matches!(mapped[0].activity.status, Some(ActivityStatus::Void)));
+        assert!(matches!(
+            mapped[0].activity.status,
+            Some(ActivityStatus::Void)
+        ));
     }
 
     #[test]
@@ -658,9 +707,19 @@ mod tests {
     #[test]
     fn noon_utc_anchoring_on_bare_date() {
         let accounts = vec![fake_account("local-1", Some("plaid-acct-1"))];
-        let txn = fake_txn("buy", "plaid-acct-1", Some("AAPL"), "100", Some("1"), Some("100"));
+        let txn = fake_txn(
+            "buy",
+            "plaid-acct-1",
+            Some("AAPL"),
+            "100",
+            Some("1"),
+            Some("100"),
+        );
         let (mapped, _) = map_plaid_investment_transactions(&[txn], &accounts);
         // 2026-05-15T12:00:00+00:00 — noon UTC dodges DST drift for Western timezones
-        assert!(mapped[0].activity.activity_date.starts_with("2026-05-15T12:00:00"));
+        assert!(mapped[0]
+            .activity
+            .activity_date
+            .starts_with("2026-05-15T12:00:00"));
     }
 }

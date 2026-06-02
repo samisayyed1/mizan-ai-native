@@ -94,9 +94,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use mizan_core::errors::Error as CoreError;
-use mizan_core::truth_engine::{
-    AppendInput, LedgerEntryKind, TruthLedger,
-};
+use mizan_core::truth_engine::{AppendInput, LedgerEntryKind, TruthLedger};
 
 // ─── Configuration constants ────────────────────────────────────────
 
@@ -226,10 +224,7 @@ pub enum AgentEvent {
     /// runtime calls the planner LLM again with the failure context
     /// so the LLM can propose an alternative path. UI can show
     /// "Adapting plan..." while this runs.
-    RePlanning {
-        run_id: Uuid,
-        reason: String,
-    },
+    RePlanning { run_id: Uuid, reason: String },
     /// Verification phase completed. `discrepancies` is empty on
     /// success; populated with human-readable mismatches when the
     /// post-run state doesn't satisfy the goal.
@@ -357,11 +352,8 @@ pub struct DispatchResult {
 /// canned plan.
 #[async_trait]
 pub trait AgentPlanner: Send + Sync {
-    async fn plan(
-        &self,
-        goal: &str,
-        context: &PlannerContext,
-    ) -> Result<Vec<PlanStep>, AgentError>;
+    async fn plan(&self, goal: &str, context: &PlannerContext)
+        -> Result<Vec<PlanStep>, AgentError>;
 
     /// Called when execution hits an unrecoverable step failure;
     /// the LLM gets the failure context and proposes a new plan
@@ -486,8 +478,7 @@ impl InMemoryAgentRuntime {
         if plan.is_empty() {
             return Err(AgentError::EmptyPlan);
         }
-        let ids: std::collections::HashSet<&str> =
-            plan.iter().map(|s| s.id.as_str()).collect();
+        let ids: std::collections::HashSet<&str> = plan.iter().map(|s| s.id.as_str()).collect();
         for step in plan {
             for dep in &step.depends_on {
                 if !ids.contains(dep.as_str()) {
@@ -497,8 +488,7 @@ impl InMemoryAgentRuntime {
         }
         // Kahn's algorithm. Indegree of a node = number of deps it
         // declares (each `depends_on` entry is one incoming edge).
-        let mut by_id: HashMap<&str, &PlanStep> =
-            plan.iter().map(|s| (s.id.as_str(), s)).collect();
+        let mut by_id: HashMap<&str, &PlanStep> = plan.iter().map(|s| (s.id.as_str(), s)).collect();
         let mut indeg: HashMap<&str, usize> = plan
             .iter()
             .map(|s| (s.id.as_str(), s.depends_on.len()))
@@ -573,10 +563,7 @@ impl AgentRuntime for InMemoryAgentRuntime {
         // goal G." Failure to persist is non-fatal — the agent
         // continues without an audit row.
         let mut header_meta = std::collections::BTreeMap::new();
-        header_meta.insert(
-            "goal".to_string(),
-            serde_json::Value::String(goal.clone()),
-        );
+        header_meta.insert("goal".to_string(), serde_json::Value::String(goal.clone()));
         header_meta.insert(
             "estimated_steps".to_string(),
             serde_json::Value::Number(estimated_steps.into()),
@@ -658,18 +645,9 @@ impl AgentRuntime for InMemoryAgentRuntime {
                 Ok(_) => {
                     let summary = entry_snapshot
                         .as_ref()
-                        .map(|r| {
-                            format!(
-                                "Completed {} step(s) in {}ms",
-                                r.plan.len(),
-                                elapsed_ms
-                            )
-                        })
+                        .map(|r| format!("Completed {} step(s) in {}ms", r.plan.len(), elapsed_ms))
                         .unwrap_or_else(|| "Run complete".to_string());
-                    let tool_calls = entry_snapshot
-                        .as_ref()
-                        .map(|r| r.tool_calls)
-                        .unwrap_or(0);
+                    let tool_calls = entry_snapshot.as_ref().map(|r| r.tool_calls).unwrap_or(0);
                     let _ = tx_for_run.send(AgentEvent::RunComplete {
                         run_id,
                         undo_batch_id: run_id,
@@ -692,10 +670,7 @@ impl AgentRuntime for InMemoryAgentRuntime {
             }
         });
 
-        Ok(AgentRunHandle {
-            run_id,
-            events: rx,
-        })
+        Ok(AgentRunHandle { run_id, events: rx })
     }
 
     async fn undo(&self, run_id: Uuid) -> Result<UndoReport, AgentError> {
@@ -926,8 +901,7 @@ mod tests {
 
     /// Boxed callback type for the mock's pluggable result builder.
     /// Factored out for clippy::type_complexity.
-    type MockResultFn =
-        Box<dyn Fn(&str) -> Result<DispatchResult, AgentError> + Send + Sync>;
+    type MockResultFn = Box<dyn Fn(&str) -> Result<DispatchResult, AgentError> + Send + Sync>;
 
     /// Records every dispatch call and returns a configurable result.
     struct MockDispatcher {
@@ -1021,8 +995,13 @@ mod tests {
         }
 
         assert!(matches!(events[0], AgentEvent::PlanReady { .. }));
-        assert!(events.iter().any(|e| matches!(e, AgentEvent::StepDone { .. })));
-        assert!(matches!(events.last(), Some(AgentEvent::RunComplete { .. })));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, AgentEvent::StepDone { .. })));
+        assert!(matches!(
+            events.last(),
+            Some(AgentEvent::RunComplete { .. })
+        ));
         assert_eq!(dispatcher.calls.lock().await.len(), 2);
     }
 
@@ -1095,7 +1074,10 @@ mod tests {
         // Drain to completion.
         let mut rx = handle.events;
         while let Some(e) = rx.recv().await {
-            if matches!(e, AgentEvent::RunComplete { .. } | AgentEvent::RunAborted { .. }) {
+            if matches!(
+                e,
+                AgentEvent::RunComplete { .. } | AgentEvent::RunAborted { .. }
+            ) {
                 break;
             }
         }
@@ -1117,10 +1099,7 @@ mod tests {
 
     #[tokio::test]
     async fn topo_sort_rejects_cycles() {
-        let plan = vec![
-            step("a", "x", &["b"]),
-            step("b", "y", &["a"]),
-        ];
+        let plan = vec![step("a", "x", &["b"]), step("b", "y", &["a"])];
         let err = InMemoryAgentRuntime::topo_sort(&plan).unwrap_err();
         assert!(matches!(err, AgentError::PlanCycle(_)));
     }

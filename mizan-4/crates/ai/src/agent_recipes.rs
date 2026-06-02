@@ -258,7 +258,13 @@ The user said "rebalance to 60/40" or "I'm too heavy in tech, fix it":
         "verify_allocation_within_band",
     ],
     example_plans: &[],
-    detection_keywords: &["rebalance", "too heavy in", "60/40", "asset allocation", "drift"],
+    detection_keywords: &[
+        "rebalance",
+        "too heavy in",
+        "60/40",
+        "asset allocation",
+        "drift",
+    ],
     requires_attachment: false,
     gold_only: true,
 };
@@ -306,10 +312,7 @@ the nisab threshold. Your plan:
 /// attachments. Returns `None` if the message doesn't match a recipe
 /// — the chat dispatcher falls back to the generic single-turn chat
 /// in that case.
-pub fn detect_recipe<'a>(
-    user_message: &str,
-    has_attachment: bool,
-) -> Option<&'a AgentRecipe> {
+pub fn detect_recipe<'a>(user_message: &str, has_attachment: bool) -> Option<&'a AgentRecipe> {
     let lower = user_message.to_lowercase();
     let mut best: Option<(&AgentRecipe, usize)> = None;
     for recipe in ALL_RECIPES {
@@ -368,7 +371,6 @@ pub fn build_recipe_addendum(recipe: &AgentRecipe) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[test]
     fn detects_portfolio_from_csv_when_keyword_and_attachment_present() {
