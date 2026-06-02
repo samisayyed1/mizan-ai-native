@@ -32,6 +32,7 @@
 //! ```
 
 pub mod cache_eviction;
+pub mod cache_eviction_sqlite;
 pub mod cache_policy;
 pub mod db;
 pub mod errors;

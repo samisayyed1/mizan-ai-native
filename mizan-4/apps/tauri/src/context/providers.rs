@@ -63,6 +63,15 @@ pub async fn initialize_context(
     db::run_migrations(&db_path)?;
 
     let pool = db::create_pool(&db_path)?;
+
+    // Track I PR-I2.e — synchronous cache eviction on app-version bump.
+    // Runs BEFORE any service is constructed (including before the
+    // write_actor spawns) so stale cache rows from a prior version
+    // cannot leak into a freshly-built service's read path. See
+    // `mizan-storage-sqlite/src/cache_eviction.rs` + working agreement
+    // §19.7 (cache eviction workers).
+    run_startup_cache_eviction_if_version_changed(pool.as_ref());
+
     let (sync_outbox_wake_sender, sync_outbox_wake_receiver) = mpsc::channel(128);
     let writer = write_actor::spawn_writer_with_outbox_observer(
         pool.as_ref().clone(),
@@ -427,6 +436,85 @@ pub async fn initialize_context(
         event_receiver,
         sync_outbox_wake_receiver,
     })
+}
+
+/// Track I PR-I2.e — run the synchronous cache eviction worker iff the
+/// binary's `CARGO_PKG_VERSION` differs from the version persisted in
+/// `app_settings.app_version`. Fail-soft: any error logs + skips the
+/// eviction (a failed eviction cannot block the desktop from launching;
+/// the 3am daily sweep will catch up).
+fn run_startup_cache_eviction_if_version_changed(pool: &mizan_storage_sqlite::DbPool) {
+    use mizan_storage_sqlite::cache_eviction::run_synchronous;
+    use mizan_storage_sqlite::cache_eviction_sqlite::{
+        check_app_version, persist_app_version, AppVersionCheck, SqliteEvictionContext,
+    };
+    use std::sync::Arc;
+
+    let current = env!("CARGO_PKG_VERSION");
+    let check = match check_app_version(pool, current) {
+        Ok(c) => c,
+        Err(e) => {
+            log::warn!("cache_eviction: app_version check failed: {e}; skipping startup eviction");
+            return;
+        }
+    };
+
+    match &check {
+        AppVersionCheck::FirstBoot => {
+            log::info!(
+                "cache_eviction: first boot detected; persisting app_version={current} \
+                 (no eviction sweep needed)"
+            );
+        }
+        AppVersionCheck::Unchanged => {
+            // No-op fast path — the common case on every boot after the first.
+            return;
+        }
+        AppVersionCheck::Changed { previous } => {
+            log::info!(
+                "cache_eviction: app_version bumped {previous} → {current}; \
+                 running synchronous eviction before WebView paint"
+            );
+            // SAFETY: we treat the cutoff as "evict anything older than NOW"
+            // — i.e. nothing in the cache survives the version bump if its
+            // TTL is non-zero (the per-table TTL is enforced by `delete_sql_for`
+            // computing `now - ttl` outside this fn; the cutoff here is the
+            // wall-clock cutoff in unix micros, which the worker compares
+            // against the age_column). For the version-bump path we use a
+            // far-future cutoff so the sweep evicts EVERY cached row from
+            // tables with a Delete strategy — the prior version's cache
+            // shapes are not guaranteed to be compatible with the new
+            // binary's read code.
+            let far_future_cutoff = i64::MAX / 2;
+            let ctx = SqliteEvictionContext::new(Arc::new(pool.clone()));
+            let report = run_synchronous(&ctx, far_future_cutoff);
+
+            let rows = report.total_rows_evicted();
+            let failed = report.failed_tables();
+            if failed.is_empty() {
+                log::info!(
+                    "cache_eviction: startup sweep evicted {rows} rows across {n} tables (clean)",
+                    n = report.outcomes.len()
+                );
+            } else {
+                log::warn!(
+                    "cache_eviction: startup sweep evicted {rows} rows; {n_failed} tables \
+                     reported errors (will be re-attempted in 3am daily sweep): {failed:?}",
+                    n_failed = failed.len()
+                );
+            }
+        }
+    }
+
+    // FirstBoot AND Changed both need the version persisted. Unchanged
+    // already returned above. Persist after the eviction so a crash
+    // mid-sweep leaves the old version in place — next boot will retry.
+    if let Err(e) = persist_app_version(pool, current) {
+        log::warn!(
+            "cache_eviction: persist_app_version({current}) failed: {e}; \
+             next boot will re-run the eviction sweep"
+        );
+    }
 }
 
 /// Get a friendly display name for this device based on platform.
