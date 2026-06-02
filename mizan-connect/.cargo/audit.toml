@@ -20,4 +20,11 @@ ignore = [
     # crate; not compiled into the production binary. No fix available
     # upstream — testcontainers itself would need to migrate off tokio-tar.
     "RUSTSEC-2025-0111",
+    # RUSTSEC-2025-0134 — rustls-pemfile is unmaintained.
+    # Pulled in via `bollard 0.18` → `testcontainers 0.23` — same
+    # dev-dependencies-only path as RUSTSEC-2025-0111 above. Not in
+    # production binary. Re-evaluate when testcontainers migrates off
+    # bollard 0.18 (the maintained `rustls-pemfile` replacement is the
+    # `rustls-pki-types` crate which bollard hasn't picked up yet).
+    "RUSTSEC-2025-0134",
 ]
