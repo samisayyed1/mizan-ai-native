@@ -65,26 +65,26 @@ pub async fn initialize_context(
     let pool = db::create_pool(&db_path)?;
 
     // Track I PR-I2.e — synchronous cache eviction on app-version bump.
-    // Runs BEFORE any service is constructed (including before the
-    // write_actor spawns) so stale cache rows from a prior version
-    // cannot leak into a freshly-built service's read path. See
-    // `mizan-storage-sqlite/src/cache_eviction.rs` + working agreement
-    // §19.7 (cache eviction workers).
-    run_startup_cache_eviction_if_version_changed(pool.as_ref());
+    // Captures the previous-version string so PR-I6's rollback path
+    // can decide whether to restore a pre-update snapshot if the
+    // self-test fails.
+    let previous_version_for_rollback =
+        run_startup_cache_eviction_if_version_changed(pool.as_ref());
 
     // Track I PR-I4 — prune pre-update DB snapshots older than 30 days
     // per ADR 0009. Cheap fail-soft janitor; runs alongside the cache
     // eviction so disk hygiene happens in one well-known place at boot.
     prune_old_updater_snapshots(app_data_dir);
 
-    // Track I PR-I5 — post-install self-test per ADR 0009. Runs on the
-    // first launch of a freshly-upgraded binary (subsequent launches
-    // short-circuit via the cached result file). Fail-loud + fail-soft:
-    // logs the result + surfaces it; in PR-I6, a failed self-test will
-    // trigger the auto-rollback path. Until I6 lands, a failed
-    // self-test still lets the desktop launch — but the user sees a
-    // warning toast (frontend wiring to follow).
-    run_post_install_self_test(app_data_dir, pool.as_ref());
+    // Track I PR-I5 + PR-I6 — post-install self-test per ADR 0009 + the
+    // auto-rollback path that triggers on self-test failure when an
+    // upgrade boot caused the failure. Both fail-soft: a failed
+    // rollback (restore I/O error etc.) still lets the desktop launch.
+    run_post_install_self_test_and_maybe_rollback(
+        app_data_dir,
+        pool.as_ref(),
+        previous_version_for_rollback.as_deref(),
+    );
 
     let (sync_outbox_wake_sender, sync_outbox_wake_receiver) = mpsc::channel(128);
     let writer = write_actor::spawn_writer_with_outbox_observer(
@@ -457,7 +457,9 @@ pub async fn initialize_context(
 /// `app_settings.app_version`. Fail-soft: any error logs + skips the
 /// eviction (a failed eviction cannot block the desktop from launching;
 /// the 3am daily sweep will catch up).
-fn run_startup_cache_eviction_if_version_changed(pool: &mizan_storage_sqlite::DbPool) {
+fn run_startup_cache_eviction_if_version_changed(
+    pool: &mizan_storage_sqlite::DbPool,
+) -> Option<String> {
     use mizan_storage_sqlite::cache_eviction::run_synchronous;
     use mizan_storage_sqlite::cache_eviction_sqlite::{
         check_app_version, persist_app_version, AppVersionCheck, SqliteEvictionContext,
@@ -469,9 +471,11 @@ fn run_startup_cache_eviction_if_version_changed(pool: &mizan_storage_sqlite::Db
         Ok(c) => c,
         Err(e) => {
             log::warn!("cache_eviction: app_version check failed: {e}; skipping startup eviction");
-            return;
+            return None;
         }
     };
+
+    let mut previous_for_rollback: Option<String> = None;
 
     match &check {
         AppVersionCheck::FirstBoot => {
@@ -482,9 +486,12 @@ fn run_startup_cache_eviction_if_version_changed(pool: &mizan_storage_sqlite::Db
         }
         AppVersionCheck::Unchanged => {
             // No-op fast path — the common case on every boot after the first.
-            return;
+            return None;
         }
         AppVersionCheck::Changed { previous } => {
+            // Capture for PR-I6 — if the self-test fails for `current`,
+            // the rollback path restores from mizan.db.pre-{previous}.
+            previous_for_rollback = Some(previous.clone());
             log::info!(
                 "cache_eviction: app_version bumped {previous} → {current}; \
                  running synchronous eviction before WebView paint"
@@ -529,6 +536,8 @@ fn run_startup_cache_eviction_if_version_changed(pool: &mizan_storage_sqlite::Db
              next boot will re-run the eviction sweep"
         );
     }
+
+    previous_for_rollback
 }
 
 /// Track I PR-I4 — prune pre-update DB snapshots older than 30 days.
@@ -554,11 +563,22 @@ fn prune_old_updater_snapshots(app_data_dir: &str) {
     }
 }
 
-/// Track I PR-I5 — orchestrates the post-install self-test run.
-/// Fail-soft: a failed self-test is logged but does not abort startup
-/// in this PR. PR-I6 will wire the rollback path here.
-fn run_post_install_self_test(app_data_dir: &str, pool: &mizan_storage_sqlite::DbPool) {
+/// Track I PR-I5 + PR-I6 — orchestrates the post-install self-test
+/// and, if it failed AND this was an upgrade boot, the auto-rollback
+/// to the pre-update DB snapshot per ADR 0009.
+///
+/// Fail-soft throughout: a self-test failure, a missing snapshot, OR
+/// a failed restore — all log + continue startup. The desktop never
+/// blocks on a recovery-tooling error; PR-I5.b adds the Mizan Connect
+/// diagnostics POST that will surface persistent failures to the
+/// monitoring dashboard.
+fn run_post_install_self_test_and_maybe_rollback(
+    app_data_dir: &str,
+    pool: &mizan_storage_sqlite::DbPool,
+    previous_version: Option<&str>,
+) {
     use mizan_storage_sqlite::self_test::run_and_persist;
+    use mizan_storage_sqlite::self_test_rollback::{attempt_db_rollback, RollbackOutcome};
 
     let current = env!("CARGO_PKG_VERSION");
     let report = run_and_persist(app_data_dir, current, pool);
@@ -569,12 +589,55 @@ fn run_post_install_self_test(app_data_dir: &str, pool: &mizan_storage_sqlite::D
             report.checks.len(),
             report.total_elapsed_ms
         );
-    } else {
-        log::error!(
-            "self_test: v{current} FAILED — required checks: {:?} \
-             (continuing startup; PR-I6 will wire auto-rollback)",
-            report.failed_required()
-        );
+        return;
+    }
+
+    log::error!(
+        "self_test: v{current} FAILED — required checks: {:?}",
+        report.failed_required()
+    );
+
+    let outcome = attempt_db_rollback(app_data_dir, pool, &report, previous_version);
+    match outcome {
+        RollbackOutcome::NotNeeded => {
+            // Unreachable in practice — report failed above, so the
+            // helper would not return NotNeeded. Guarded for safety.
+        }
+        RollbackOutcome::NoSnapshotAvailable {
+            previous_version: prev,
+            failed_checks,
+        } => {
+            log::error!(
+                "self_test_rollback: no snapshot for v{prev}; cannot auto-rollback. \
+                 User-visible failure: failed_checks={failed_checks:?}. Frontend should \
+                 surface a 'please reinstall manually' modal."
+            );
+        }
+        RollbackOutcome::Restored {
+            previous_version: prev,
+            snapshot_path,
+            failed_checks,
+        } => {
+            log::warn!(
+                "self_test_rollback: DB restored from {} (rolled back from v{current} \
+                 → v{prev}). Failed checks: {failed_checks:?}. Frontend should surface \
+                 the rollback modal and prompt for restart.",
+                snapshot_path.display()
+            );
+        }
+        RollbackOutcome::RestoreFailed {
+            previous_version: prev,
+            snapshot_path,
+            failed_checks,
+            error,
+        } => {
+            log::error!(
+                "self_test_rollback: snapshot existed for v{prev} at {} but restore \
+                 FAILED: {error}. Failed checks: {failed_checks:?}. Desktop will \
+                 continue with the (broken) new-version DB.",
+                snapshot_path.display()
+            );
+        }
     }
 }
 

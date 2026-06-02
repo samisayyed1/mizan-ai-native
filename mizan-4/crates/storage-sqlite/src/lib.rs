@@ -41,6 +41,9 @@ pub mod schema;
 // + truth-ledger chain head). Consumed by apps/tauri's initialize_context
 // on the first launch of a freshly-upgraded binary per ADR 0009.
 pub mod self_test;
+// Track I PR-I6 — auto-rollback on self-test failure. Composes on top
+// of PR-I4 (snapshot) + PR-I5 (self-test) per ADR 0009 §"PR-I6".
+pub mod self_test_rollback;
 // Track I PR-I4 — pre-update DB snapshot + 30-day retention janitor.
 // Consumed by `apps/tauri/src/updater.rs::install_update` (snapshot before
 // download) and `apps/tauri/src/context/providers.rs::initialize_context`
