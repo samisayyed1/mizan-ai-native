@@ -94,3 +94,7 @@ mizan-zakat = { path = "crates/zakat" }
 # out of mizan-core. mizan-insights → mizan-core dep is temporary; the
 # Notification type lifts to mizan-domain-types in PR-H3.c.1.
 mizan-insights = { path = "crates/insights" }
+# Track H PR-H3.d — synthesis engine (estimated historical portfolio
+# valuation from current holdings + quote history) extracted out of
+# mizan-core. Six back-edges; full leaf in PR-H3.d.1/2.
+mizan-synthesis = { path = "crates/synthesis" }

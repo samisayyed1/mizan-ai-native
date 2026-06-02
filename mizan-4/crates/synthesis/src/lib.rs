@@ -24,13 +24,33 @@
 //! transaction-driven snapshot calculator produces a more accurate chart
 //! and this module's output is unnecessary. The two paths are
 //! complementary.
+//!
+//! # Crate boundary (Track H PR-H3.d)
+//!
+//! Extracted out of `mizan-core::portfolio::synthesis` so the coverage
+//! floor + mutation-testing rules can be enforced per crate.
+//!
+//! ⚠️ This crate is **not yet a leaf** — `synthesize_account_history`
+//! still depends on six mizan-core surfaces:
+//!   - `mizan_core::errors::{Error, Result, CalculatorError}`
+//!   - `mizan_core::fx::FxServiceTrait`
+//!   - `mizan_core::portfolio::holdings::{Holding, HoldingType}`
+//!   - `mizan_core::portfolio::split_adjustment::{split_adjusted_close, SplitFactors}`
+//!   - `mizan_core::portfolio::valuation::DailyAccountValuation`
+//!   - `mizan_core::quotes::QuoteServiceTrait`
+//!
+//! Lifting these into `mizan-domain-types` + a future
+//! `mizan-portfolio-traits` crate is the broader Track H sweep tracked
+//! as PR-H3.d.1 / PR-H3.d.2. That sweep is intentionally larger than a
+//! single PR — the holdings model is the cross-cutting type the entire
+//! portfolio engine depends on. See ADR 0003 for the leaf-crate plan.
 
-use crate::errors::{Error, Result};
-use crate::fx::FxServiceTrait;
-use crate::portfolio::holdings::{Holding, HoldingType};
-use crate::portfolio::split_adjustment::{split_adjusted_close, SplitFactors};
-use crate::portfolio::valuation::DailyAccountValuation;
-use crate::quotes::QuoteServiceTrait;
+use mizan_core::errors::{Error, Result};
+use mizan_core::fx::FxServiceTrait;
+use mizan_core::portfolio::holdings::{Holding, HoldingType};
+use mizan_core::portfolio::split_adjustment::{split_adjusted_close, SplitFactors};
+use mizan_core::portfolio::valuation::DailyAccountValuation;
+use mizan_core::quotes::QuoteServiceTrait;
 
 use chrono::{NaiveDate, TimeZone, Utc};
 use log::{debug, warn};
@@ -146,7 +166,7 @@ pub async fn synthesize_account_history(
                 e
             );
             return Err(Error::Calculation(
-                crate::errors::CalculatorError::Calculation(format!(
+                mizan_core::errors::CalculatorError::Calculation(format!(
                     "Could not load quote history: {}",
                     e
                 )),
@@ -295,7 +315,7 @@ pub async fn synthesize_account_history(
     );
 
     if output.is_empty() {
-        return Err(Error::Calculation(crate::errors::CalculatorError::Calculation(
+        return Err(Error::Calculation(mizan_core::errors::CalculatorError::Calculation(
             "No quote history available for held assets — cannot estimate historical value. Try \"Recalculate History\" first to backfill quotes.".to_string(),
         )));
     }

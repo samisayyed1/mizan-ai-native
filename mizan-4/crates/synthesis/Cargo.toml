@@ -1,0 +1,29 @@
+[package]
+name = "mizan-synthesis"
+version.workspace = true
+edition.workspace = true
+description = "Estimated historical portfolio valuation from current holdings + quote history"
+authors = ["Sami Sayyed"]
+license = "AGPL-3.0"
+
+[features]
+default = []
+test-utils = []
+
+[dependencies]
+chrono = { workspace = true, features = ["serde"] }
+log = { workspace = true }
+rust_decimal = { workspace = true, features = ["serde-with-str"] }
+
+# Domain types live in mizan-domain-types per ADR 0003.
+mizan-domain-types = { workspace = true }
+
+# Pragmatic compromise: synthesise_account_history depends on six
+# mizan-core surfaces (Error, FxServiceTrait, Holding/HoldingType,
+# split_adjusted_close, DailyAccountValuation, QuoteServiceTrait). The
+# leaf-crate refactor lands as PR-H3.d.1 / PR-H3.d.2 once the holdings
+# model + portfolio traits are lifted into mizan-domain-types.
+mizan-core = { workspace = true }
+
+[lints]
+workspace = true
