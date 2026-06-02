@@ -53,6 +53,11 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: mizan-4/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # The frontend depends on @mizan/ui's compiled type declarations
+      # in packages/ui/dist/. Build types across all workspace packages
+      # before type-check so tsc finds the .d.ts files (otherwise TS6305
+      # fires on every `@mizan/ui` import).
+      - run: pnpm -r run build:types
       - run: pnpm --filter frontend type-check
       - run: pnpm --filter frontend lint:quiet
       - run: pnpm --filter frontend test -- --run
