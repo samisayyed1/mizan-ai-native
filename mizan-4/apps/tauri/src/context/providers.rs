@@ -77,6 +77,15 @@ pub async fn initialize_context(
     // eviction so disk hygiene happens in one well-known place at boot.
     prune_old_updater_snapshots(app_data_dir);
 
+    // Track I PR-I5 — post-install self-test per ADR 0009. Runs on the
+    // first launch of a freshly-upgraded binary (subsequent launches
+    // short-circuit via the cached result file). Fail-loud + fail-soft:
+    // logs the result + surfaces it; in PR-I6, a failed self-test will
+    // trigger the auto-rollback path. Until I6 lands, a failed
+    // self-test still lets the desktop launch — but the user sees a
+    // warning toast (frontend wiring to follow).
+    run_post_install_self_test(app_data_dir, pool.as_ref());
+
     let (sync_outbox_wake_sender, sync_outbox_wake_receiver) = mpsc::channel(128);
     let writer = write_actor::spawn_writer_with_outbox_observer(
         pool.as_ref().clone(),
@@ -542,6 +551,30 @@ fn prune_old_updater_snapshots(app_data_dir: &str) {
         Err(e) => {
             log::warn!("updater_snapshot: prune failed ({e}); next boot will retry");
         }
+    }
+}
+
+/// Track I PR-I5 — orchestrates the post-install self-test run.
+/// Fail-soft: a failed self-test is logged but does not abort startup
+/// in this PR. PR-I6 will wire the rollback path here.
+fn run_post_install_self_test(app_data_dir: &str, pool: &mizan_storage_sqlite::DbPool) {
+    use mizan_storage_sqlite::self_test::run_and_persist;
+
+    let current = env!("CARGO_PKG_VERSION");
+    let report = run_and_persist(app_data_dir, current, pool);
+
+    if report.all_required_passed {
+        log::info!(
+            "self_test: v{current} clean ({} checks, {}ms)",
+            report.checks.len(),
+            report.total_elapsed_ms
+        );
+    } else {
+        log::error!(
+            "self_test: v{current} FAILED — required checks: {:?} \
+             (continuing startup; PR-I6 will wire auto-rollback)",
+            report.failed_required()
+        );
     }
 }
 

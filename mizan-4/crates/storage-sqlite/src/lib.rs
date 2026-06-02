@@ -37,6 +37,10 @@ pub mod cache_policy;
 pub mod db;
 pub mod errors;
 pub mod schema;
+// Track I PR-I5 — post-install self-test (schema match + crypto round-trip
+// + truth-ledger chain head). Consumed by apps/tauri's initialize_context
+// on the first launch of a freshly-upgraded binary per ADR 0009.
+pub mod self_test;
 // Track I PR-I4 — pre-update DB snapshot + 30-day retention janitor.
 // Consumed by `apps/tauri/src/updater.rs::install_update` (snapshot before
 // download) and `apps/tauri/src/context/providers.rs::initialize_context`
