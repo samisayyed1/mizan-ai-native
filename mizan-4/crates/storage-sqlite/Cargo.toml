@@ -38,6 +38,12 @@ diesel_migrations = { workspace = true }
 rusqlite = { workspace = true }
 r2d2 = { workspace = true }
 
+# Track I PR-I5 — self_test's crypto_round_trip + truth_ledger_chain_head
+# checks. Both already transit through other workspace crates; declared
+# here for ownership clarity.
+chacha20poly1305 = { workspace = true }
+blake3 = "1"
+
 [dev-dependencies]
 tempfile = "3"
 rust_decimal_macros = { workspace = true }

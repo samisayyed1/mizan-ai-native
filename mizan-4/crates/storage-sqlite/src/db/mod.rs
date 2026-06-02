@@ -18,7 +18,9 @@ use mizan_core::errors::{DatabaseError, Error, Result};
 use crate::errors::StorageError;
 
 // Keep this invocation in sync with the on-disk migrations directory.
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+// Track I PR-I5 made this `pub` so the self_test module can call
+// `conn.has_pending_migration(MIGRATIONS)` for the schema_match check.
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 pub type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
 pub type DbConnection = PooledConnection<ConnectionManager<SqliteConnection>>;
