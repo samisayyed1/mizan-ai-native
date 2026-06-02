@@ -10,4 +10,6 @@ pub mod snapshot;
 pub mod split_adjustment;
 pub mod synthesis;
 pub mod valuation;
-pub mod zakat;
+// Track H PR-H3.b — zakat moved out of mizan-core into the
+// `mizan-zakat` crate. Consumers import directly:
+//   use mizan_zakat::{ZakatService, ZakatServiceTrait, ZakatInputs, ZakatReport};

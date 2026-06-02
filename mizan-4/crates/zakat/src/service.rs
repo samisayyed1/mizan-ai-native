@@ -10,11 +10,17 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::sync::Arc;
 
-use super::zakat_model::{ZakatInputs, ZakatReport};
-use super::zakat_traits::ZakatServiceTrait;
-use crate::assets::AssetKind;
-use crate::errors::Result;
-use crate::portfolio::holdings::{HoldingType, HoldingsServiceTrait};
+use super::model::{ZakatInputs, ZakatReport};
+use super::traits::ZakatServiceTrait;
+// Track H PR-H3.b note: the engine currently consumes mizan-core's AssetKind
+// and HoldingType. mizan-domain-types declares duplicates per ADR 0003 but
+// the unification (single canonical AssetKind/HoldingType) lands in a
+// follow-up sweep PR that touches every consumer at once. Until then,
+// mizan-zakat reads from mizan-core to match what HoldingsServiceTrait
+// returns. Tracked in docs/plans/track-h-extractions/02-zakat.md.
+use mizan_core::assets::AssetKind;
+use mizan_core::errors::Result;
+use mizan_core::portfolio::holdings::{HoldingType, HoldingsServiceTrait};
 
 /// Standard Zakat rate: 2.5% per lunar year.
 const ZAKAT_RATE: Decimal = dec!(0.025);
@@ -72,7 +78,10 @@ impl ZakatServiceTrait for ZakatService {
         // canonical `get_holdings(account, base)` API.
         let holdings = self
             .holdings
-            .get_holdings(crate::constants::PORTFOLIO_TOTAL_ACCOUNT_ID, base_currency)
+            .get_holdings(
+                mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID,
+                base_currency,
+            )
             .await?;
 
         let mut liquid = Decimal::ZERO;
@@ -148,9 +157,9 @@ impl ZakatServiceTrait for ZakatService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::portfolio::holdings::holdings_model::{Holding, MonetaryValue};
     use async_trait::async_trait;
     use chrono::NaiveDate;
+    use mizan_core::portfolio::holdings::holdings_model::{Holding, MonetaryValue};
     use std::sync::Arc;
 
     /// Builds a Holding carrying only the fields the zakat aggregator
@@ -160,7 +169,7 @@ mod tests {
     fn zakat_holding(holding_type: HoldingType, kind: Option<AssetKind>, base: Decimal) -> Holding {
         Holding {
             id: "test".to_string(),
-            account_id: crate::constants::PORTFOLIO_TOTAL_ACCOUNT_ID.to_string(),
+            account_id: mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID.to_string(),
             holding_type,
             instrument: None,
             asset_kind: kind,
@@ -216,7 +225,7 @@ mod tests {
 
         async fn holdings_from_snapshot(
             &self,
-            _snapshot: &crate::portfolio::snapshot::AccountStateSnapshot,
+            _snapshot: &mizan_core::portfolio::snapshot::AccountStateSnapshot,
             _base_currency: &str,
         ) -> Result<Vec<Holding>> {
             Ok(self.holdings.clone())

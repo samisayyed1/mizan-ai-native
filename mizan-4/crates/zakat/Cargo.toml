@@ -1,0 +1,37 @@
+[package]
+name = "mizan-zakat"
+version.workspace = true
+edition.workspace = true
+description = "Zakat (zakāh) calculation engine — Hanafi/Shafi'i today; Maliki/Hanbali land in Track F under scholarly sign-off"
+authors = ["Sami Sayyed"]
+license = "AGPL-3.0"
+
+[features]
+default = []
+# Test scaffolding (StubHoldingsService etc.) gated per the tokio
+# test-util pattern so production binaries don't link the test harness.
+test-utils = []
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+rust_decimal = { workspace = true, features = ["serde-with-str"] }
+rust_decimal_macros = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+# Domain types live in mizan-domain-types per ADR 0003.
+mizan-domain-types = { workspace = true }
+
+# Pragmatic compromise: the ZakatService still takes
+# `Arc<dyn mizan_core::portfolio::holdings::HoldingsServiceTrait>` rather
+# than the cleaner `&[HoldingsView]` slice this crate's H3.b plan
+# eventually targets. Refactor to the slice API lands in PR-H3.b.1 once
+# the consumer call sites are also updated. Until then, mizan-zakat
+# depends on mizan-core (not a true leaf). Documented in the PR
+# description; tracked for removal in PR-H3.b.1.
+mizan-core = { workspace = true }
+
+[lints]
+workspace = true
