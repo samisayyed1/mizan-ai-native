@@ -10,13 +10,23 @@ This file is auto-loaded every Claude Code session that opens inside the
 `mizan-ai-native` monorepo. Read it. The binding product spec is imported
 below; both files load together.
 
-## Binding plan
+## Binding documents
 
 @MIZAN_AI_NATIVE_PLAN.md
+@docs/working-agreement.md
 
-That import is load-bearing. Every phase, tier-gate, AI safety rule, and
-production gate is defined there. **Treat v3 as the contract.** This file
-exists only to summarize the operating posture; v3 is the spec.
+Two imports, both load-bearing:
+
+- `MIZAN_AI_NATIVE_PLAN.md` is the **product contract** (v3) — every phase,
+  tier-gate, AI safety rule, and production gate is defined there.
+- `docs/working-agreement.md` is the **coding contract** (v1.0, April 2026) —
+  the six absolute rules, code conventions, testing standards, performance
+  budgets, security boundaries, past-bug scars, anti-patterns. Adopted via
+  [ADR 0001](docs/adr/0001-adopt-working-agreement-v1.md). Reviewed annually.
+
+This file exists only to summarize operating posture and to import the two
+contracts above. When the two diverge, the working agreement governs code;
+v3 governs product.
 
 ## Sub-product manuals (path-scoped)
 
