@@ -3,6 +3,8 @@
 //! Detects assets that are consistently failing to sync quotes.
 
 use async_trait::async_trait;
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use std::collections::{HashMap, HashSet};
 
 use crate::assets::{AssetServiceTrait, QuoteMode};
@@ -24,8 +26,8 @@ pub struct QuoteSyncErrorInfo {
     pub error_count: i32,
     /// Last error message
     pub last_error: Option<String>,
-    /// Market value in base currency (if held)
-    pub market_value: f64,
+    /// Market value in base currency (Decimal — Track H PR-H10 / Finding 3.1.2).
+    pub market_value: Decimal,
     /// Whether this asset has ever synced successfully (has any quotes)
     pub has_synced_before: bool,
 }
@@ -42,7 +44,7 @@ pub struct QuoteSyncErrorInfo {
 pub fn gather_quote_sync_errors(
     quote_service: &dyn QuoteServiceTrait,
     asset_service: &dyn AssetServiceTrait,
-    holding_market_values: &HashMap<String, f64>,
+    holding_market_values: &HashMap<String, Decimal>,
     latest_quote_times: &HashMap<String, chrono::DateTime<chrono::Utc>>,
 ) -> Vec<QuoteSyncErrorInfo> {
     // Get sync states with errors
@@ -96,7 +98,7 @@ pub fn gather_quote_sync_errors(
             let market_value = holding_market_values
                 .get(&s.asset_id)
                 .copied()
-                .unwrap_or(0.0);
+                .unwrap_or(Decimal::ZERO);
             // Asset has synced before if it has any quotes
             let has_synced_before = latest_quote_times.contains_key(&s.asset_id);
 
@@ -155,14 +157,17 @@ impl QuoteSyncCheck {
             .filter(|e| e.error_count >= error_threshold)
             .collect();
 
-        // Calculate market value impact
-        let warning_mv: f64 = warning_errors.iter().map(|e| e.market_value).sum();
-        let error_mv: f64 = persistent_errors.iter().map(|e| e.market_value).sum();
+        // Calculate market value impact — accumulators stay Decimal so the
+        // sums don't drift (Track H PR-H10 / audit Finding 3.1.2). The
+        // downstream mv_pct ratio compares against an f64 threshold so the
+        // ratio itself stays f64; only the accumulating sums are Decimal.
+        let warning_mv: Decimal = warning_errors.iter().map(|e| e.market_value).sum();
+        let error_mv: Decimal = persistent_errors.iter().map(|e| e.market_value).sum();
 
         // Emit error-level issue for persistent sync failures
         if !persistent_errors.is_empty() {
             let mv_pct = if ctx.total_portfolio_value > 0.0 {
-                error_mv / ctx.total_portfolio_value
+                error_mv.to_f64().unwrap_or(0.0) / ctx.total_portfolio_value
             } else {
                 0.0
             };
@@ -216,7 +221,7 @@ impl QuoteSyncCheck {
         // Emit warning-level issue for recent sync failures
         if !warning_errors.is_empty() {
             let mv_pct = if ctx.total_portfolio_value > 0.0 {
-                warning_mv / ctx.total_portfolio_value
+                warning_mv.to_f64().unwrap_or(0.0) / ctx.total_portfolio_value
             } else {
                 0.0
             };
@@ -351,7 +356,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             error_count: 2,
             last_error: Some("Network timeout".to_string()),
-            market_value: 10_000.0,
+            market_value: Decimal::from(10_000),
             has_synced_before: true,
         }];
 
@@ -371,7 +376,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             error_count: 3,
             last_error: Some("Provider error".to_string()),
-            market_value: 10_000.0,
+            market_value: Decimal::from(10_000),
             has_synced_before: true,
         }];
 
@@ -391,7 +396,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             error_count: 6,
             last_error: Some("Symbol not found".to_string()),
-            market_value: 10_000.0,
+            market_value: Decimal::from(10_000),
             has_synced_before: true,
         }];
 
@@ -412,7 +417,7 @@ mod tests {
             symbol: "GOOGL".to_string(),
             error_count: 1,
             last_error: Some("Symbol not found".to_string()),
-            market_value: 0.0,
+            market_value: Decimal::ZERO,
             has_synced_before: false,
         }];
 
@@ -432,7 +437,7 @@ mod tests {
             symbol: "XEQ".to_string(),
             error_count: 8,
             last_error: Some("Symbol not found".to_string()),
-            market_value: 0.0,
+            market_value: Decimal::ZERO,
             has_synced_before: false,
         }];
 
@@ -452,7 +457,7 @@ mod tests {
                 symbol: "AAPL".to_string(),
                 error_count: 3, // warning (has synced before)
                 last_error: Some("Network timeout".to_string()),
-                market_value: 5_000.0,
+                market_value: Decimal::from(5_000),
                 has_synced_before: true,
             },
             QuoteSyncErrorInfo {
@@ -460,7 +465,7 @@ mod tests {
                 symbol: "MSFT".to_string(),
                 error_count: 10, // error (has synced before)
                 last_error: Some("Symbol delisted".to_string()),
-                market_value: 15_000.0,
+                market_value: Decimal::from(15_000),
                 has_synced_before: true,
             },
         ];

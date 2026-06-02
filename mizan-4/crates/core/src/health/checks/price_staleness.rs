@@ -6,6 +6,8 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, NaiveDate, Utc, Weekday};
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use std::collections::HashMap;
 
 use crate::errors::Result;
@@ -24,8 +26,8 @@ pub struct AssetHoldingInfo {
     pub name: Option<String>,
     /// Exchange MIC for market-effective-date calculation (e.g., "XNAS")
     pub exchange_mic: Option<String>,
-    /// Market value in base currency
-    pub market_value: f64,
+    /// Market value in base currency (Decimal — Track H PR-H10 / Finding 3.1.2).
+    pub market_value: Decimal,
     /// Whether this asset uses market pricing (vs manual)
     pub uses_market_pricing: bool,
 }
@@ -67,8 +69,8 @@ impl PriceStalenessCheck {
         // Track stale assets by severity (keep full info for affected items)
         let mut warning_assets: Vec<&AssetHoldingInfo> = Vec::new();
         let mut error_assets: Vec<&AssetHoldingInfo> = Vec::new();
-        let mut warning_mv = 0.0;
-        let mut error_mv = 0.0;
+        let mut warning_mv = Decimal::ZERO;
+        let mut error_mv = Decimal::ZERO;
 
         // Only check assets that use market pricing
         // Note: We check all market-priced holdings, not just those with market_value > 0,
@@ -81,7 +83,7 @@ impl PriceStalenessCheck {
                 Some(quote_time) => {
                     // Only check staleness for assets with positive market value
                     // (assets with 0 quantity are not actively held)
-                    if holding.market_value > 0.0 {
+                    if holding.market_value > Decimal::ZERO {
                         let effective_today = time_utils::market_effective_date(
                             ctx.now,
                             holding.exchange_mic.as_deref(),
@@ -108,8 +110,12 @@ impl PriceStalenessCheck {
 
         // Emit error-level issue for critically stale assets
         if !error_assets.is_empty() {
+            // mv_pct stays f64 because it's a ratio compared against an f64
+            // threshold (ctx.config.mv_escalation_threshold). Per audit
+            // Finding 3.1.1 (Informational), threshold ratios may remain f64;
+            // only the accumulating sums (error_mv) are Decimal-typed now.
             let mv_pct = if ctx.total_portfolio_value > 0.0 {
-                error_mv / ctx.total_portfolio_value
+                error_mv.to_f64().unwrap_or(0.0) / ctx.total_portfolio_value
             } else {
                 0.0
             };
@@ -179,7 +185,7 @@ impl PriceStalenessCheck {
         // Emit warning-level issue for slightly stale assets
         if !warning_assets.is_empty() {
             let mv_pct = if ctx.total_portfolio_value > 0.0 {
-                warning_mv / ctx.total_portfolio_value
+                warning_mv.to_f64().unwrap_or(0.0) / ctx.total_portfolio_value
             } else {
                 0.0
             };
@@ -428,7 +434,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
 
@@ -457,7 +463,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
 
@@ -487,7 +493,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
 
@@ -516,7 +522,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
 
@@ -545,7 +551,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
 
@@ -571,7 +577,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: None,
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
 
@@ -593,7 +599,7 @@ mod tests {
             symbol: "HOUSE".to_string(),
             name: Some("My House".to_string()),
             exchange_mic: None,
-            market_value: 500_000.0,
+            market_value: rust_decimal::Decimal::from(500_000),
             uses_market_pricing: false, // Manual pricing
         }];
 
@@ -617,7 +623,7 @@ mod tests {
             symbol: "AAPL".to_string(),
             name: Some("Apple Inc.".to_string()),
             exchange_mic: None,
-            market_value: 10_000.0,
+            market_value: rust_decimal::Decimal::from(10_000),
             uses_market_pricing: true,
         }];
 

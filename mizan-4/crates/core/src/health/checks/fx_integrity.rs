@@ -4,6 +4,8 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 
 use crate::errors::Result;
 use crate::health::model::{AffectedItem, FixAction, HealthCategory, HealthIssue, Severity};
@@ -18,8 +20,8 @@ pub struct FxPairInfo {
     pub from_currency: String,
     /// To currency (base currency)
     pub to_currency: String,
-    /// Market value of holdings using this pair (in base currency)
-    pub affected_mv: f64,
+    /// Market value of holdings using this pair (Decimal — Track H PR-H10 / Finding 3.1.2).
+    pub affected_mv: Decimal,
     /// Latest quote timestamp (None if no quote exists)
     pub latest_quote_time: Option<DateTime<Utc>>,
 }
@@ -46,13 +48,14 @@ impl FxIntegrityCheck {
         let critical_threshold =
             ctx.now - Duration::hours(ctx.config.fx_stale_critical_hours as i64);
 
-        // Track issues by type
+        // Track issues by type — accumulators are Decimal per Track H
+        // PR-H10 / audit Finding 3.1.2.
         let mut missing_pairs: Vec<&FxPairInfo> = Vec::new();
-        let mut missing_mv = 0.0;
+        let mut missing_mv = Decimal::ZERO;
         let mut stale_warning_pairs: Vec<&FxPairInfo> = Vec::new();
-        let mut stale_warning_mv = 0.0;
+        let mut stale_warning_mv = Decimal::ZERO;
         let mut stale_error_pairs: Vec<&FxPairInfo> = Vec::new();
-        let mut stale_error_mv = 0.0;
+        let mut stale_error_mv = Decimal::ZERO;
 
         for pair in fx_pairs {
             match pair.latest_quote_time {
@@ -76,7 +79,7 @@ impl FxIntegrityCheck {
         // Emit issue for missing FX pairs (Error level)
         if !missing_pairs.is_empty() {
             let mv_pct = if ctx.total_portfolio_value > 0.0 {
-                missing_mv / ctx.total_portfolio_value
+                missing_mv.to_f64().unwrap_or(0.0) / ctx.total_portfolio_value
             } else {
                 0.0
             };
@@ -130,7 +133,7 @@ impl FxIntegrityCheck {
         // Emit issue for critically stale FX rates (Error level)
         if !stale_error_pairs.is_empty() {
             let mv_pct = if ctx.total_portfolio_value > 0.0 {
-                stale_error_mv / ctx.total_portfolio_value
+                stale_error_mv.to_f64().unwrap_or(0.0) / ctx.total_portfolio_value
             } else {
                 0.0
             };
@@ -184,7 +187,7 @@ impl FxIntegrityCheck {
         // Emit issue for slightly stale FX rates (Warning level)
         if !stale_warning_pairs.is_empty() {
             let mv_pct = if ctx.total_portfolio_value > 0.0 {
-                stale_warning_mv / ctx.total_portfolio_value
+                stale_warning_mv.to_f64().unwrap_or(0.0) / ctx.total_portfolio_value
             } else {
                 0.0
             };
@@ -292,7 +295,7 @@ mod tests {
             pair_id: "EUR:USD".to_string(),
             from_currency: "EUR".to_string(),
             to_currency: "USD".to_string(),
-            affected_mv: 10_000.0,
+            affected_mv: Decimal::from(10_000),
             latest_quote_time: None,
         }];
 
@@ -312,7 +315,7 @@ mod tests {
             pair_id: "EUR:USD".to_string(),
             from_currency: "EUR".to_string(),
             to_currency: "USD".to_string(),
-            affected_mv: 10_000.0,
+            affected_mv: Decimal::from(10_000),
             latest_quote_time: Some(stale_time),
         }];
 
@@ -331,7 +334,7 @@ mod tests {
             pair_id: "EUR:USD".to_string(),
             from_currency: "EUR".to_string(),
             to_currency: "USD".to_string(),
-            affected_mv: 10_000.0,
+            affected_mv: Decimal::from(10_000),
             latest_quote_time: Some(fresh_time),
         }];
 
