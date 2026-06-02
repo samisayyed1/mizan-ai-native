@@ -205,16 +205,12 @@ jobs:
             --deny warnings
 
   # Track H §18.1/§18.2/§18.4 hygiene: dead code, dead files, dead deps,
-  # secret scan. Soft-fail mode (informational warnings only) until the
-  # baseline audit pass classifies findings. Promoted to hard-fail in
-  # PR-H9 after findings are resolved.
+  # secret scan. **HARD-FAIL** as of Gate 2 (2026-06-03) — the 2026-Q3
+  # baseline audit signed off; regressions cannot land. Promoted from
+  # `continue-on-error: true` in PR-H11.
   hygiene:
-    name: code hygiene scan (informational)
+    name: code hygiene scan
     runs-on: ubuntu-latest
-    # Run on every push/PR; never blocks merge yet (continue-on-error).
-    # PR-H9 of Track H removes the continue-on-error after the baseline
-    # audit signs off.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
