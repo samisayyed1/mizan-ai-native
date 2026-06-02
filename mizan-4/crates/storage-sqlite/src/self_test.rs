@@ -1,4 +1,4 @@
-//! Post-install self-test (Track I PR-I5 per ADR 0009).
+//! Post-install self-test (Track I PR-I5 + PR-I5.b per ADR 0009).
 //!
 //! Runs on the FIRST launch of a freshly-upgraded binary, before the
 //! WebView is allowed to paint. Verifies that the new binary is
@@ -7,18 +7,20 @@
 //! adds the auto-rollback path that triggers on self-test failure;
 //! this PR (I5) ships the verifier itself plus result persistence.
 //!
-//! # Check set (this PR — I5)
+//! # Check set
 //!
-//! Three LOCAL checks ship in I5. Two NETWORK checks (Twelve Data
-//! heartbeat + Mizan Connect heartbeat) land in PR-I5.b after the
-//! HTTP client lifecycle is wired without leaking it into the
-//! storage-sqlite crate's dependency graph.
+//! 5 checks total. Three LOCAL checks ship in this crate (PR-I5);
+//! the two NETWORK heartbeats are injected via the [`Heartbeats`]
+//! trait from `apps/tauri` (PR-I5.b) so storage-sqlite stays free of
+//! a reqwest dep + HTTP-client lifecycle code.
 //!
 //! | Check | Source | Pass criterion |
 //! |---|---|---|
 //! | schema_match | `diesel_migrations::has_pending_migration` | returns false |
 //! | crypto_round_trip | `chacha20poly1305` ephemeral key | encrypt then decrypt yields the original plaintext |
 //! | truth_ledger_chain_head | rusqlite query | latest row's `curr_hash == blake3(prev_hash || event_payload)` |
+//! | twelve_data_heartbeat | injected `Heartbeats` trait | HTTP 200 within 5s |
+//! | mizan_connect_heartbeat | injected `Heartbeats` trait | HTTP 200 within 5s |
 //!
 //! Each check has a 5-second timeout (working agreement §A19 budget);
 //! the full self-test budget is 30 seconds.
@@ -90,8 +92,10 @@ impl CheckOutcome {
         }
     }
 
-    /// Build a Skipped outcome for checks not yet wired (e.g. the two
-    /// network heartbeats that land in PR-I5.b).
+    /// Build a Skipped outcome — retained for future use (PR-I8 may
+    /// add additional optional checks that surface as Skipped when
+    /// their preconditions aren't met).
+    #[allow(dead_code)]
     fn skipped(name: &str, reason: impl Into<String>) -> Self {
         Self {
             name: name.to_string(),
@@ -118,13 +122,22 @@ pub struct SelfTestReport {
 }
 
 impl SelfTestReport {
-    /// The subset of checks the orchestrator considers REQUIRED in
-    /// PR-I5. PR-I5.b expands this to include the network heartbeats.
+    /// The subset of checks the orchestrator considers REQUIRED. Network
+    /// heartbeats are intentionally NOT in this set: a transient outage
+    /// on Twelve Data or Mizan Connect shouldn't trigger an auto-rollback
+    /// (working-agreement §17 — "Don't relax a security rule
+    /// 'temporarily'" generalizes to: don't tighten an availability
+    /// rule into a correctness rule). The heartbeats run + are reported
+    /// for monitoring, but only the three LOCAL correctness checks block.
     pub const REQUIRED_CHECK_NAMES: &'static [&'static str] = &[
         "schema_match",
         "crypto_round_trip",
         "truth_ledger_chain_head",
     ];
+
+    /// Network checks that run but don't block the rollback decision.
+    pub const NETWORK_CHECK_NAMES: &'static [&'static str] =
+        &["twelve_data_heartbeat", "mizan_connect_heartbeat"];
 
     /// Did every required check pass?
     #[must_use]
@@ -145,6 +158,46 @@ impl SelfTestReport {
             .collect()
     }
 }
+
+/// Outcome of a single network heartbeat — returned by
+/// [`Heartbeats`] impls so the orchestrator can record success vs
+/// failure without owning the HTTP client.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeartbeatResult {
+    /// Wall-clock duration the heartbeat took (regardless of success).
+    pub elapsed: Duration,
+    /// `Ok(())` on HTTP 200 within the 5s budget; `Err(msg)` otherwise.
+    pub result: std::result::Result<(), String>,
+}
+
+/// Injected HTTP heartbeat probe. The default impl marks both as
+/// Skipped — tests and the storage-sqlite crate's own unit tests use it.
+/// `apps/tauri` provides a production impl backed by `reqwest::blocking`.
+pub trait Heartbeats {
+    /// Probe Twelve Data's quote endpoint. Returns `Ok` on HTTP 200
+    /// with parseable JSON inside the per-check budget.
+    fn twelve_data(&self) -> HeartbeatResult {
+        HeartbeatResult {
+            elapsed: Duration::ZERO,
+            result: Err("PR-I5.b — no Heartbeats impl injected".to_string()),
+        }
+    }
+
+    /// Probe Mizan Connect's /v1/health endpoint. Returns `Ok` on
+    /// HTTP 200 inside the per-check budget.
+    fn mizan_connect(&self) -> HeartbeatResult {
+        HeartbeatResult {
+            elapsed: Duration::ZERO,
+            result: Err("PR-I5.b — no Heartbeats impl injected".to_string()),
+        }
+    }
+}
+
+/// No-op Heartbeats impl. Used by storage-sqlite's own tests and as
+/// the default when apps/tauri hasn't injected a production impl
+/// (e.g. during boot scenarios where the HTTP client isn't built yet).
+pub struct NoopHeartbeats;
+impl Heartbeats for NoopHeartbeats {}
 
 /// Per-platform path to the persisted self-test result file.
 #[must_use]
@@ -208,7 +261,12 @@ pub fn persist_result(app_data_dir: &str, report: &SelfTestReport) -> CoreResult
 /// If a cached result exists for the SAME version and every required
 /// check passed in that cache, this fn short-circuits and returns the
 /// cached report (subsequent launches of the same version don't re-run).
-pub fn run_and_persist(app_data_dir: &str, version: &str, pool: &DbPool) -> SelfTestReport {
+pub fn run_and_persist(
+    app_data_dir: &str,
+    version: &str,
+    pool: &DbPool,
+    heartbeats: &dyn Heartbeats,
+) -> SelfTestReport {
     // Fast-path: previous successful run for this exact version.
     if let Ok(Some(cached)) = load_cached_result(app_data_dir, version) {
         if cached.required_all_passed() {
@@ -241,18 +299,30 @@ pub fn run_and_persist(app_data_dir: &str, version: &str, pool: &DbPool) -> Self
     // Check 3 — truth ledger chain head.
     checks.push(run_check_truth_ledger_chain_head(pool));
 
-    // Network heartbeats — placeholder skipped outcomes; PR-I5.b wires
-    // the real reqwest clients.
-    checks.push(CheckOutcome::skipped(
+    // Network heartbeats (PR-I5.b). Both are non-blocking — informational
+    // only per REQUIRED_CHECK_NAMES; a transient outage doesn't trigger
+    // a rollback. Run sequentially with their own per-probe budgets.
+    checks.push(record_heartbeat(
         "twelve_data_heartbeat",
-        "PR-I5.b — HTTP heartbeat client pending",
+        heartbeats.twelve_data(),
     ));
-    checks.push(CheckOutcome::skipped(
-        "mizan_connect_heartbeat",
-        "PR-I5.b — HTTP heartbeat client pending",
-    ));
+    if started.elapsed() <= TOTAL_BUDGET {
+        checks.push(record_heartbeat(
+            "mizan_connect_heartbeat",
+            heartbeats.mizan_connect(),
+        ));
+    }
 
     finalize(version, app_data_dir, started, checks)
+}
+
+/// Convert a [`HeartbeatResult`] from an injected probe into a
+/// [`CheckOutcome`]. Pass/fail mirrors the probe's `result` field.
+fn record_heartbeat(name: &str, hb: HeartbeatResult) -> CheckOutcome {
+    match hb.result {
+        Ok(()) => CheckOutcome::pass(name, hb.elapsed),
+        Err(msg) => CheckOutcome::fail(name, hb.elapsed, msg),
+    }
 }
 
 fn finalize(
@@ -512,7 +582,7 @@ mod tests {
         let cache_dir = TempDir::new().unwrap();
         let app_data = cache_dir.path().to_str().unwrap();
 
-        let report = run_and_persist(app_data, "3.4.1", &pool);
+        let report = run_and_persist(app_data, "3.4.1", &pool, &NoopHeartbeats);
         assert_eq!(report.version, "3.4.1");
         assert!(report.required_all_passed());
 
@@ -524,7 +594,7 @@ mod tests {
         // We pass a deliberately-broken pool (max_size 0 would deadlock;
         // use a path-only mock by re-using the same pool — the test
         // observes that the returned report shape matches).
-        let again = run_and_persist(app_data, "3.4.1", &pool);
+        let again = run_and_persist(app_data, "3.4.1", &pool, &NoopHeartbeats);
         assert_eq!(again, report);
     }
 
@@ -534,8 +604,8 @@ mod tests {
         let cache_dir = TempDir::new().unwrap();
         let app_data = cache_dir.path().to_str().unwrap();
 
-        let v1 = run_and_persist(app_data, "3.4.1", &pool);
-        let v2 = run_and_persist(app_data, "3.5.0", &pool);
+        let v1 = run_and_persist(app_data, "3.4.1", &pool, &NoopHeartbeats);
+        let v2 = run_and_persist(app_data, "3.5.0", &pool, &NoopHeartbeats);
         assert_eq!(v1.version, "3.4.1");
         assert_eq!(v2.version, "3.5.0");
 

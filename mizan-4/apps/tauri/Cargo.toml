@@ -52,7 +52,10 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 log = { workspace = true }
 futures = { workspace = true }
-reqwest = { workspace = true }
+# Track I PR-I5.b — self_test_heartbeats uses reqwest::blocking for
+# the synchronous startup probe. Layered on top of the workspace
+# config (rustls-tls, json) to keep TLS choice consistent.
+reqwest = { workspace = true, features = ["blocking"] }
 tokio = { workspace = true, features = ["time"] }
 uuid = { workspace = true }
 anyhow = { workspace = true }

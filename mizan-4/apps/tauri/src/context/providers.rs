@@ -577,11 +577,13 @@ fn run_post_install_self_test_and_maybe_rollback(
     pool: &mizan_storage_sqlite::DbPool,
     previous_version: Option<&str>,
 ) {
+    use crate::self_test_heartbeats::HttpHeartbeats;
     use mizan_storage_sqlite::self_test::run_and_persist;
     use mizan_storage_sqlite::self_test_rollback::{attempt_db_rollback, RollbackOutcome};
 
     let current = env!("CARGO_PKG_VERSION");
-    let report = run_and_persist(app_data_dir, current, pool);
+    let heartbeats = HttpHeartbeats::from_env();
+    let report = run_and_persist(app_data_dir, current, pool, &heartbeats);
 
     if report.all_required_passed {
         log::info!(
