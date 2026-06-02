@@ -1,5 +1,6 @@
 //! Cross-cutting HTTP middleware.
 
+pub mod client_version;
 pub mod request_id;
 pub mod security_headers;
 pub mod timeout;

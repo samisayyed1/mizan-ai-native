@@ -84,6 +84,10 @@ dotenvy = "0.15"
 async-trait = "0.1"
 once_cell = "1"
 futures = "0.3"
+# Track I PR-I7 — parse X-Mizan-Client-Version header into a semver
+# value via the client_version middleware. Pulled in transitively
+# already; declared explicitly here for ownership clarity.
+semver = "1"
 http = "1"
 http-body-util = "0.1"
 bytes = "1"

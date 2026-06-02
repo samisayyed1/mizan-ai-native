@@ -1757,6 +1757,7 @@ dependencies = [
  "reqwest",
  "rustc_version_runtime",
  "secrecy",
+ "semver",
  "sentry",
  "sentry-tower",
  "sentry-tracing",
