@@ -1,0 +1,37 @@
+[package]
+name = "mizan-insights"
+version.workspace = true
+edition.workspace = true
+description = "Deterministic wealth-insights engine (Notify-2) — pure rules that emit notifications"
+authors = ["Sami Sayyed"]
+license = "AGPL-3.0"
+
+[features]
+default = []
+# Test scaffolding gated per the tokio test-util pattern so production
+# binaries don't link the test harness.
+test-utils = []
+
+[dependencies]
+chrono = { workspace = true, features = ["serde"] }
+rust_decimal = { workspace = true, features = ["serde-with-str"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+# Domain types live in mizan-domain-types per ADR 0003.
+mizan-domain-types = { workspace = true }
+
+# Pragmatic compromise: the insights engine emits
+# `mizan_core::notifications::Notification` values. Lifting that type to
+# mizan-domain-types would let mizan-insights become a true leaf; tracked
+# as PR-H3.c.1 follow-up. Same compromise as PR-H3.b documented in
+# crates/zakat/Cargo.toml.
+mizan-core = { workspace = true }
+
+[dev-dependencies]
+rust_decimal_macros = { workspace = true }
+
+[lints]
+workspace = true

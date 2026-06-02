@@ -449,7 +449,7 @@ pub async fn run_startup_daily_brief(context: &std::sync::Arc<ServiceContext>) {
 /// the emitted insights and synthesises a 2-sentence summary.
 pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<ServiceContext>) {
     use log::{debug, info, warn};
-    use mizan_core::insights::{evaluate, InsightsInput, NetWorthHistoryPoint};
+    use mizan_insights::{evaluate, InsightsInput, NetWorthHistoryPoint};
 
     let today = chrono::Utc::now().date_naive();
     let base_currency = context.get_base_currency();
@@ -768,9 +768,9 @@ fn push_os_notification(handle: &AppHandle, title: &str, body: &str) {
 async fn hydrate_holding_moves(
     context: &std::sync::Arc<ServiceContext>,
     base_currency: &str,
-) -> Vec<mizan_core::insights::HoldingDayMove> {
+) -> Vec<mizan_insights::HoldingDayMove> {
     use log::debug;
-    use mizan_core::insights::HoldingDayMove;
+    use mizan_insights::HoldingDayMove;
     use rust_decimal::Decimal;
 
     let accounts = match context.account_service().get_active_non_archived_accounts() {
@@ -942,9 +942,9 @@ async fn hydrate_cash_drag(
 ///     activity's local currency — better than nothing for the user.
 fn hydrate_dividend_events(
     context: &std::sync::Arc<ServiceContext>,
-) -> Vec<mizan_core::insights::DividendEvent> {
+) -> Vec<mizan_insights::DividendEvent> {
     use log::debug;
-    use mizan_core::insights::DividendEvent;
+    use mizan_insights::DividendEvent;
     use rust_decimal::Decimal;
     // Activity-type strings are stable in `activities_constants` but the
     // module is private to the core crate. Hardcoding the canonical
@@ -1007,10 +1007,10 @@ fn hydrate_dividend_events(
 /// the digest doesn't list the same provider three times.
 async fn hydrate_sync_failures(
     context: &std::sync::Arc<ServiceContext>,
-) -> Vec<mizan_core::insights::SyncFailureInput> {
+) -> Vec<mizan_insights::SyncFailureInput> {
     use log::debug;
-    use mizan_core::insights::SyncFailureInput;
     use mizan_core::sync_ledger::SyncRunOutcome;
+    use mizan_insights::SyncFailureInput;
     use std::collections::HashMap;
 
     let cutoff = chrono::Utc::now() - chrono::Duration::hours(24);
@@ -1075,9 +1075,9 @@ async fn hydrate_sync_failures(
 /// pass it here for the true delta semantics.
 fn hydrate_goal_progress(
     context: &std::sync::Arc<ServiceContext>,
-) -> Vec<mizan_core::insights::GoalProgress> {
+) -> Vec<mizan_insights::GoalProgress> {
     use log::debug;
-    use mizan_core::insights::GoalProgress;
+    use mizan_insights::GoalProgress;
     use rust_decimal::Decimal;
 
     let goals = match context.goal_service().get_goals() {

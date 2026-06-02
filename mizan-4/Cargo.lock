@@ -3643,6 +3643,7 @@ dependencies = [
  "mizan-core",
  "mizan-device-sync",
  "mizan-financial-truth",
+ "mizan-insights",
  "mizan-market-data",
  "mizan-storage-sqlite",
  "mizan-zakat",
@@ -3784,6 +3785,21 @@ dependencies = [
  "sha2",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "mizan-insights"
+version = "3.4.1"
+dependencies = [
+ "chrono",
+ "mizan-core",
+ "mizan-domain-types",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "uuid",
 ]
 
 [[package]]

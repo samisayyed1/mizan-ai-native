@@ -23,6 +23,8 @@ mizan-ai = { workspace = true }
 mizan-financial-truth = { workspace = true }
 # Track H PR-H3.b — Zakat engine extracted out of mizan-core.
 mizan-zakat = { workspace = true }
+# Track H PR-H3.c — Deterministic insights engine extracted out of mizan-core.
+mizan-insights = { workspace = true }
 
 # Tauri
 # `devtools` enables right-click → Inspect in production builds. v3.3.1
