@@ -14,10 +14,12 @@
     "test:watch": "vitest --watch",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint .",
+    "lint": "eslint . && tsc --noEmit",
+    "lint:eslint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:quiet": "eslint . --quiet",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "verify": "pnpm lint && pnpm exec vitest run"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.11.58",
