@@ -62,6 +62,24 @@ interface HeatmapDatum {
 const MAX_TILES = 16;
 
 /**
+ * Build the asset-detail route for a given asset id. Exported for
+ * direct testing — the Treemap onClick handler is hard to drive in
+ * jsdom (it depends on SVG measurements via ResponsiveContainer), so
+ * the unit test exercises this helper and the integration test in
+ * Playwright covers the click-through end to end.
+ *
+ * Returns `null` when the input doesn't have an `assetId` field —
+ * conservative behaviour: refuse to navigate rather than land the
+ * user on a broken route.
+ */
+export function holdingDetailRouteFromNode(node: unknown): string | null {
+  if (!node || typeof node !== "object") return null;
+  const assetId = (node as { assetId?: unknown }).assetId;
+  if (typeof assetId !== "string" || assetId.length === 0) return null;
+  return `/holdings/${encodeURIComponent(assetId)}`;
+}
+
+/**
  * Refined colour ramp. The previous palette was straight Tailwind green-
  * 400..emerald-800 / red-500..red-900 — saturated, "industrial". Tuned
  * down for premium feel:
@@ -364,8 +382,8 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
                 )) as unknown as React.ReactElement
               }
               onClick={(node: unknown) => {
-                const assetId = (node as { assetId?: string })?.assetId;
-                if (assetId) navigate(`/holdings/${encodeURIComponent(assetId)}`);
+                const route = holdingDetailRouteFromNode(node);
+                if (route) navigate(route);
               }}
             >
               <ChartTooltip
