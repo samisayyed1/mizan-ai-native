@@ -259,7 +259,9 @@ const fileAttachmentAdapter: AttachmentAdapter = {
     };
   },
 
-  async remove(): Promise<void> {},
+  async remove(): Promise<void> {
+    /* no-op — attachments are GC'd with the message they belong to */
+  },
 
   async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
     const file = attachment.file;

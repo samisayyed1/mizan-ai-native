@@ -132,15 +132,35 @@ const disabledContextValue: MizanConnectContextValue = {
   teamId: null,
   userInfo: null,
   error: null,
-  signInWithEmail: async () => {},
-  signUpWithEmail: async () => {},
-  signInWithOAuth: async () => {},
-  signInWithMagicLink: async () => {},
-  verifyOtp: async () => {},
-  resendConfirmation: async () => {},
-  signOut: async () => {},
-  clearError: () => {},
-  refetchUserInfo: async () => {},
+  // Default context — provider not mounted. All methods are intentional
+  // no-ops; the real implementations land in the provider's value object.
+  signInWithEmail: async () => {
+    /* no-op: provider not mounted */
+  },
+  signUpWithEmail: async () => {
+    /* no-op: provider not mounted */
+  },
+  signInWithOAuth: async () => {
+    /* no-op: provider not mounted */
+  },
+  signInWithMagicLink: async () => {
+    /* no-op: provider not mounted */
+  },
+  verifyOtp: async () => {
+    /* no-op: provider not mounted */
+  },
+  resendConfirmation: async () => {
+    /* no-op: provider not mounted */
+  },
+  signOut: async () => {
+    /* no-op: provider not mounted */
+  },
+  clearError: () => {
+    /* no-op: provider not mounted */
+  },
+  refetchUserInfo: async () => {
+    /* no-op: provider not mounted */
+  },
 };
 
 function getAuthStorageKey(supabaseUrl: string): string {

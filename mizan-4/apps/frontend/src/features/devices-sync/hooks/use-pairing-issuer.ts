@@ -134,7 +134,9 @@ export function usePairingIssuer() {
 
   const rejectSAS = useCallback(async () => {
     if (session) {
-      await syncService.cancelPairing(session.pairingId).catch(() => {});
+      await syncService.cancelPairing(session.pairingId).catch(() => {
+        /* best-effort — user is rejecting, errors here are non-actionable */
+      });
     }
     setSession(null);
     setPhase("idle");
@@ -144,7 +146,9 @@ export function usePairingIssuer() {
 
   const cancel = useCallback(async () => {
     if (session) {
-      await syncService.cancelPairing(session.pairingId).catch(() => {});
+      await syncService.cancelPairing(session.pairingId).catch(() => {
+        /* best-effort — user is cancelling, errors here are non-actionable */
+      });
     }
     setSession(null);
     setPhase("idle");

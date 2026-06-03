@@ -66,9 +66,15 @@ function renderIssueSheet(issue: HealthIssue) {
             <IssueDetailSheet
               issue={issue}
               open={true}
-              onOpenChange={() => {}}
-              onDismiss={() => {}}
-              onFix={() => {}}
+              onOpenChange={() => {
+                /* test stub */
+              }}
+              onDismiss={() => {
+                /* test stub */
+              }}
+              onFix={() => {
+                /* test stub */
+              }}
               isDismissing={false}
               isFixing={false}
             />

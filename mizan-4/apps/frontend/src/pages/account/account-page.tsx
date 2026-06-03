@@ -869,9 +869,15 @@ const AccountPage = () => {
               <ActivityTableMobile
                 activities={dateActivities ?? []}
                 isCompactView={true}
-                handleEdit={() => {}}
-                handleDelete={() => {}}
-                onDuplicate={async () => {}}
+                handleEdit={() => {
+                  /* read-only context — edits land via the activity page */
+                }}
+                handleDelete={() => {
+                  /* read-only context — deletes land via the activity page */
+                }}
+                onDuplicate={async () => {
+                  /* read-only context — duplicates land via the activity page */
+                }}
               />
             )}
           </div>

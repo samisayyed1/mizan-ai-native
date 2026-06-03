@@ -239,7 +239,9 @@ export function usePairingClaimer() {
         logger.warn(`[usePairingClaimer] Failed to cancel pairing flow: ${err}`);
       });
     } else if (session) {
-      await syncService.cancelPairing(session.pairingId).catch(() => {});
+      await syncService.cancelPairing(session.pairingId).catch(() => {
+        /* best-effort — cancel is fire-and-forget at this stage */
+      });
     }
     if (hadConfirmedFlow) {
       await syncService.clearSyncData().catch((err) => {
