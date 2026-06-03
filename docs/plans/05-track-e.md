@@ -19,7 +19,7 @@
 | E1.c | ⏸️ Pending | Repository methods (upsert, select-by-key, scan-by-origin, scan-by-sharia-status) |
 | E1.d | ⏸️ Pending | Read-path left-join wiring in holdings render pipeline (defaults gracefully when metadata absent) |
 | E1.e | ⏸️ Pending | Write-path wiring for Plaid + SnapTrade + manual + CSV (each writes its `origin`) |
-| E2 | ⏸️ Pending | Frontend badge primitive `modifiers[]` prop extension + severity ordering |
+| E2 | ✅ Done (2026-06-04) | `MizanBadge` component in @mizan/ui — origin chip + modifier stack in ADR-0023 severity order (stale > pending-reconciliation > ai-estimated > mixed-compliance > halal-screened > agent-modified > audit-trail > advisor-reviewed > mcp). 3-visible cap with `+N more` overflow chip. Semantic-token variants for dark/light parity. Origin + modifier type unions + `sortModifiersBySeverity` helper exported. 15 vitest tests covering ordering invariants + render branches + accessibility. |
 | E3.a..h | ⏸️ Pending | Per-modifier popover renderers (8 files: stale, pending-reconciliation, ai-estimated, halal-screened, mixed-compliance, audit-trail, advisor-reviewed, agent-modified) |
 | E4 | ⏸️ Pending | AAOIFI screening worker on Mizan Connect — debt-ratio / business-activity / interest-income screen per ADR 0012 (planned) |
 | E5 | ⏸️ Pending | `find_sharia_status` agent tool in `crates/ai/src/tools/` (uses E4's endpoint) |
