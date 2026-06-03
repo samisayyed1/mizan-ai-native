@@ -20,6 +20,7 @@ pub mod plaid;
 pub mod public_config;
 pub mod secret_crypto;
 pub mod server;
+pub mod sharia;
 pub mod shutdown;
 pub mod snaptrade;
 pub mod state;
