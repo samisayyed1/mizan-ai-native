@@ -210,6 +210,13 @@ function AllocationContentImpl({ args, result, status }: AllocationContentProps)
   const categoryCount = sortedCategories.length;
   const holdingsCount = sortedHoldings.length;
 
+  // Calculate total for percentages — HOISTED above the early returns
+  // below so the hook order is stable regardless of which return fires
+  // (rules-of-hooks: hooks must run in the same order every render).
+  const computedTotal = useMemo(() => {
+    return sortedCategories.reduce((sum, c) => sum + c.value, 0);
+  }, [sortedCategories]);
+
   // Compact mode — just show a one-liner when used as a prerequisite
   if (args?.displayMode === "compact" && parsed && !isLoading) {
     return <CompactToolCard label="Fetched asset allocation" />;
@@ -222,11 +229,6 @@ function AllocationContentImpl({ args, result, status }: AllocationContentProps)
     }
     return formatter.format(value);
   };
-
-  // Calculate total for percentages
-  const computedTotal = useMemo(() => {
-    return sortedCategories.reduce((sum, c) => sum + c.value, 0);
-  }, [sortedCategories]);
 
   // Loading skeleton
   if (isLoading) {
