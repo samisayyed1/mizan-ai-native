@@ -640,8 +640,18 @@ export function ConnectedView() {
   // queries, matching what the user expects when they click the trash
   // icon. The active-id set is the single source of truth for both
   // the connections card and the accounts card below.
-  const allConnections = connectionsQuery.data ?? [];
-  const allBrokerAccounts = accountsQuery.data ?? [];
+  // Wrap the `?? []` fallbacks in useMemo so the empty-array references
+  // stay stable across renders when the queries haven't loaded yet —
+  // without this, the downstream useMemo re-runs every render because
+  // the `[]` literal is a new reference each time.
+  const allConnections = useMemo(
+    () => connectionsQuery.data ?? [],
+    [connectionsQuery.data],
+  );
+  const allBrokerAccounts = useMemo(
+    () => accountsQuery.data ?? [],
+    [accountsQuery.data],
+  );
   const { connections, brokerAccounts } = useMemo(() => {
     const activeConnections = allConnections.filter((c) => !c.disabled && !c.disabled_date);
     const activeIds = new Set(activeConnections.map((c) => c.id));
