@@ -34,6 +34,9 @@ import SavingGoals from "./goals";
 import { AssetClassPanelGrid } from "@/components/asset-class-panels";
 import { NetWorthStrip } from "@/components/dashboard/net-worth-strip";
 import { AiCommandBar } from "@/components/dashboard/ai-command-bar";
+import { TodaysSignalCard } from "@/components/dashboard/todays-signal-card";
+import { listNotifications } from "@/adapters";
+import { QueryKeys } from "@/lib/query-keys";
 
 const DEFAULT_INTERVAL: UITimePeriod = "3M";
 const INTERVAL_STORAGE_KEY = "dashboard-interval";
@@ -52,6 +55,14 @@ export function DashboardContent() {
   const [isAllTime, setIsAllTime] = useState<boolean>(() => intervalCode === "ALL");
 
   const { holdings: allHoldings, isLoading: isHoldingsLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
+  // Today's Signal feed — same source as the bell, capped at 25 newest.
+  // Selection algorithm in todays-signal-card picks today's highest-
+  // severity unread; an empty feed renders the "quiet" empty state.
+  const { data: notificationsPage, isLoading: isNotificationsLoading } = useQuery({
+    queryKey: QueryKeys.notifications(25),
+    queryFn: () => listNotifications(25),
+    staleTime: 60_000,
+  });
   const { triggerHaptic } = useHapticFeedback();
   // Data extent for gating IntervalSelector — hides 5Y/1Y/6M etc. when
   // the user only has a few weeks of history. Cached aggressively so
@@ -291,6 +302,14 @@ export function DashboardContent() {
                 baseCurrency={baseCurrency}
                 isLoading={isRealHistoryLoading}
                 defaultWindow="30d"
+              />
+              {/* Track A PR-A7 — Today's Signal per Goal v3 §V step A7.
+                  One card, highest-severity unread from today's
+                  deterministic insights output. Severity-themed chrome;
+                  deep-link tap → route, no-link tap → expand reasoning. */}
+              <TodaysSignalCard
+                notifications={notificationsPage?.items}
+                isLoading={isNotificationsLoading}
               />
               <AccountsSummary dateRange={dateRange} isAllTime={isAllTime} />
               <HoldingsHeatmap

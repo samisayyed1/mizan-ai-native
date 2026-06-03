@@ -24,7 +24,7 @@
 | A7 | ⏸️ Pending | Heatmap tile-tap → asset detail (already partly implemented; verify and polish) |
 | A8 | ⏸️ Pending | News strip placeholder (real wiring in Track D) |
 | A9 | ✅ Done (2026-06-04 as PR-A4 per v3 Goal §V) | Twelve-panel asset class skeleton on the dashboard. Fixed §3(e) order per ADR 0021. Classifier maps holdings via assetKind + classifications.assetType.key. Tap → `/holdings?panel=<id>` until Track B PR-B1..B7 swap routes panel-by-panel. |
-| A10 | ⏸️ Pending | Today's Signal card (reads from `crates/insights` rules, deduplicated against last 7d) |
+| A10 | ✅ Done (2026-06-04 as PR-A7 per v3 Goal §V) | Today's Signal card. Reads `listNotifications(25)`, selects today's highest-severity (critical>warning>info>success) with unread + recency tiebreak. Severity-themed chrome (Action/Heads up/Today's Signal/Milestone). deepLink tap → route; no-link tap → expand reasoning. 17 vitest tests. Cross-day dedupe already enforced at the engine via `dedupe_key`. |
 | A11 | ⏸️ Pending | Quick action pull-up sheet (Add asset / Run Zakat / Generate report / Talk to Mizan) |
 | A12 | ⏸️ Pending | Notification panel polish — alignment + scroll + day buckets + filter chips + sticky header + swipe actions per spec §9.1 |
 | A13 | ⏸️ Pending | Remove separate Portfolio surface; sidebar update; redirect old `/portfolio` route with deprecation notice |
