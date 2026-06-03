@@ -888,7 +888,7 @@ export function useChatRuntime(config?: ChatModelConfig) {
         abortControllerRef.current = null;
       }
     },
-    [config, queryClient, setCurrentThreadId, setThreadTitleInCaches],
+    [config, queryClient, setCurrentThreadId, setThreadTitleInCaches, triggerHapticPattern],
   );
 
   // Handle cancel

@@ -143,8 +143,14 @@ export function ProviderSettingsCard({
   const modelComboboxOpen = controlledComboboxOpen ?? internalComboboxOpen;
   const setModelComboboxOpen = onModelComboboxOpenChange ?? setInternalComboboxOpen;
 
-  // Use external fetched models if provided
-  const fetchedModels = externalFetchedModels ?? [];
+  // Use external fetched models if provided. Wrap the `?? []` fallback in
+  // useMemo so the empty-array reference is stable across renders — without
+  // this, downstream useMemos depending on `fetchedModels` re-run every
+  // render (rules-of-hooks exhaustive-deps complaint).
+  const fetchedModels = useMemo(
+    () => externalFetchedModels ?? [],
+    [externalFetchedModels],
+  );
   const isFetchingModels = externalIsFetchingModels ?? false;
   const fetchError = externalFetchModelsError ?? null;
 
@@ -963,10 +969,26 @@ function AdvancedTuningSection({
 }: AdvancedTuningSectionProps) {
   const [open, setOpen] = useState(false);
 
-  const catalog: ProviderTuning = provider.catalogTuning ?? {};
-  const overrides: ProviderTuningOverrides = provider.tuningOverrides ?? {};
-  const resolved: ProviderTuning = provider.resolvedTuning ?? catalog;
-  const extraOverrides = overrides.extraOptionOverrides ?? {};
+  // Wrap `?? {}` fallbacks in useMemo so empty-object references are
+  // stable across renders. Without this, the downstream useMemos at
+  // L1038/L1067 re-run every render when the parent doesn't pass the
+  // optional tuning props (rules-of-hooks exhaustive-deps complaint).
+  const catalog = useMemo<ProviderTuning>(
+    () => provider.catalogTuning ?? {},
+    [provider.catalogTuning],
+  );
+  const overrides = useMemo<ProviderTuningOverrides>(
+    () => provider.tuningOverrides ?? {},
+    [provider.tuningOverrides],
+  );
+  const resolved = useMemo<ProviderTuning>(
+    () => provider.resolvedTuning ?? catalog,
+    [provider.resolvedTuning, catalog],
+  );
+  const extraOverrides = useMemo(
+    () => overrides.extraOptionOverrides ?? {},
+    [overrides.extraOptionOverrides],
+  );
 
   const supportsThinking = provider.models.some((m) => m.capabilities.thinking);
 
