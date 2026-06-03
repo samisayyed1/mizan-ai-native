@@ -746,9 +746,12 @@ export function ImportReviewGrid({
     enablePaste: true,
     onDataChange: handleDataChange,
 
+    // TanStack Table's meta is generic over the consumer-defined shape; our
+    // grid wrapper expects a `getCellState` accessor that isn't in the base
+    // TableMeta interface, so we cast through `unknown` to opt in.
     meta: {
       getCellState,
-    } as any,
+    } as unknown as Record<string, unknown>,
     initialState: {
       rowSelection: initialRowSelection,
       columnPinning: { left: ["select", "status"] },

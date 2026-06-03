@@ -186,9 +186,11 @@ export function useActivityColumns({
         meta: {
           cell: {
             variant: "select",
-            // Dynamic options based on activity type
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            options: ((rowData: any) => {
+            // Dynamic options based on activity type. The grid's cell-meta
+            // type accepts either an option[] or a (rowData) => option[]
+            // function but isn't generic enough to express both cleanly,
+            // so we cast through `unknown` after narrowing the row shape.
+            options: ((rowData: { activityType?: string }) => {
               const activityType = rowData?.activityType?.toUpperCase();
               if (!activityType) return [];
               const allowedSubtypes = SUBTYPES_BY_ACTIVITY_TYPE[activityType] || [];
@@ -196,7 +198,7 @@ export function useActivityColumns({
                 value: subtype,
                 label: SUBTYPE_DISPLAY_NAMES[subtype] || subtype,
               }));
-            }) as any,
+            }) as unknown as { value: string; label: string }[],
             allowEmpty: true,
             emptyLabel: "None",
           },

@@ -204,7 +204,7 @@ export const BulkHoldingsModal = ({
     [baseCurrency, form, onClose, onSuccess, saveActivitiesMutation],
   );
 
-  const handleFormError = useCallback((errors: Record<string, any>) => {
+  const handleFormError = useCallback((errors: Record<string, unknown>) => {
     const findFirstMessage = (value: unknown): string | null => {
       if (!value || typeof value !== "object") return null;
 

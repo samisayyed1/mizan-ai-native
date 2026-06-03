@@ -57,7 +57,7 @@ describe("useActivityMutations", () => {
         exchangeMic: "XNAS",
         symbolQuoteCcy: "USD",
         symbolInstrumentType: "EQUITY",
-      } as any);
+      } as unknown as Parameters<typeof result.current.addActivityMutation.mutateAsync>[0]);
     });
 
     expect(adapterMocks.createActivity).toHaveBeenCalledWith(
@@ -81,7 +81,7 @@ describe("useActivityMutations", () => {
         currency: "USD",
         assetId: "TSLA",
         currentAssetId: "asset-tsla",
-      } as any);
+      } as unknown as Parameters<typeof result.current.updateActivityMutation.mutateAsync>[0]);
     });
 
     expect(adapterMocks.updateActivity).toHaveBeenCalledWith(
@@ -108,7 +108,7 @@ describe("useActivityMutations", () => {
         assetId: "AAPL260116C00250000",
         existingAssetId: "asset-aapl-stock",
         symbolInstrumentType: "OPTION",
-      } as any);
+      } as unknown as Parameters<typeof result.current.addActivityMutation.mutateAsync>[0]);
     });
 
     expect(adapterMocks.createActivity).toHaveBeenCalledWith(

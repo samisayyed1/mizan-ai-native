@@ -848,7 +848,7 @@ describe("Form Schemas Validation", () => {
           assetSymbol: "CASH",
         },
         [],
-      ) as any;
+      ) as { transferMode: string; assetId: string | null };
 
       expect(defaults.transferMode).toBe("cash");
       expect(defaults.assetId).toBeNull();
@@ -867,7 +867,7 @@ describe("Form Schemas Validation", () => {
         currency: "USD",
       };
 
-      const payload = ACTIVITY_FORM_CONFIG.TRANSFER.toPayload(formData as any);
+      const payload = ACTIVITY_FORM_CONFIG.TRANSFER.toPayload(formData as Parameters<typeof ACTIVITY_FORM_CONFIG.TRANSFER.toPayload>[0]);
       expect(payload).toHaveProperty("unitPrice", 150.5);
     });
 
@@ -884,7 +884,7 @@ describe("Form Schemas Validation", () => {
         currency: "USD",
       };
 
-      const payload = ACTIVITY_FORM_CONFIG.TRANSFER.toPayload(formData as any);
+      const payload = ACTIVITY_FORM_CONFIG.TRANSFER.toPayload(formData as Parameters<typeof ACTIVITY_FORM_CONFIG.TRANSFER.toPayload>[0]);
       expect(payload).not.toHaveProperty("existingAssetId");
     });
 
@@ -898,7 +898,9 @@ describe("Form Schemas Validation", () => {
         currency: "USD",
       };
 
-      const payload = ACTIVITY_FORM_CONFIG.TRANSFER.toPayload(formData as any) as any;
+      const payload = ACTIVITY_FORM_CONFIG.TRANSFER.toPayload(
+        formData as Parameters<typeof ACTIVITY_FORM_CONFIG.TRANSFER.toPayload>[0],
+      ) as { unitPrice?: number };
       expect(payload.unitPrice).toBeUndefined();
     });
   });
@@ -915,7 +917,7 @@ describe("Form Schemas Validation", () => {
         unitPrice: 10,
         fee: 0,
         currency: "USD",
-      } as any);
+      } as Parameters<typeof ACTIVITY_FORM_CONFIG.BUY.toPayload>[0]);
 
       expect(payload).not.toHaveProperty("existingAssetId");
     });
