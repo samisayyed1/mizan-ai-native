@@ -463,7 +463,14 @@ export function AssetReviewStep() {
       dispatch({ type: "SET_DRAFT_ACTIVITIES", payload: nextDrafts });
       setActiveSearchKey(null);
     },
-    [candidateMap, dispatch, draftActivities, state.parseConfig.defaultCurrency, updatePreviewItem],
+    [
+      candidateMap,
+      dispatch,
+      draftActivities,
+      state.parseConfig.defaultCurrency,
+      updatePreviewItem,
+      assetPreviewItems,
+    ],
   );
 
   const handleMarkCustom = useCallback(

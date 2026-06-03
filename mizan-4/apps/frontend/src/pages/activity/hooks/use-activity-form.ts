@@ -221,6 +221,7 @@ export function useActivityForm({
       accounts,
       isEditing,
       activity?.id,
+      activity?.assetId,
       selectedType,
       addActivityMutation,
       updateActivityMutation,

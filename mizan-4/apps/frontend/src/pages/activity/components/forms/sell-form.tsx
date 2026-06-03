@@ -282,6 +282,10 @@ export function SellForm({
     return defaultValues.assetId ?? "";
   }, [
     isEditing,
+    // The body destructures `defaultValues` directly; eslint asks for
+    // the parent object. The `?.x` entries are kept for documentation
+    // but `defaultValues` itself is the operative dep.
+    defaultValues,
     defaultValues?.assetType,
     defaultValues?.assetId,
     defaultValues?.underlyingSymbol,
