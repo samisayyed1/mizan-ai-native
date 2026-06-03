@@ -31,6 +31,7 @@ import { PortfolioHealthCard } from "./portfolio-health-card";
 import { ZakatCard } from "./zakat-card";
 import Balance from "./balance";
 import SavingGoals from "./goals";
+import { AssetClassPanelGrid } from "@/components/asset-class-panels";
 
 const DEFAULT_INTERVAL: UITimePeriod = "3M";
 const INTERVAL_STORAGE_KEY = "dashboard-interval";
@@ -277,6 +278,14 @@ export function DashboardContent() {
               <HoldingsHeatmap
                 holdings={allHoldings ?? []}
                 isLoading={isHoldingsLoading}
+                baseCurrency={baseCurrency}
+              />
+              {/* Track A PR-A4 — twelve-panel asset class grid per ADR 0021.
+                  Skeleton tiles for now; Track B PR-B1..B7 swaps the
+                  `/holdings?panel=...` link targets for dedicated panel
+                  surfaces panel-by-panel. */}
+              <AssetClassPanelGrid
+                holdings={allHoldings ?? []}
                 baseCurrency={baseCurrency}
               />
             </div>

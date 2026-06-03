@@ -23,7 +23,7 @@
 | A6 | ⏸️ Pending | Net worth strip — toggleable 24h/7d/30d/YTD/All deltas + sparkline + tap → Net Worth page |
 | A7 | ⏸️ Pending | Heatmap tile-tap → asset detail (already partly implemented; verify and polish) |
 | A8 | ⏸️ Pending | News strip placeholder (real wiring in Track D) |
-| A9 | ⏸️ Pending | Asset class panel skeleton + 12 panels in fixed spec §3(e) order |
+| A9 | ✅ Done (2026-06-04 as PR-A4 per v3 Goal §V) | Twelve-panel asset class skeleton on the dashboard. Fixed §3(e) order per ADR 0021. Classifier maps holdings via assetKind + classifications.assetType.key. Tap → `/holdings?panel=<id>` until Track B PR-B1..B7 swap routes panel-by-panel. |
 | A10 | ⏸️ Pending | Today's Signal card (reads from `crates/insights` rules, deduplicated against last 7d) |
 | A11 | ⏸️ Pending | Quick action pull-up sheet (Add asset / Run Zakat / Generate report / Talk to Mizan) |
 | A12 | ⏸️ Pending | Notification panel polish — alignment + scroll + day buckets + filter chips + sticky header + swipe actions per spec §9.1 |
