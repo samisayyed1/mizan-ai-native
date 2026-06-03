@@ -20,7 +20,7 @@
 | A3 | ⏸️ Pending | Shared chart primitives — `components/charts/donut.tsx`, `bar.tsx`, extend existing `heatmap.tsx`, add `sparkline.tsx` |
 | A4 | ⏸️ Pending | Remove pie/radar/polar/3D chart usages (audit + replace with donut/bar per the rule) |
 | A5 | ⏸️ Pending | AI command bar — pinned top, does not collapse on scroll, connects to local dispatcher with optional escalation to `/v1/ai/agent` for Gold+ |
-| A6 | ⏸️ Pending | Net worth strip — toggleable 24h/7d/30d/YTD/All deltas + sparkline + tap → Net Worth page |
+| A6 | ✅ Done (2026-06-04 as PR-A5 per v3 Goal §V) | Net Worth Strip — headline + 24h/7d/30d/YTD/All toggle + delta chip + sparkline + tap → /net-worth. 17 vitest tests cover window math + render. |
 | A7 | ⏸️ Pending | Heatmap tile-tap → asset detail (already partly implemented; verify and polish) |
 | A8 | ⏸️ Pending | News strip placeholder (real wiring in Track D) |
 | A9 | ✅ Done (2026-06-04 as PR-A4 per v3 Goal §V) | Twelve-panel asset class skeleton on the dashboard. Fixed §3(e) order per ADR 0021. Classifier maps holdings via assetKind + classifications.assetType.key. Tap → `/holdings?panel=<id>` until Track B PR-B1..B7 swap routes panel-by-panel. |
