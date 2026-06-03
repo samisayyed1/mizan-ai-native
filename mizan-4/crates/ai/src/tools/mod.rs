@@ -31,6 +31,7 @@ pub mod holding_safety;
 pub mod holdings;
 pub mod import_csv;
 pub mod income;
+pub mod lifecycle_safety;
 pub mod performance;
 pub mod record_activities;
 pub mod record_activity;

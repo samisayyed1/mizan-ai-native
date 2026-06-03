@@ -29,7 +29,8 @@
 | C4.b | ✅ Done (2026-06-04) | Safety descriptors for `compute_net_worth`/`get_holding_history`/`get_market_data`/`get_fx_rate`/`bond_analytics` (ADR 0020 rows 6-9 + 16). All five are read-only (no Truth Ledger emission); cap weights 2/1/1/1/3; bond_analytics has `BondAsOf` numeric bounds; `get_fx_rate` audit_scope=`Pair` with handler invariant inline: returns `None` on missing rate per CLAUDE.md §0 rule 2 (PR-C7 handler will enforce). 8 unit tests. |
 | C6 | ⏸️ Pending | Handlers (C4.b.1): `compute_net_worth`, `get_holding_history` |
 | C7 | ⏸️ Pending | Handlers (C4.b.2): `get_market_data`, `get_fx_rate` (refuses to invent rates per QA Pass 8 + working agreement §0 rule 2) |
-| C8 | ⏸️ Pending | Tools: `sync_account`, `generate_report` |
+| C4.c | ✅ Done (2026-06-04) | Safety descriptors for `sync_account`/`generate_report`/`summarize_document`/`estimate_price`/`find_sharia_status` (ADR 0020 rows 10/11/15/17 + Goal v3 add). cap=5/3/8/5/1; sync_account redacts plaid_access_token + snaptrade_user_secret per CLAUDE.md §0 rule 4; summarize_document caps at 50K words across pdf/csv/xlsx/txt; estimate_price ledger=false (surfaces draft; update_holding path writes); find_sharia_status bridges to PR-E4 cloud worker. 9 unit tests including no_lifecycle_tool_emits_truth_ledger invariant + redact-list overzealousness guard. |
+| C8 | ⏸️ Pending | Handlers (C4.c.1): `sync_account`, `generate_report` |
 | C9 | ⏸️ Pending | Tools: `set_reminder`, `set_alert` |
 | C10 | ⏸️ Pending | Tools: `get_news` (stub — Track D fills table) |
 | C11 | ⏸️ Pending | Tools: `summarize_document` (PDF + CSV layout-aware parsing) |
