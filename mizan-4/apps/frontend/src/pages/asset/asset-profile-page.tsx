@@ -696,6 +696,10 @@ export const AssetProfilePage = () => {
     assetProfile,
     overviewSubTab,
     overviewSubTabs,
+    baseCurrency,
+    quote?.close,
+    quote?.currency,
+    updateQuoteModeMutation,
   ]);
 
   const isLoading = isHoldingLoading || isQuotesLoading || isAssetProfileLoading;
