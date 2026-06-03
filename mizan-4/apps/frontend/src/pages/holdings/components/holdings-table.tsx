@@ -191,6 +191,147 @@ export const HoldingsTable = ({
 
 export default HoldingsTable;
 
+// Cell renderers extracted into proper components so each invocation
+// gets its own hook root. The previous in-line `cell: ({row}) => {
+// const navigate = useNavigate(); ... }` pattern called the hook
+// inside a function called "cell" — React's rules-of-hooks fired
+// because the call site shared the parent's hook counter across all
+// rendered cells (a re-render with a different row count would
+// corrupt the hook slot mapping).
+
+function SymbolCell({ holding }: { holding: Holding }) {
+  const navigate = useNavigate();
+  const symbol = holding.instrument?.symbol ?? holding.id;
+
+  // Parse OCC symbol for options
+  const parsedOption = parseOccSymbol(symbol);
+  const displaySymbol = parsedOption ? parsedOption.underlying : symbol;
+
+  // Option subtitle: "Mar 29 $150 CALL"
+  const optionSubtitle = parsedOption
+    ? `${new Date(parsedOption.expiration + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} $${parsedOption.strikePrice} ${parsedOption.optionType}`
+    : null;
+
+  const handleNavigate = () => {
+    // Use instrument.id (asset ID) for navigation, not symbol (which may be stripped)
+    const navSymbol = holding.instrument?.id ?? holding.id;
+    navigate(`/holdings/${encodeURIComponent(navSymbol)}`, { state: { holding } });
+  };
+
+  const isManual = holding.instrument?.quoteMode === "MANUAL";
+  const content = (
+    <div className="flex items-center">
+      <TickerAvatar
+        symbol={parsedOption ? parsedOption.underlying : symbol}
+        className="mr-2 h-8 w-8"
+      />
+      <div className="flex flex-col">
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold tracking-tight">{displaySymbol}</span>
+          {isManual && (
+            <Badge variant="secondary" className="h-4 px-1 py-0 text-[10px]">
+              Manual
+            </Badge>
+          )}
+        </div>
+        <span className="text-muted-foreground line-clamp-1 text-xs">
+          {optionSubtitle ?? holding.instrument?.name ?? null}
+        </span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="-m-1 cursor-pointer p-1" onClick={handleNavigate}>
+      {content}
+    </div>
+  );
+}
+
+function ActionsCell({
+  holding,
+  onClassify,
+}: {
+  holding: Holding;
+  onClassify?: (holding: Holding) => void;
+}) {
+  const navigate = useNavigate();
+  const addAsset = useAddAsset();
+  // Look up the account name for the holding so the AddAsset dialog
+  // can show "for the Schwab portfolio" rather than the raw ID hash.
+  const { accounts } = useAccounts({ filterActive: true });
+  const hasInstrument = !!holding.instrument;
+  const accountName = accounts?.find((a) => a.id === holding.accountId)?.name;
+  const symbol = holding.instrument?.symbol ?? holding.id;
+  const assetId = holding.instrument?.id ?? holding.id;
+
+  const handleNavigate = () => {
+    navigate(`/holdings/${encodeURIComponent(assetId)}`, {
+      state: { holding },
+    });
+  };
+
+  // Enterprise UX-5: one-click "Record activity" routes to the
+  // activity manager with account AND asset pre-filled. No
+  // re-asking the user which portfolio or which stock — they just
+  // told us by clicking this row's menu.
+  const handleRecordActivity = () => {
+    navigate(
+      `/activities/manage?account=${encodeURIComponent(holding.accountId)}` +
+        `&assetId=${encodeURIComponent(assetId)}` +
+        `&redirect-to=${encodeURIComponent(`/accounts/${holding.accountId}`)}`,
+    );
+  };
+
+  // Ask Mizan AI to update — opens the AI dialog with full context
+  // (account + asset symbol). The agent's record_activity tool
+  // resolves both automatically.
+  const handleAskAi = () => {
+    addAsset.open({
+      source: "portfolio",
+      accountId: holding.accountId,
+      accountName,
+      prompt: `Update my ${symbol} holding. What would you like to change?`,
+    });
+  };
+
+  return (
+    <div className="flex items-center justify-end">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm">
+            <Icons.MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {hasInstrument && (
+            <DropdownMenuItem onClick={handleRecordActivity}>
+              <Icons.Plus className="mr-2 h-4 w-4" />
+              Record activity
+            </DropdownMenuItem>
+          )}
+          {hasInstrument && (
+            <DropdownMenuItem onClick={handleAskAi}>
+              <Icons.Sparkles className="mr-2 h-4 w-4" />
+              Ask Mizan AI to update
+            </DropdownMenuItem>
+          )}
+          {hasInstrument && onClassify && (
+            <DropdownMenuItem onClick={() => onClassify(holding)}>
+              <Icons.Tag className="mr-2 h-4 w-4" />
+              Classify
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={handleNavigate}>
+            <Icons.ChevronRight className="mr-2 h-4 w-4" />
+            View details
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 const getColumns = (
   isHidden: boolean,
   showConvertedValues: boolean,
@@ -204,55 +345,7 @@ const getColumns = (
     meta: {
       label: "Position",
     },
-    cell: ({ row }) => {
-      const navigate = useNavigate();
-      const holding = row.original;
-      const symbol = holding.instrument?.symbol ?? holding.id;
-
-      // Parse OCC symbol for options
-      const parsedOption = parseOccSymbol(symbol);
-      const displaySymbol = parsedOption ? parsedOption.underlying : symbol;
-
-      // Option subtitle: "Mar 29 $150 CALL"
-      const optionSubtitle = parsedOption
-        ? `${new Date(parsedOption.expiration + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} $${parsedOption.strikePrice} ${parsedOption.optionType}`
-        : null;
-
-      const handleNavigate = () => {
-        // Use instrument.id (asset ID) for navigation, not symbol (which may be stripped)
-        const navSymbol = holding.instrument?.id ?? holding.id;
-        navigate(`/holdings/${encodeURIComponent(navSymbol)}`, { state: { holding } });
-      };
-
-      const isManual = holding.instrument?.quoteMode === "MANUAL";
-      const content = (
-        <div className="flex items-center">
-          <TickerAvatar
-            symbol={parsedOption ? parsedOption.underlying : symbol}
-            className="mr-2 h-8 w-8"
-          />
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="font-semibold tracking-tight">{displaySymbol}</span>
-              {isManual && (
-                <Badge variant="secondary" className="h-4 px-1 py-0 text-[10px]">
-                  Manual
-                </Badge>
-              )}
-            </div>
-            <span className="text-muted-foreground line-clamp-1 text-xs">
-              {optionSubtitle ?? holding.instrument?.name ?? null}
-            </span>
-          </div>
-        </div>
-      );
-
-      return (
-        <div className="-m-1 cursor-pointer p-1" onClick={handleNavigate}>
-          {content}
-        </div>
-      );
-    },
+    cell: ({ row }) => <SymbolCell holding={row.original} />,
     sortingFn: (rowA, rowB) => {
       const symbolA = rowA.original.instrument?.symbol ?? rowA.original.id;
       const symbolB = rowB.original.instrument?.symbol ?? rowB.original.id;
@@ -510,83 +603,6 @@ const getColumns = (
     id: "actions",
     enableHiding: false,
     header: () => null,
-    cell: ({ row }) => {
-      const navigate = useNavigate();
-      const addAsset = useAddAsset();
-      // Look up the account name for the holding so the AddAsset dialog
-      // can show "for the Schwab portfolio" rather than the raw ID hash.
-      const { accounts } = useAccounts({ filterActive: true });
-      const holding = row.original;
-      const hasInstrument = !!holding.instrument;
-      const accountName = accounts?.find((a) => a.id === holding.accountId)?.name;
-      const symbol = holding.instrument?.symbol ?? holding.id;
-      const assetId = holding.instrument?.id ?? holding.id;
-
-      const handleNavigate = () => {
-        navigate(`/holdings/${encodeURIComponent(assetId)}`, {
-          state: { holding },
-        });
-      };
-
-      // Enterprise UX-5: one-click "Record activity" routes to the
-      // activity manager with account AND asset pre-filled. No
-      // re-asking the user which portfolio or which stock — they just
-      // told us by clicking this row's menu.
-      const handleRecordActivity = () => {
-        navigate(
-          `/activities/manage?account=${encodeURIComponent(holding.accountId)}` +
-            `&assetId=${encodeURIComponent(assetId)}` +
-            `&redirect-to=${encodeURIComponent(`/accounts/${holding.accountId}`)}`,
-        );
-      };
-
-      // Ask Mizan AI to update — opens the AI dialog with full context
-      // (account + asset symbol). The agent's record_activity tool
-      // resolves both automatically.
-      const handleAskAi = () => {
-        addAsset.open({
-          source: "portfolio",
-          accountId: holding.accountId,
-          accountName,
-          prompt: `Update my ${symbol} holding. What would you like to change?`,
-        });
-      };
-
-      return (
-        <div className="flex items-center justify-end">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <Icons.MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {hasInstrument && (
-                <DropdownMenuItem onClick={handleRecordActivity}>
-                  <Icons.Plus className="mr-2 h-4 w-4" />
-                  Record activity
-                </DropdownMenuItem>
-              )}
-              {hasInstrument && (
-                <DropdownMenuItem onClick={handleAskAi}>
-                  <Icons.Sparkles className="mr-2 h-4 w-4" />
-                  Ask Mizan AI to update
-                </DropdownMenuItem>
-              )}
-              {hasInstrument && onClassify && (
-                <DropdownMenuItem onClick={() => onClassify(holding)}>
-                  <Icons.Tag className="mr-2 h-4 w-4" />
-                  Classify
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={handleNavigate}>
-                <Icons.ChevronRight className="mr-2 h-4 w-4" />
-                View details
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ({ row }) => <ActionsCell holding={row.original} onClassify={onClassify} />,
   },
 ];
