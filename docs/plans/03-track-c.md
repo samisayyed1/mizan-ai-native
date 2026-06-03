@@ -26,8 +26,9 @@
 | C4.a.2 | ⏸️ Pending | `update_holding` handler — diff-based update draft |
 | C4.a.3 | ⏸️ Pending | `delete_holding` handler — confirmation prompt + ledger-deletion entry |
 | C5 | ⏸️ Pending | Tools: `add_activity`, `list_activities` |
-| C6 | ⏸️ Pending | Tools: `compute_net_worth`, `get_holding_history` |
-| C7 | ⏸️ Pending | Tools: `get_market_data`, `get_fx_rate` (refuses to invent rates per QA Pass 8 + working agreement §0 rule 2) |
+| C4.b | ✅ Done (2026-06-04) | Safety descriptors for `compute_net_worth`/`get_holding_history`/`get_market_data`/`get_fx_rate`/`bond_analytics` (ADR 0020 rows 6-9 + 16). All five are read-only (no Truth Ledger emission); cap weights 2/1/1/1/3; bond_analytics has `BondAsOf` numeric bounds; `get_fx_rate` audit_scope=`Pair` with handler invariant inline: returns `None` on missing rate per CLAUDE.md §0 rule 2 (PR-C7 handler will enforce). 8 unit tests. |
+| C6 | ⏸️ Pending | Handlers (C4.b.1): `compute_net_worth`, `get_holding_history` |
+| C7 | ⏸️ Pending | Handlers (C4.b.2): `get_market_data`, `get_fx_rate` (refuses to invent rates per QA Pass 8 + working agreement §0 rule 2) |
 | C8 | ⏸️ Pending | Tools: `sync_account`, `generate_report` |
 | C9 | ⏸️ Pending | Tools: `set_reminder`, `set_alert` |
 | C10 | ⏸️ Pending | Tools: `get_news` (stub — Track D fills table) |

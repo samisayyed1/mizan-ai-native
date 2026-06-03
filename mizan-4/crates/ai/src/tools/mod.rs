@@ -19,6 +19,7 @@ pub mod activities;
 pub mod add_alternative_asset;
 pub mod allocation;
 pub mod cash_balances;
+pub mod computation_safety;
 pub mod constants;
 pub mod create_account;
 pub mod create_goal;
