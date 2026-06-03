@@ -20,6 +20,7 @@
 | C1.b | ⏸️ Pending | Diesel schema regen + repository scaffolding (sqlite-vec embeddings on desktop, pgvector mirror on cloud for Gold+) |
 | C2 | ⏸️ Pending | Memory editor UI (settings panel) — view, edit, delete every fact |
 | C3 | ⏸️ Pending | Cloud mirror of memory for Gold+ — pgvector schema + sync worker |
+| C3.b | ✅ Done (2026-06-04) | `register_tool!` macro + `ToolRegistration` struct + `AuditScope` / `NumericBounds` enums per ADR 0020 §"Compile-time enforcement". Closes audit Finding 11.1. Cap-weight `const`-validated against ADR 0020's 1..=8 range (compile-time panic on out-of-range literal). `debug_assert_truth_ledger_contract` runtime guard catches declared-vs-actual mismatch at registry boot. 12 unit tests + smoke test instantiating all 21 ADR 0020 inventory rows + ledger-emitter set assertion. |
 | C4 | ⏸️ Pending | Tools: `create_holding`, `update_holding`, `delete_holding` |
 | C5 | ⏸️ Pending | Tools: `add_activity`, `list_activities` |
 | C6 | ⏸️ Pending | Tools: `compute_net_worth`, `get_holding_history` |
