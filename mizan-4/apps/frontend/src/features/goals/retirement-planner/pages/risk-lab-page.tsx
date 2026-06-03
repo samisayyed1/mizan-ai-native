@@ -1792,7 +1792,14 @@ function useRiskLabQueries({
   const [monteCarloSims, setMonteCarloSims] = useState(5_000);
   const autoMapsKeyRef = useRef<string | null>(null);
 
+  // The 5 queries below use `planKey = JSON.stringify(plan)` as the
+  // canonical identity for `plan`. A change to any plan field flips
+  // planKey → cache miss → refetch. Including the raw `plan` object
+  // would defeat React Query's value-equality optimization (plan is
+  // recreated every render by the parent). Inline disables document
+  // this per-query.
   const stressQuery = useQuery({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- planKey is canonical
     queryKey: ["retirement-risk-lab-stress", goalId, plannerMode, planKey, portfolioNow],
     queryFn: () => runRetirementStressTests(plan, portfolioNow, plannerMode, goalId),
     enabled: canRunRiskLab,
@@ -1800,6 +1807,7 @@ function useRiskLabQueries({
   });
 
   const contributionSensitivityQuery = useQuery({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- planKey is canonical
     queryKey: [
       "retirement-risk-lab-decision-sensitivity-map",
       "contribution-return",
@@ -1821,6 +1829,7 @@ function useRiskLabQueries({
   });
 
   const spendingSensitivityQuery = useQuery({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- planKey is canonical
     queryKey: [
       "retirement-risk-lab-decision-sensitivity-map",
       "retirement-age-spending",
@@ -1842,6 +1851,7 @@ function useRiskLabQueries({
   });
 
   const monteCarlo = useQuery({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- planKey is canonical
     queryKey: [
       "retirement-risk-lab-market-paths",
       goalId,
@@ -1864,6 +1874,7 @@ function useRiskLabQueries({
   });
 
   const sorr = useQuery({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- planKey is canonical
     queryKey: [
       "retirement-risk-lab-early-crash-paths",
       goalId,
