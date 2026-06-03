@@ -103,8 +103,12 @@ export function useActivitySearch(options: UseActivitySearchOptions): UseActivit
         })
       : DEFAULT_SORT;
 
-  // Infinite query for "load more" mode
+  // Infinite query for "load more" mode.
+  // (primarySort.id, primarySort.desc) are the canonical sort identity;
+  // including the whole `primarySort` object would defeat cache reuse
+  // since the parent recreates the object each render.
   const infiniteQuery = useInfiniteQuery<ActivitySearchResponse, Error>({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- (id, desc) is canonical sort identity
     queryKey: [
       QueryKeys.ACTIVITY_DATA,
       "infinite",
@@ -126,8 +130,11 @@ export function useActivitySearch(options: UseActivitySearchOptions): UseActivit
     enabled: mode === "infinite",
   });
 
-  // Standard query for paginated mode
+  // Standard query for paginated mode.
+  // (primarySort.id, primarySort.desc) is canonical sort identity — see
+  // infiniteQuery above for the same rationale.
   const paginatedQuery = useQuery<ActivitySearchResponse, Error>({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- (id, desc) is canonical sort identity
     queryKey: [
       QueryKeys.ACTIVITY_DATA,
       "paginated",
