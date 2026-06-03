@@ -208,12 +208,9 @@ function PerformanceToolUIContentImpl({ args, result, status }: PerformanceToolU
   const isIncomplete = status?.type === "incomplete";
   const isComplete = status?.type === "complete";
 
-  // Compact mode — just show a one-liner when used as a prerequisite
-  if (args?.displayMode === "compact" && parsed && !isLoading) {
-    return <CompactToolCard label="Fetched performance metrics" />;
-  }
-
-  // Format values
+  // Format values — HOISTED above the early returns below so the hook
+  // order stays stable regardless of which return path fires
+  // (rules-of-hooks: hooks must run in the same order every render).
   const { formatCurrency, formatPercent, formatPercentSigned } = useMemo(() => {
     const currency = parsed?.currency ?? baseCurrency;
     return {
@@ -261,6 +258,12 @@ function PerformanceToolUIContentImpl({ args, result, status }: PerformanceToolU
       : "Today";
     return `${start} - ${end}`;
   }, [parsed?.periodStartDate, parsed?.periodEndDate]);
+
+  // Compact mode — just show a one-liner when used as a prerequisite.
+  // Moved AFTER the hooks above so the order is stable.
+  if (args?.displayMode === "compact" && parsed && !isLoading) {
+    return <CompactToolCard label="Fetched performance metrics" />;
+  }
 
   // Show loading skeleton while running
   if (isLoading) {

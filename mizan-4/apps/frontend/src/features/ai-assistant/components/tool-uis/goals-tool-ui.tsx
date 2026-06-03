@@ -336,16 +336,9 @@ function GoalsToolUIContentImpl({ args, result, status }: GoalsToolUIContentProp
   const isLoading = status?.type === "running";
   const isIncomplete = status?.type === "incomplete";
 
-  // Compact mode — just show a one-liner when used as a prerequisite
-  if (args?.displayMode === "compact" && parsed && !isLoading) {
-    return (
-      <CompactToolCard
-        label={`Fetched ${parsed.goals.length} goal${parsed.goals.length !== 1 ? "s" : ""}`}
-      />
-    );
-  }
-
-  // Currency formatter - default to base currency
+  // Currency formatter — default to base currency. HOISTED above the
+  // early returns below so the hook order is stable regardless of which
+  // return path fires (rules-of-hooks).
   const formatter = useMemo(
     () =>
       new Intl.NumberFormat(undefined, {
@@ -356,6 +349,15 @@ function GoalsToolUIContentImpl({ args, result, status }: GoalsToolUIContentProp
       }),
     [baseCurrency],
   );
+
+  // Compact mode — just show a one-liner when used as a prerequisite
+  if (args?.displayMode === "compact" && parsed && !isLoading) {
+    return (
+      <CompactToolCard
+        label={`Fetched ${parsed.goals.length} goal${parsed.goals.length !== 1 ? "s" : ""}`}
+      />
+    );
+  }
 
   // Show loading skeleton while running
   if (isLoading) {
