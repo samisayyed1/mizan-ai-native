@@ -368,7 +368,8 @@ export const HoldingsPage = () => {
   const hasNoLiabilities = !isDataLoading && liabilitiesHoldings.length === 0;
 
   // Investments content
-  const investmentsContent = (
+  const investmentsContent = useMemo(
+    () => (
     <>
       {/* Edit Mode for HOLDINGS-mode accounts */}
       {isEditMode && selectedAccount && canEditHoldings ? (
@@ -461,10 +462,32 @@ export const HoldingsPage = () => {
         </>
       )}
     </>
+    ),
+    [
+      isEditMode,
+      selectedAccount,
+      canEditHoldings,
+      holdings,
+      isDataLoading,
+      hasNoInvestments,
+      addAsset,
+      navigate,
+      filteredHoldings,
+      showTotalReturn,
+      setShowTotalReturn,
+      nonCashHoldings,
+      selectedTypes,
+      setSelectedTypes,
+      accounts,
+      handleAccountSelect,
+      sortBy,
+      availableTypeOptions,
+    ],
   );
 
   // Personal Assets content
-  const assetsContent = (
+  const assetsContent = useMemo(
+    () => (
     <>
       {hasNoAssets ? (
         <div className="flex items-center justify-center py-16">
@@ -507,10 +530,24 @@ export const HoldingsPage = () => {
         </>
       )}
     </>
+    ),
+    [
+      hasNoAssets,
+      openAssistantAssetDraft,
+      assetsHoldings,
+      isDataLoading,
+      handleEditAsset,
+      setUpdateValueAsset,
+      handleViewHistory,
+      handleDeleteAsset,
+      handleRowClick,
+      isDeleting,
+    ],
   );
 
   // Liabilities content
-  const liabilitiesContent = (
+  const liabilitiesContent = useMemo(
+    () => (
     <>
       {hasNoLiabilities ? (
         <div className="flex items-center justify-center py-16">
@@ -553,6 +590,19 @@ export const HoldingsPage = () => {
         </>
       )}
     </>
+    ),
+    [
+      hasNoLiabilities,
+      openAssistantAssetDraft,
+      liabilitiesHoldings,
+      isDataLoading,
+      handleEditAsset,
+      setUpdateValueAsset,
+      handleViewHistory,
+      handleDeleteAsset,
+      handleRowClick,
+      isDeleting,
+    ],
   );
 
   // Action palette groups

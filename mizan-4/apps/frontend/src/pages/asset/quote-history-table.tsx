@@ -352,15 +352,10 @@ export const QuoteHistoryTable: React.FC<QuoteHistoryTableProps> = ({
           ]
         : []),
     ],
-    [
-      isManualDataSource,
-      handleInputChange,
-      handleEdit,
-      handleSave,
-      handleCancel,
-      handleDelete,
-      columnHelper,
-    ],
+    // Handlers are passed via TanStack Table's `meta` option, not captured by
+    // these cell renderers — only `isManualDataSource` + `columnHelper` are
+    // referenced in the columns array body.
+    [isManualDataSource, columnHelper],
   );
 
   const table = useReactTable({

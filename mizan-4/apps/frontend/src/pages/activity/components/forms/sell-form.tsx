@@ -282,16 +282,9 @@ export function SellForm({
     return defaultValues.assetId ?? "";
   }, [
     isEditing,
-    // The body destructures `defaultValues` directly; eslint asks for
-    // the parent object. The `?.x` entries are kept for documentation
-    // but `defaultValues` itself is the operative dep.
+    // The body destructures `defaultValues` directly; the parent object
+    // is the operative dep — its fields change together.
     defaultValues,
-    defaultValues?.assetType,
-    defaultValues?.assetId,
-    defaultValues?.underlyingSymbol,
-    defaultValues?.strikePrice,
-    defaultValues?.expirationDate,
-    defaultValues?.optionType,
   ]);
 
   const originalSellQuantity = useMemo(() => {

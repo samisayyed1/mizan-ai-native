@@ -34,6 +34,8 @@ export function ContributionLimitItem({
     if (!limit.accountIds || limit.accountIds.length === 0) {
       setIsExpanded(true);
     }
+    // Initial-only effect — `limit.accountIds` is checked once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleExpanded = (e: React.MouseEvent) => {

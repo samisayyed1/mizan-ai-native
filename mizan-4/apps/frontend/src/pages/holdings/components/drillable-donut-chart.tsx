@@ -10,7 +10,7 @@ import {
   EmptyPlaceholder,
   Skeleton,
 } from "@mizan/ui";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 interface DrillableDonutChartProps {
   title: string;
@@ -38,9 +38,12 @@ export function DrillableDonutChart({
   const { path, drillDown, navigateTo, isAtRoot } = useDrillDownState();
 
   // Find category by ID from allocation
-  const findCategory = (categoryId: string): CategoryAllocation | undefined => {
-    return allocation?.categories?.find((cat) => cat.categoryId === categoryId);
-  };
+  const findCategory = useCallback(
+    (categoryId: string): CategoryAllocation | undefined => {
+      return allocation?.categories?.find((cat) => cat.categoryId === categoryId);
+    },
+    [allocation],
+  );
 
   // Root level data from allocation
   const rootData = useMemo(() => {
@@ -76,7 +79,7 @@ export function DrillableDonutChart({
         color: child.color,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [path, allocation, baseCurrency, findCategory]);
+  }, [path, baseCurrency, findCategory]);
 
   const data = isAtRoot ? rootData : drilledData;
 

@@ -72,6 +72,8 @@ export function AssetForm({ asset, onSubmit, onCancel, isSaving }: AssetFormProp
 
   useEffect(() => {
     form.reset(defaultValues);
+    // defaultValues is derived from `asset` each render; tracking `asset` is canonical.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset, form]);
 
   const handleSubmit = async (values: AssetFormValues) => {
