@@ -279,9 +279,12 @@ export const AccountsSummary = React.memo(
       error: errorAccounts,
     } = useAccounts();
 
-    const accounts = allAccounts ?? [];
+    // Wrap `?? []` fallback in useMemo so the empty-array reference is
+    // stable when allAccounts hasn't loaded; downstream useMemos at
+    // L284 + L403 thrashed without this.
+    const accounts = useMemo(() => allAccounts ?? [], [allAccounts]);
 
-    const accountIds = useMemo(() => accounts?.map((acc) => acc.id) ?? [], [accounts]);
+    const accountIds = useMemo(() => accounts.map((acc) => acc.id), [accounts]);
 
     const { latestValuations, isLoading: isLoadingValuations } = useLatestValuations(accountIds);
 
@@ -400,6 +403,14 @@ export const AccountsSummary = React.memo(
           isGroup: false,
         };
       });
+      // performanceQueries is a useQueries() return value — the array
+      // reference changes every render. Only `.data` per slot matters
+      // here (see L350 `performanceQueries[i]?.data`). React Query
+      // memoizes per-slot data references when the underlying data is
+      // unchanged, so depending on the array as a whole is safe in
+      // practice — the parent re-render that produces a fresh
+      // performanceQueries is itself triggered by data change.
+      // eslint-disable-next-line @tanstack/query/no-unstable-deps -- per-slot data refs are stable
     }, [accounts, latestValuations, performanceQueries, settings?.baseCurrency]);
 
     const toggleGroup = useCallback((groupName: string) => {
@@ -675,6 +686,7 @@ export const AccountsSummary = React.memo(
       isErrorAccounts,
       errorAccounts,
       settings?.baseCurrency,
+      openAddAsset,
     ]);
 
     return (
