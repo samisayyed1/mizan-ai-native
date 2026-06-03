@@ -14,6 +14,10 @@ export function useValuationHistory(
     isLoading,
     isFetching,
   } = useQuery<AccountValuation[], Error>({
+    // Formatted dateRange.from/to strings ARE the canonical date-range
+    // identity for the query — including the whole `dateRange` object
+    // would defeat the cache (its reference changes every parent render).
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- formatted bounds are canonical
     queryKey: [
       ...QueryKeys.valuationHistory(accountId),
       dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : null,

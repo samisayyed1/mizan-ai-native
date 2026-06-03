@@ -25,6 +25,10 @@ export function AccountContributionLimit({ accountId }: AccountContributionLimit
   );
 
   const { data: deposits, isLoading: isDepositsLoading } = useQuery<DepositsCalculation, Error>({
+    // `limitForAccount` is derived from allLimits + (accountId, currentYear).
+    // Those three are in the key already; including limitForAccount.id
+    // would just couple the cache to derived state.
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- (accountId, currentYear) is canonical
     queryKey: [QueryKeys.CONTRIBUTION_LIMIT_PROGRESS, accountId, currentYear],
     // `enabled: !!limitForAccount` keeps queryFn from firing when
     // it's null — but the type checker still wants a guard here in

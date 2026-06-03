@@ -486,7 +486,7 @@ export const ActivityTable = ({
         enableHiding: false,
       },
     ],
-    [handleEdit, handleDelete, handleDuplicate, symbolExchangeCountMap],
+    [handleEdit, handleDelete, handleDuplicate, symbolExchangeCountMap, appTimezone],
   );
 
   const handleSortingChange = React.useCallback<OnChangeFn<SortingState>>(

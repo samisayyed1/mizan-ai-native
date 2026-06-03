@@ -160,7 +160,10 @@ const HoldingRow = memo(
 
         setFocus(`holdings.${index}.sharesOwned`);
       },
-      [index, setFocus, setValue],
+      // getValues is used at L136 for accountCurrency lookup. React Hook
+      // Form's getValues is referentially stable, but exhaustive-deps
+      // wants it explicit.
+      [index, setFocus, setValue, getValues],
     );
 
     const handleRemoveClick = useCallback(
