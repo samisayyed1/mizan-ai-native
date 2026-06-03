@@ -103,7 +103,9 @@ const ActivityPage = () => {
       setSearchInput(value);
       debouncedUpdateSearch(value);
     },
-    [debouncedUpdateSearch],
+    // setState setters are referentially stable so adding setSearchInput
+    // is a no-op in practice, but exhaustive-deps wants it explicit.
+    [debouncedUpdateSearch, setSearchInput],
   );
 
   // Cleanup debounced function on unmount
