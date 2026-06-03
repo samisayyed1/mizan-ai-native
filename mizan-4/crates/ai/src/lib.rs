@@ -75,6 +75,7 @@ pub mod providers;
 pub mod safety;
 pub mod stream_hook;
 pub mod title_generator;
+pub mod tool_registry;
 pub mod tools;
 pub mod types;
 
