@@ -352,7 +352,15 @@ export const QuoteHistoryTable: React.FC<QuoteHistoryTableProps> = ({
           ]
         : []),
     ],
-    [isManualDataSource, handleInputChange, handleEdit, handleSave, handleCancel, handleDelete],
+    [
+      isManualDataSource,
+      handleInputChange,
+      handleEdit,
+      handleSave,
+      handleCancel,
+      handleDelete,
+      columnHelper,
+    ],
   );
 
   const table = useReactTable({

@@ -297,6 +297,7 @@ export function AssetsTable({
       isRefetchingQuotes,
       isUpdatingQuotes,
       navigate,
+      baseCurrency,
     ],
   );
 

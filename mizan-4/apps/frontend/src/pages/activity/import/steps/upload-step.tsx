@@ -583,7 +583,7 @@ export function UploadStep() {
         });
       }
     },
-    [applyTemplate, importType, state.accountId, templates],
+    [applyTemplate, importType, state.accountId, templates, dispatch],
   );
 
   const handleTemplateClear = useCallback(() => {

@@ -76,7 +76,7 @@ export function DrillableDonutChart({
         color: child.color,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [path, allocation, baseCurrency]);
+  }, [path, allocation, baseCurrency, findCategory]);
 
   const data = isAtRoot ? rootData : drilledData;
 
