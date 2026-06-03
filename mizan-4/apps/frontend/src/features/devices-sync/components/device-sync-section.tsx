@@ -101,7 +101,11 @@ export function DeviceSyncSection() {
     setPrepareError(null);
     queryClient.invalidateQueries({ queryKey: ["sync", "device", "current"] });
     status.refetch();
-  }, [queryClient, status.refetch]);
+    // Depend on the whole `status` object per rules-of-hooks — the linter
+    // can't narrow to `status.refetch`. React Query keeps `refetch` stable
+    // across renders, so re-creating this callback on `status` change is
+    // a no-op in practice.
+  }, [queryClient, status]);
 
   const handlePairingCancel = useCallback(() => {
     setIsPairingOpen(false);
@@ -112,7 +116,8 @@ export function DeviceSyncSection() {
   const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["sync", "device", "current"] });
     status.refetch();
-  }, [queryClient, status.refetch]);
+    // Same `status` whole-object dep rationale as handlePairingComplete.
+  }, [queryClient, status]);
 
   const handleRefreshDevices = useCallback(() => {
     setIsRefreshing(true);

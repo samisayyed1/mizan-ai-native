@@ -215,7 +215,9 @@ export function AddAssetDialog({
       }
       setAttachments((prev) => [...prev, ...next]);
     },
-    [attachments],
+    // `attachments` is only referenced via `typeof attachments` (compile-time
+    // type alias) + the functional setState form. No runtime read → no dep.
+    [],
   );
 
   const handleSend = useCallback(async () => {
