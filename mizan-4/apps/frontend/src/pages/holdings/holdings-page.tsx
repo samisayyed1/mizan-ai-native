@@ -123,11 +123,14 @@ export const HoldingsPage = () => {
   );
   const updatePortfolioMutation = useUpdatePortfolioMutation();
 
-  const handleAccountSelect = (account: Account) => {
+  // Wrapped in useCallback so the useMemo at L629 (which depends on this)
+  // doesn't re-run every render. setState setters are referentially stable
+  // so an empty dep array is correct.
+  const handleAccountSelect = useCallback((account: Account) => {
     setSelectedAccount(account);
     // Exit edit mode when switching accounts
     setIsEditMode(false);
-  };
+  }, []);
 
   // Check if the selected account supports manual holdings editing
   const canEditHoldings = useMemo(() => {
