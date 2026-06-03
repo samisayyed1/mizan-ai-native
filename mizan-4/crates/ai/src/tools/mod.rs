@@ -26,6 +26,7 @@ pub mod create_liability;
 pub mod csv_intel;
 pub mod goals;
 pub mod health;
+pub mod holding_safety;
 pub mod holdings;
 pub mod import_csv;
 pub mod income;

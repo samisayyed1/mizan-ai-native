@@ -21,7 +21,10 @@
 | C2 | ⏸️ Pending | Memory editor UI (settings panel) — view, edit, delete every fact |
 | C3 | ⏸️ Pending | Cloud mirror of memory for Gold+ — pgvector schema + sync worker |
 | C3.b | ✅ Done (2026-06-04) | `register_tool!` macro + `ToolRegistration` struct + `AuditScope` / `NumericBounds` enums per ADR 0020 §"Compile-time enforcement". Closes audit Finding 11.1. Cap-weight `const`-validated against ADR 0020's 1..=8 range (compile-time panic on out-of-range literal). `debug_assert_truth_ledger_contract` runtime guard catches declared-vs-actual mismatch at registry boot. 12 unit tests + smoke test instantiating all 21 ADR 0020 inventory rows + ledger-emitter set assertion. |
-| C4 | ⏸️ Pending | Tools: `create_holding`, `update_holding`, `delete_holding` |
+| C4.a | ✅ Done (2026-06-04) | Safety descriptors for `create_holding`/`update_holding`/`delete_holding` (ADR 0020 rows 1-3). First consumer of the `register_tool!` macro from C3.b — locks the AI Safety Runtime contract for the three holdings-mutation tools before handler impls land. 7 unit tests assert each row matches ADR 0020 (cap=5/5/3; audit=FullInput/Diff/IdOnly; bounds=Holding/Holding/None; all three emit Truth Ledger). |
+| C4.a.1 | ⏸️ Pending | `create_holding` handler — draft-preview per the `create_account` pattern (consumes C4.a descriptor) |
+| C4.a.2 | ⏸️ Pending | `update_holding` handler — diff-based update draft |
+| C4.a.3 | ⏸️ Pending | `delete_holding` handler — confirmation prompt + ledger-deletion entry |
 | C5 | ⏸️ Pending | Tools: `add_activity`, `list_activities` |
 | C6 | ⏸️ Pending | Tools: `compute_net_worth`, `get_holding_history` |
 | C7 | ⏸️ Pending | Tools: `get_market_data`, `get_fx_rate` (refuses to invent rates per QA Pass 8 + working agreement §0 rule 2) |
