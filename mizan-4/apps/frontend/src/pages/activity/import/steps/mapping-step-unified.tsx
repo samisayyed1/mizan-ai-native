@@ -425,7 +425,13 @@ export function MappingStepUnified() {
 
       return parseInt(a.lineNumber) - parseInt(b.lineNumber);
     });
-  }, [distinctActivityTypes, distinctSymbolRows, distinctAccountRows, missingAccountRows]);
+  }, [
+    distinctActivityTypes,
+    distinctSymbolRows,
+    distinctAccountRows,
+    missingAccountRows,
+    getMappedValue,
+  ]);
 
   // CSV data for raw file viewer
   const csvData = useMemo(() => {
@@ -530,8 +536,11 @@ export function MappingStepUnified() {
       baselineParseConfig,
       dispatch,
       headers,
-      state.file,
-      state.parseConfig,
+      // eslint can't narrow state.file / state.parseConfig to individual
+      // deps so it wants the parent object. This is a user-click handler
+      // (apply template), not a hot path — re-creation on any state
+      // change is acceptable.
+      state,
       templates,
       updateMapping,
     ],

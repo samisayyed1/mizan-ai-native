@@ -450,7 +450,7 @@ export const AssetProfilePage = () => {
       totalGainPercent,
       calculatedAt,
     };
-  }, [holding, assetProfile, quote, assetId]);
+  }, [holding, assetProfile, quote, assetId, baseCurrency]);
 
   const symbolHolding = useMemo((): AssetDetailData | null => {
     if (!holding) return null;
@@ -499,7 +499,7 @@ export const AssetProfilePage = () => {
       bondSpec: bondSpec ?? null,
       optionSpec: optionSpec ?? null,
     };
-  }, [holding, quote, bondSpec, optionSpec]);
+  }, [holding, quote, bondSpec, optionSpec, baseCurrency]);
 
   // Build toggle items dynamically based on available data
   const toggleItems = useMemo(() => {
