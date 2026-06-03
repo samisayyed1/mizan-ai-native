@@ -1,0 +1,162 @@
+/**
+ * Tests for Track A PR-A8 Holdings Heatmap tap → asset detail.
+ *
+ * Two layers:
+ *   1. holdingDetailRouteFromNode — pure helper that maps a Recharts
+ *      Treemap onClick node to a router route. The helper carries the
+ *      assetId-required + URL-encode invariants.
+ *   2. <HoldingsHeatmap /> — exercise the loading / empty / data
+ *      branches via @testing-library/react. We can't simulate the
+ *      actual Treemap click in jsdom (Recharts needs a real
+ *      ResponsiveContainer measurement), but we can assert the
+ *      surfaces and the mode toggle work and the heatmap excludes
+ *      cash + alternative assets per spec.
+ */
+import { render, screen, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { describe, expect, it } from "vitest";
+
+import type { Holding } from "@/lib/types";
+
+import { HoldingsHeatmap, holdingDetailRouteFromNode } from "./holdings-heatmap";
+
+function makeHolding(overrides: Partial<Holding>): Holding {
+  return {
+    id: overrides.id ?? "h-1",
+    holdingType: "INVESTMENT" as Holding["holdingType"],
+    accountId: "acc-1",
+    quantity: 10,
+    localCurrency: "USD",
+    baseCurrency: "USD",
+    marketValue: { local: 10_000, base: 10_000 },
+    weight: 1,
+    asOfDate: "2026-06-04",
+    ...overrides,
+  };
+}
+
+describe("holdingDetailRouteFromNode", () => {
+  it("returns the encoded route for a node with a valid assetId", () => {
+    expect(holdingDetailRouteFromNode({ assetId: "AAPL" })).toBe("/holdings/AAPL");
+  });
+
+  it("URL-encodes special characters in the asset id", () => {
+    // OCC option symbol has spaces and slashes in some encodings
+    expect(holdingDetailRouteFromNode({ assetId: "AAPL 260116C00250000" })).toBe(
+      "/holdings/AAPL%20260116C00250000",
+    );
+    // Custom assets may have user-typed labels with characters that
+    // must not break the route — the helper guards by encoding.
+    expect(holdingDetailRouteFromNode({ assetId: "a/b?c=d&e=f" })).toBe(
+      "/holdings/a%2Fb%3Fc%3Dd%26e%3Df",
+    );
+  });
+
+  it("returns null when the node has no assetId (avoids broken-route nav)", () => {
+    expect(holdingDetailRouteFromNode({})).toBeNull();
+    expect(holdingDetailRouteFromNode({ assetId: "" })).toBeNull();
+    expect(holdingDetailRouteFromNode(null)).toBeNull();
+    expect(holdingDetailRouteFromNode(undefined)).toBeNull();
+    expect(holdingDetailRouteFromNode("not an object")).toBeNull();
+    expect(holdingDetailRouteFromNode({ assetId: 123 })).toBeNull();
+  });
+
+  it("ignores extra fields on the node (Recharts passes the whole datum)", () => {
+    expect(
+      holdingDetailRouteFromNode({
+        assetId: "TSLA",
+        symbol: "TSLA",
+        size: 50_000,
+        changePct: 0.03,
+        holdingId: "h-tsla",
+      }),
+    ).toBe("/holdings/TSLA");
+  });
+});
+
+describe("<HoldingsHeatmap />", () => {
+  it("renders the loading skeleton when isLoading is true", () => {
+    render(
+      <MemoryRouter>
+        <HoldingsHeatmap holdings={[]} isLoading baseCurrency="USD" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Heatmap")).toBeInTheDocument();
+  });
+
+  it("renders an empty-state message when there are no tradeable holdings", () => {
+    render(
+      <MemoryRouter>
+        <HoldingsHeatmap holdings={[]} isLoading={false} baseCurrency="USD" />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByText(/Add a stock to see your portfolio heatmap/),
+    ).toBeInTheDocument();
+  });
+
+  it("excludes cash holdings from the heatmap (cash isn't tradeable, no pct return)", () => {
+    const holdings: Holding[] = [
+      makeHolding({
+        id: "h-cash",
+        holdingType: "cash" as Holding["holdingType"],
+        marketValue: { local: 50_000, base: 50_000 },
+      }),
+    ];
+    render(
+      <MemoryRouter>
+        <HoldingsHeatmap holdings={holdings} isLoading={false} baseCurrency="USD" />
+      </MemoryRouter>,
+    );
+    // Only cash → renders the empty state, not the chart
+    expect(
+      screen.getByText(/Add a stock to see your portfolio heatmap/),
+    ).toBeInTheDocument();
+  });
+
+  it("excludes alternative assets (property, vehicle, collectible) from the heatmap", () => {
+    const holdings: Holding[] = [
+      makeHolding({ id: "p", assetKind: "PROPERTY" }),
+      makeHolding({ id: "v", assetKind: "VEHICLE" }),
+      makeHolding({ id: "c", assetKind: "COLLECTIBLE" }),
+    ];
+    render(
+      <MemoryRouter>
+        <HoldingsHeatmap holdings={holdings} isLoading={false} baseCurrency="USD" />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByText(/Add a stock to see your portfolio heatmap/),
+    ).toBeInTheDocument();
+  });
+
+  it("renders Total/Day mode toggle when there are tradeable holdings", () => {
+    const holdings: Holding[] = [
+      makeHolding({
+        id: "h-aapl",
+        instrument: {
+          id: "AAPL",
+          symbol: "AAPL",
+          currency: "USD",
+          quoteMode: "MARKET",
+        } as Holding["instrument"],
+        marketValue: { local: 10_000, base: 10_000 },
+        unrealizedGain: { local: 1_000, base: 1_000 },
+        unrealizedGainPct: 0.1,
+      }),
+    ];
+    render(
+      <MemoryRouter>
+        <HoldingsHeatmap holdings={holdings} isLoading={false} baseCurrency="USD" />
+      </MemoryRouter>,
+    );
+    const total = screen.getByRole("button", { name: /Total/i });
+    const day = screen.getByRole("button", { name: /Day/i });
+    expect(total).toBeInTheDocument();
+    expect(day).toBeInTheDocument();
+    // Toggling does not throw + does not change the surface to broken
+    fireEvent.click(day);
+    fireEvent.click(total);
+    expect(screen.getByText("Heatmap")).toBeInTheDocument();
+  });
+});
