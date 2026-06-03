@@ -170,6 +170,6 @@ describe("Heatmap", () => {
     );
     const el = screen.getByTestId("chart-heatmap-empty");
     // 400 / 2 = 200 → element gets height: 200px.
-    expect((el as HTMLElement).style.height).toBe("200px");
+    expect((el).style.height).toBe("200px");
   });
 });
