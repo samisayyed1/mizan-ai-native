@@ -456,6 +456,7 @@ function getColumns(accounts: Account[], baseCurrency: string): ColumnDef<Activi
       ),
       cell: ({ row }) => {
         const activityType = row.getValue("activityType");
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- TanStack getValue returns unknown; narrow for formatPrice
         const unitPrice = row.getValue("unitPrice") as string | number | null | undefined;
         const currencyValue = row.getValue("currency");
         const accountCurrency = accountCurrencyLookup.get(row.original.accountId);
@@ -491,6 +492,7 @@ function getColumns(accounts: Account[], baseCurrency: string): ColumnDef<Activi
       ),
       cell: ({ row }) => {
         const activityType = row.getValue("activityType");
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- TanStack getValue returns unknown; narrow for formatPrice
         const amount = row.getValue("amount") as string | number | null | undefined;
         const currencyValue = row.getValue("currency");
         const accountCurrency = accountCurrencyLookup.get(row.original.accountId);
@@ -528,6 +530,7 @@ function getColumns(accounts: Account[], baseCurrency: string): ColumnDef<Activi
       ),
       cell: ({ row }) => {
         const activityType = row.getValue("activityType");
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- TanStack getValue returns unknown; narrow for formatPrice
         const fee = row.getValue("fee") as string | number | null | undefined;
         const currencyValue = row.getValue("currency");
         const accountCurrency = accountCurrencyLookup.get(row.original.accountId);

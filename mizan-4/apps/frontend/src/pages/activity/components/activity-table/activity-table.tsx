@@ -336,6 +336,7 @@ export const ActivityTable = ({
         ),
         cell: ({ row }) => {
           const activityType = String(row.getValue("activityType"));
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- TanStack getValue returns unknown; narrow for formatPrice
           const fee = row.getValue("fee") as string | number | null | undefined;
           const currencyVal = row.getValue("currency");
           const currency =

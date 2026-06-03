@@ -214,7 +214,7 @@ function HoldingRow({
     !!holding.baseCurrency &&
     holding.localCurrency !== holding.baseCurrency;
   const displayInBase = showConvertedValues || (fxNeeded && !fxAvailable);
-  const effectiveFxRate = fxAvailable ? (fxRate as number) : 1;
+  const effectiveFxRate = fxAvailable ? (fxRate) : 1;
   const marketValue = displayInBase
     ? marketValueBase
     : safeDivide(marketValueBase, effectiveFxRate);

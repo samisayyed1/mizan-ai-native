@@ -266,7 +266,7 @@ export function parseHoldingsSnapshots(
   // When the CSV looks like a transaction log (has a BUY/SELL column),
   // collapse it into a single net-positions snapshot dated today.
   if (txTypeIndex !== null) {
-    type Accumulator = {
+    interface Accumulator {
       buyQty: number;
       sellQty: number;
       buyCostBasis: number;
@@ -274,7 +274,7 @@ export function parseHoldingsSnapshots(
       exchangeMic?: string;
       assetId?: string;
       symbol: string;
-    };
+    }
     const bySymbol = new Map<string, Accumulator>();
     let cashBuyTotal = 0;
     let cashSellTotal = 0;

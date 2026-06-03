@@ -33,7 +33,7 @@ import { ALTERNATIVE_ASSET_KIND_DISPLAY_NAMES } from "@/lib/types";
  * legacy seeded rows that may lack the flag.
  */
 function isExampleHolding(h: AlternativeAssetHolding): boolean {
-  if (h.metadata && (h.metadata as Record<string, unknown>).example === true) {
+  if (h.metadata?.example === true) {
     return true;
   }
   return h.name.startsWith("Example — ");
