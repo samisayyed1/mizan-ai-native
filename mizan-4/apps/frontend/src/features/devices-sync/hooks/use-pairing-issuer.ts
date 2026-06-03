@@ -30,8 +30,11 @@ export function usePairingIssuer() {
   const [error, setError] = useState<string | null>(null);
   const [needsRestore, setNeedsRestore] = useState(false);
 
-  // Poll for claimer connection
+  // Poll for claimer connection.
+  // pairingId uniquely identifies the session; other session fields
+  // are stable per pairingId so it's the canonical queryKey identity.
   const claimerPoll = useQuery({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- pairingId is canonical identity
     queryKey: ["sync", "pairing", "claimer-poll", session?.pairingId],
     queryFn: () => syncService.pollForClaimerConnection(session!),
     enabled: phase === "created" && !!session,

@@ -49,7 +49,11 @@ export function useSyncStatus() {
   const refetch = useCallback(() => {
     statusQuery.refetch();
     engineQuery.refetch();
-  }, [statusQuery.refetch, engineQuery.refetch]);
+    // Depend on the whole query objects per rules-of-hooks — the linter
+    // can't narrow to `.refetch`. React Query keeps `refetch` references
+    // stable across renders, so the callback identity is rarely
+    // invalidated in practice.
+  }, [statusQuery, engineQuery]);
 
   return {
     syncState: data?.state ?? SyncStates.FRESH,

@@ -53,8 +53,12 @@ export function usePairingClaimer() {
   // Guard against auto-proceed firing twice
   const autoProceedFired = useRef(false);
 
-  // Poll for key bundle
+  // Poll for key bundle.
+  // pairingId uniquely identifies a session, so it's the canonical
+  // queryKey identity — other session fields are stable for a given
+  // pairingId so they don't need to participate in the key.
   const keyPoll = useQuery({
+    // eslint-disable-next-line @tanstack/query/exhaustive-deps -- pairingId is canonical identity
     queryKey: ["sync", "pairing", "key-poll", session?.pairingId],
     queryFn: () => syncService.pollForKeyBundle(session!),
     enabled: phase === "claimed" && !!session,
