@@ -55,6 +55,10 @@ interface TreemapNode {
   size: number;
   intensity: number;
   label: string;
+  // Recharts' TreemapDataType is an index-signature shape; extending it
+  // satisfies the strict tsc check without losing field types we care
+  // about above.
+  [key: string]: unknown;
 }
 
 export function Heatmap({

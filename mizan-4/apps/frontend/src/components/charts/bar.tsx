@@ -131,7 +131,7 @@ export function Bar({
             dataKey="value"
             isAnimationActive={animationMs > 0}
             animationDuration={animationMs}
-            onClick={onTap ? (entry) => onTap(entry as BarDatum) : undefined}
+            onClick={onTap ? (entry) => onTap(entry as unknown as BarDatum) : undefined}
             radius={[4, 4, 0, 0]}
           >
             {safe.map((d, i) => (
