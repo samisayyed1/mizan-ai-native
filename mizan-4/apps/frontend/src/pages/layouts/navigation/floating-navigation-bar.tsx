@@ -44,8 +44,11 @@ export function FloatingNavigationBar({ navigation }: FloatingNavigationBarProps
     return <span className="size-6">{icon}</span>;
   }, []);
 
-  const primaryItems = navigation?.primary ?? [];
-  const secondaryItems = navigation?.secondary ?? [];
+  // Wrap `?? []` fallbacks in useMemo so empty-array references stay
+  // stable when navigation hasn't loaded; otherwise the downstream
+  // useMemo at L53 thrashes (its deps change every render).
+  const primaryItems = useMemo(() => navigation?.primary ?? [], [navigation?.primary]);
+  const secondaryItems = useMemo(() => navigation?.secondary ?? [], [navigation?.secondary]);
   const addonItems = navigation?.addons ?? [];
 
   const baseItems = useMemo(
