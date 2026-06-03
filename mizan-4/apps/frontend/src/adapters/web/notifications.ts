@@ -16,8 +16,12 @@ export const listNotifications = async (_limit?: number): Promise<NotificationsP
 });
 
 export const notificationsUnreadCount = async (): Promise<number> => 0;
-export const markNotificationRead = async (_id: string): Promise<void> => {};
-export const dismissNotification = async (_id: string): Promise<void> => {};
+export const markNotificationRead = async (_id: string): Promise<void> => {
+  /* web stub — no local DB to write to (see file header) */
+};
+export const dismissNotification = async (_id: string): Promise<void> => {
+  /* web stub — no local DB to write to (see file header) */
+};
 export const markAllNotificationsRead = async (): Promise<number> => 0;
 
 export type { Notification, NotificationsPage } from "../types-notifications";

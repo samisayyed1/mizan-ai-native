@@ -41,7 +41,9 @@ interface ContributionLimitFormProps {
 
 export function ContributionLimitForm({
   defaultValues,
-  onSuccess = () => {},
+  onSuccess = () => {
+    /* default: caller doesn't need a post-success hook */
+  },
 }: ContributionLimitFormProps) {
   const { addContributionLimitMutation, updateContributionLimitMutation } =
     useContributionLimitMutations();

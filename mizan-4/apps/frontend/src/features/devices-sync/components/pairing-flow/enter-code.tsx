@@ -108,7 +108,9 @@ export function EnterCode({ onSubmit, onCancel, isLoading, error }: EnterCodePro
       if (!errorStr.includes("cancel")) {
         try {
           const { cancel } = await import("@tauri-apps/plugin-barcode-scanner");
-          await cancel().catch(() => {});
+          await cancel().catch(() => {
+            /* best-effort cleanup */
+          });
         } catch {
           // Ignore
         }
