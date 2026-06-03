@@ -25,11 +25,18 @@ interface CsvMappingEditorProps {
 }
 
 export function CsvMappingEditor(props: CsvMappingEditorProps) {
+  // Destructure props at the top so the useMemo dep lists can reference
+  // stable local bindings (the eslint rule can't narrow `props.x` to
+  // individual props, so it asks for the parent `props` — which would
+  // re-run every memo on every render). Per ADR-conformant React pattern.
+  const { data, getMappedValue, mapping, headers, accounts } = props;
+  const { activityMappings, symbolMappings, accountMappings } = mapping;
+
   const distinctSymbols = useMemo(() => {
     return Array.from(
-      new Set(props.data.map((row) => props.getMappedValue(row, ImportFormat.SYMBOL))),
+      new Set(data.map((row) => getMappedValue(row, ImportFormat.SYMBOL))),
     ).filter(Boolean);
-  }, [props.data, props.getMappedValue]);
+  }, [data, getMappedValue]);
 
   const invalidSymbols = useMemo(() => {
     return distinctSymbols.filter((symbol) => !validateTickerSymbol(symbol));
@@ -40,8 +47,8 @@ export function CsvMappingEditor(props: CsvMappingEditorProps) {
 
     let total = 0;
 
-    props.data.forEach((row) => {
-      const csvType = props.getMappedValue(row, ImportFormat.ACTIVITY_TYPE);
+    data.forEach((row) => {
+      const csvType = getMappedValue(row, ImportFormat.ACTIVITY_TYPE);
       if (!activityTypeMap.has(csvType)) {
         activityTypeMap.set(csvType, {
           row,
@@ -58,21 +65,21 @@ export function CsvMappingEditor(props: CsvMappingEditorProps) {
     });
 
     return {
-      distinctActivityTypes: Array.from(activityTypeMap.entries()).map(([type, data]) => ({
+      distinctActivityTypes: Array.from(activityTypeMap.entries()).map(([type, d]) => ({
         csvType: type,
-        row: data.row,
-        count: data.count,
-        appType: findMappedActivityType(type, props.mapping.activityMappings),
+        row: d.row,
+        count: d.count,
+        appType: findMappedActivityType(type, activityMappings),
       })),
       totalRows: total,
     };
-  }, [props.data, props.getMappedValue, props.mapping.activityMappings]);
+  }, [data, getMappedValue, activityMappings]);
 
   const { distinctSymbolRows } = useMemo(() => {
     const symbolMap = new Map<string, { row: CsvRowData; count: number }>();
 
-    props.data.forEach((row) => {
-      const symbol = props.getMappedValue(row, ImportFormat.SYMBOL);
+    data.forEach((row) => {
+      const symbol = getMappedValue(row, ImportFormat.SYMBOL);
       if (!symbol) return;
 
       if (!symbolMap.has(symbol)) {
@@ -90,31 +97,31 @@ export function CsvMappingEditor(props: CsvMappingEditorProps) {
     });
 
     return {
-      distinctSymbolRows: Array.from(symbolMap.entries()).map(([symbol, data]) => ({
+      distinctSymbolRows: Array.from(symbolMap.entries()).map(([symbol, d]) => ({
         symbol,
-        row: data.row,
-        count: data.count,
+        row: d.row,
+        count: d.count,
         isValid: !invalidSymbols.includes(symbol),
-        mappedSymbol: props.mapping.symbolMappings[symbol],
+        mappedSymbol: symbolMappings[symbol],
       })),
     };
-  }, [props.data, props.getMappedValue, invalidSymbols, props.mapping.symbolMappings]);
+  }, [data, getMappedValue, invalidSymbols, symbolMappings]);
 
   const distinctAccounts = useMemo(() => {
     return Array.from(
-      new Set(props.data.map((row) => props.getMappedValue(row, ImportFormat.ACCOUNT))),
+      new Set(data.map((row) => getMappedValue(row, ImportFormat.ACCOUNT))),
     ).filter(Boolean);
-  }, [props.data, props.getMappedValue]);
+  }, [data, getMappedValue]);
 
   const invalidAccounts = useMemo(() => {
-    return distinctAccounts.filter((account) => !props.mapping.accountMappings?.[account]);
-  }, [distinctAccounts, props.mapping.accountMappings]);
+    return distinctAccounts.filter((account) => !accountMappings?.[account]);
+  }, [distinctAccounts, accountMappings]);
 
   const { distinctAccountRows } = useMemo(() => {
     const accountMap = new Map<string, { row: CsvRowData; count: number }>();
 
-    props.data.forEach((row) => {
-      const account = props.getMappedValue(row, ImportFormat.ACCOUNT);
+    data.forEach((row) => {
+      const account = getMappedValue(row, ImportFormat.ACCOUNT);
       if (!account) return;
 
       if (!accountMap.has(account)) {
@@ -132,15 +139,15 @@ export function CsvMappingEditor(props: CsvMappingEditorProps) {
     });
 
     return {
-      distinctAccountRows: Array.from(accountMap.entries()).map(([account, data]) => ({
+      distinctAccountRows: Array.from(accountMap.entries()).map(([account, d]) => ({
         accountId: account,
-        row: data.row,
-        count: data.count,
+        row: d.row,
+        count: d.count,
         isValid: !invalidAccounts.includes(account),
-        mappedAccount: props.mapping.accountMappings[account],
+        mappedAccount: accountMappings[account],
       })),
     };
-  }, [props.data, props.getMappedValue, invalidAccounts, props.mapping.accountMappings]);
+  }, [data, getMappedValue, invalidAccounts, accountMappings]);
 
   const dataToMap = useMemo(() => {
     // Create a Set of rows that need mapping
@@ -193,17 +200,17 @@ export function CsvMappingEditor(props: CsvMappingEditorProps) {
       // Add header row
       {
         id: 0,
-        content: props.headers.join(","),
+        content: headers.join(","),
         isValid: true,
       },
       // Add data rows
-      ...props.data.map((rowData, index) => ({
+      ...data.map((rowData, index) => ({
         id: index + 1, // Add 1 to account for header row
-        content: props.headers.map((header) => rowData[header] || "").join(","),
+        content: headers.map((header) => rowData[header] || "").join(","),
         isValid: true, // Assume all lines are valid in the raw view
       })),
     ];
-  }, [props.data, props.headers]);
+  }, [data, headers]);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -235,7 +242,7 @@ export function CsvMappingEditor(props: CsvMappingEditorProps) {
             <MappingTable
               {...props}
               data={dataToMap}
-              accounts={props.accounts}
+              accounts={accounts}
               invalidSymbols={invalidSymbols}
               invalidAccounts={invalidAccounts}
               className="max-h-[50vh]"
