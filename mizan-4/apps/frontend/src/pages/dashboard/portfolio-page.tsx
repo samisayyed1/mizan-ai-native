@@ -57,34 +57,43 @@ export default function PortfolioPage() {
   // still run and self-correct via the existing scheduler; the /health
   // route remains accessible for support, just no longer linked from
   // the dashboard chrome.
-  const commonActions = (
-    <>
-      {isFocusMode && (
-        <Button
-          variant="secondary"
-          size="icon-xs"
-          className="bg-secondary/50 rounded-full"
-          onClick={toggleFocusMode}
-        >
-          <Icons.Fullscreen className="size-5" />
-        </Button>
-      )}
-      <PrivacyToggle />
-    </>
+  const commonActions = useMemo(
+    () => (
+      <>
+        {isFocusMode && (
+          <Button
+            variant="secondary"
+            size="icon-xs"
+            className="bg-secondary/50 rounded-full"
+            onClick={toggleFocusMode}
+          >
+            <Icons.Fullscreen className="size-5" />
+          </Button>
+        )}
+        <PrivacyToggle />
+      </>
+    ),
+    [isFocusMode, toggleFocusMode],
   );
 
-  const investmentActions = (
-    <>
-      {commonActions}
-      <DashboardActions />
-    </>
+  const investmentActions = useMemo(
+    () => (
+      <>
+        {commonActions}
+        <DashboardActions />
+      </>
+    ),
+    [commonActions],
   );
 
-  const netWorthActions = (
-    <>
-      {commonActions}
-      <DashboardActions onAddAsset={handleAddAsset} onAddLiability={handleAddLiability} />
-    </>
+  const netWorthActions = useMemo(
+    () => (
+      <>
+        {commonActions}
+        <DashboardActions onAddAsset={handleAddAsset} onAddLiability={handleAddLiability} />
+      </>
+    ),
+    [commonActions, handleAddAsset, handleAddLiability],
   );
 
   const views: SwipablePageView[] = useMemo(

@@ -78,6 +78,8 @@ export function ContributionLimitForm({
     if (contributionYear) {
       updateDatesBasedOnYear(contributionYear);
     }
+    // updateDatesBasedOnYear is a stable closure over `form`; year drives the effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contributionYear]);
 
   function onSubmit(data: NewContributionLimit) {
