@@ -33,6 +33,7 @@ import Balance from "./balance";
 import SavingGoals from "./goals";
 import { AssetClassPanelGrid } from "@/components/asset-class-panels";
 import { NetWorthStrip } from "@/components/dashboard/net-worth-strip";
+import { AiCommandBar } from "@/components/dashboard/ai-command-bar";
 
 const DEFAULT_INTERVAL: UITimePeriod = "3M";
 const INTERVAL_STORAGE_KEY = "dashboard-interval";
@@ -275,6 +276,12 @@ export function DashboardContent() {
         <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-12 md:px-6 md:pb-6 md:pt-6 lg:px-10 lg:pb-8 lg:pt-8">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-20">
             <div className="space-y-6 lg:col-span-2">
+              {/* Track A PR-A6 — AI Command Bar per Goal v3 §V step A6.
+                  Pinned full-width input; submit → /assistant with the
+                  prompt pre-seeded. Voice button routes the user to the
+                  assistant page's existing dictation surface until
+                  PR-C18 wires direct voice transcription on the bar. */}
+              <AiCommandBar />
               {/* Track A PR-A5 — Net Worth Strip per Goal v3 §V step A5.
                   Uses the all-time valuation history so toggling window
                   preset (24h / 7d / 30d / YTD / All) is a pure client
