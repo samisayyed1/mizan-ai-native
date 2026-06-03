@@ -19,7 +19,7 @@
 | A2 | ⏸️ Pending | Net Worth page skeleton refinement (audit existing `mizan-4/apps/frontend/src/pages/net-worth/` against spec §12 requirements: large historical chart, stacked area, Sankey, liabilities, percentile) |
 | A3 | ⏸️ Pending | Shared chart primitives — `components/charts/donut.tsx`, `bar.tsx`, extend existing `heatmap.tsx`, add `sparkline.tsx` |
 | A4 | ⏸️ Pending | Remove pie/radar/polar/3D chart usages (audit + replace with donut/bar per the rule) |
-| A5 | ⏸️ Pending | AI command bar — pinned top, does not collapse on scroll, connects to local dispatcher with optional escalation to `/v1/ai/agent` for Gold+ |
+| A5 | ✅ Done (2026-06-04 as PR-A6 per v3 Goal §V) | AI command bar — pinned sticky-top above the Net Worth strip; submit navigates to `/assistant?intent=command&prompt=<...>`; voice button routes to `/assistant?voice=1`; 4 §23-themed suggestion chips when empty. 9 vitest tests. Local-dispatcher inline path is C-track follow-up (C3.b + C4 series); the surface is live now. |
 | A6 | ✅ Done (2026-06-04 as PR-A5 per v3 Goal §V) | Net Worth Strip — headline + 24h/7d/30d/YTD/All toggle + delta chip + sparkline + tap → /net-worth. 17 vitest tests cover window math + render. |
 | A7 | ⏸️ Pending | Heatmap tile-tap → asset detail (already partly implemented; verify and polish) |
 | A8 | ⏸️ Pending | News strip placeholder (real wiring in Track D) |
