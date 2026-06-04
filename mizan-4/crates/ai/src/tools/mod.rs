@@ -36,6 +36,7 @@ pub mod memory_safety;
 pub mod performance;
 pub mod record_activities;
 pub mod record_activity;
+pub mod scenario_alert_safety;
 pub mod update_account;
 pub mod update_liability;
 pub mod valuation;
