@@ -17,6 +17,7 @@ use mizan_device_sync::{engine::DeviceSyncRuntimeState, DeviceEnrollService};
 use mizan_financial_truth::TruthLedger;
 use mizan_storage_sqlite::{
     daily_brief::SqliteDailyBriefService,
+    hawl::HawlAnchorRepository,
     net_worth_snapshot::SqliteNetWorthSnapshotService,
     notifications::SqliteNotificationService,
     portfolio::snapshot::SnapshotRepository,
@@ -57,6 +58,9 @@ pub struct ServiceContext {
     pub income_service: Arc<dyn portfolio::income::IncomeServiceTrait>,
     pub snapshot_service: Arc<dyn portfolio::snapshot::SnapshotServiceTrait>,
     pub snapshot_repository: Arc<SnapshotRepository>,
+    /// Track C PR-C5.d.1 — read-only access to `hawl_anchors` so the
+    /// insights scheduler can hydrate `ZakatHawlApproaching` candidates.
+    pub hawl_anchor_repository: Arc<HawlAnchorRepository>,
     pub app_sync_repository: Arc<AppSyncRepository>,
     pub holdings_service: Arc<dyn portfolio::holdings::HoldingsServiceTrait>,
     pub allocation_service: Arc<dyn portfolio::allocation::AllocationServiceTrait>,

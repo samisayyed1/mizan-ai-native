@@ -567,6 +567,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    hawl_anchors (user_id, cohort_id) {
+        cohort_id -> Text,
+        user_id -> Text,
+        anchor_date -> Date,
+        current_qualifying_amount -> Text,
+        base_currency -> Text,
+        last_evaluated -> Timestamp,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     notifications (id) {
         id -> Text,
         kind -> Text,
@@ -641,4 +654,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     truth_ledger_entries,
     truth_ledger_retry_queue,
     notifications,
+    hawl_anchors,
 );

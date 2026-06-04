@@ -60,6 +60,7 @@ pub mod custom_provider;
 pub mod daily_brief;
 pub mod fx;
 pub mod goals;
+pub mod hawl;
 pub mod health;
 pub mod limits;
 pub mod market_data;
