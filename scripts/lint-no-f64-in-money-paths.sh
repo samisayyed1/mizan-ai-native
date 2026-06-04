@@ -105,6 +105,11 @@ for dir in "${MONEY_PATHS[@]}"; do
       *"BIG_MOVE_THRESHOLD_PCT"*|*"BIG_MOVE_MIN_VALUE_BASE"*) continue ;;
       *"GOAL_MILESTONES"*|*"NW_DIP_THRESHOLD_PCT"*) continue ;;
       *"CASH_DRAG_PCT_THRESHOLD"*) continue ;;
+      # Track C PR-C5.a (#108) — same Finding 3.1.1 Informational class:
+      # bond-maturity principal floor, FX move % threshold, FX min exposure
+      # base. Comparison thresholds for rule firing, not money sums.
+      *"BOND_MATURITY_MIN_PRINCIPAL_BASE"*) continue ;;
+      *"FX_MATERIAL_MOVE_PCT"*|*"FX_MIN_EXPOSURE_BASE"*) continue ;;
       # The dec_to_f64 conversion helper itself — declaring the boundary.
       *"fn dec_to_f64("*) continue ;;
       # FIRE projection rates (Finding 3.1.3 Minor — Monte-Carlo dominated

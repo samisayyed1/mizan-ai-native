@@ -515,6 +515,14 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
         cash_high_for_days,
         sync_failures,
         dividend_events,
+        // Track C PR-C5.a (#108) added three rule families. The scheduler
+        // hydration for these lands in PR-C5.b alongside the AAOIFI
+        // worker output + bond-maturity reads; until then the empty
+        // vecs make the rules no-op (preserves the per-rule version-
+        // ability documented in crates/insights/src/input.rs §Versionable).
+        bond_maturity_candidates: Vec::new(),
+        fx_pair_moves: Vec::new(),
+        sharia_status_changes: Vec::new(),
     };
 
     let candidates = evaluate(&input);
