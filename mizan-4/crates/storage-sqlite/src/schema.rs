@@ -567,6 +567,27 @@ diesel::table! {
 }
 
 diesel::table! {
+    holdings_metadata (account_id, holding_symbol, as_of_date) {
+        account_id -> Text,
+        holding_symbol -> Text,
+        as_of_date -> Date,
+        origin -> Text,
+        sharia_status -> Nullable<Text>,
+        last_screened_at -> Nullable<Timestamp>,
+        ai_estimated -> Integer,
+        ai_confidence -> Nullable<Text>,
+        ai_value_range_low -> Nullable<Numeric>,
+        ai_value_range_high -> Nullable<Numeric>,
+        tags -> Text,
+        advisor_reviewed_by -> Nullable<Text>,
+        advisor_reviewed_at -> Nullable<Timestamp>,
+        agent_modified_at -> Nullable<Timestamp>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     hawl_anchors (user_id, cohort_id) {
         cohort_id -> Text,
         user_id -> Text,
@@ -655,4 +676,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     truth_ledger_retry_queue,
     notifications,
     hawl_anchors,
+    holdings_metadata,
 );

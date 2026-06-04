@@ -18,6 +18,7 @@ use mizan_financial_truth::TruthLedger;
 use mizan_storage_sqlite::{
     daily_brief::SqliteDailyBriefService,
     hawl::HawlAnchorRepository,
+    holdings_metadata::HoldingsMetadataRepository,
     net_worth_snapshot::SqliteNetWorthSnapshotService,
     notifications::SqliteNotificationService,
     portfolio::snapshot::SnapshotRepository,
@@ -61,6 +62,10 @@ pub struct ServiceContext {
     /// Track C PR-C5.d.1 — read-only access to `hawl_anchors` so the
     /// insights scheduler can hydrate `ZakatHawlApproaching` candidates.
     pub hawl_anchor_repository: Arc<HawlAnchorRepository>,
+    /// Track C PR-C5.d.5 — read-only access to `holdings_metadata` so
+    /// the insights scheduler can detect AAOIFI screening flips for
+    /// the `ShariaStatusChanged` rule.
+    pub holdings_metadata_repository: Arc<HoldingsMetadataRepository>,
     pub app_sync_repository: Arc<AppSyncRepository>,
     pub holdings_service: Arc<dyn portfolio::holdings::HoldingsServiceTrait>,
     pub allocation_service: Arc<dyn portfolio::allocation::AllocationServiceTrait>,

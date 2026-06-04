@@ -117,6 +117,10 @@ pub async fn initialize_context(
     let hawl_anchor_repository = Arc::new(mizan_storage_sqlite::hawl::HawlAnchorRepository::new(
         pool.clone(),
     ));
+    // Track C PR-C5.d.5 — read-only; AAOIFI screening worker writes
+    let holdings_metadata_repository = Arc::new(
+        mizan_storage_sqlite::holdings_metadata::HoldingsMetadataRepository::new(pool.clone()),
+    );
     let app_sync_repository = Arc::new(AppSyncRepository::new(pool.clone(), writer.clone()));
     let valuation_repository = Arc::new(ValuationRepository::new(pool.clone(), writer.clone()));
     let platform_repository = Arc::new(PlatformRepository::new(pool.clone(), writer.clone()));
@@ -427,6 +431,7 @@ pub async fn initialize_context(
             snapshot_service,
             snapshot_repository,
             hawl_anchor_repository,
+            holdings_metadata_repository,
             app_sync_repository,
             holdings_service,
             allocation_service,
