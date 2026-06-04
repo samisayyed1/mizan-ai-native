@@ -31,9 +31,11 @@
 //! rejected at the dispatcher boundary; the violation is logged to
 //! `mcp_call_log` so support can analyse patterns.
 
+pub mod egress_dlp;
 pub mod sandbox;
 pub mod types;
 
+pub use egress_dlp::{has_findings, scan_payload, DlpCategory, DlpFinding};
 pub use sandbox::{classify_tool_permission, is_financial_truth_table, ToolPermission};
 pub use types::{
     McpCallLogEntry, McpError, McpServer, McpServerRegistration, McpToolInvocation, McpTrustLevel,
