@@ -511,6 +511,9 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
     let bond_maturity_candidates =
         hydrate_bond_maturity_candidates(context, &base_currency, today).await;
 
+    // ── 9) FxMovedMaterially — per-pair window deltas vs user exposure ──
+    let fx_pair_moves = hydrate_fx_pair_moves(context, &base_currency).await;
+
     let input = InsightsInput {
         today: Some(today),
         base_currency,
@@ -530,9 +533,12 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
         // BondMaturityCandidate. Engine filters against
         // BOND_MATURITY_DAY_THRESHOLDS (90/30/7/1).
         bond_maturity_candidates,
-        // PR-C5.d.4+ will hydrate FX moves + Sharia status flips from
-        // the AAOIFI worker output + FX history table.
-        fx_pair_moves: Vec::new(),
+        // Track C PR-C5.d.4 — hydrate FX-pair moves over a configurable
+        // window per user-exposure pair. Engine filters against
+        // FX_MATERIAL_MOVE_PCT + FX_MIN_EXPOSURE_BASE in PR-C5.a.
+        fx_pair_moves,
+        // PR-C5.d.5 will hydrate Sharia status flips from the AAOIFI
+        // worker output (PR-E4). Until then the rule no-ops.
         sharia_status_changes: Vec::new(),
         // Track C PR-C5.d.1 — hydrate Hawl approaching candidates from
         // the hawl_anchors table (PR-F1 migration). Grace window 90
@@ -1264,6 +1270,132 @@ fn rollup_concentration_findings(
     out
 }
 
+/// Track C PR-C5.d.4 — hydrate `InsightsInput.fx_pair_moves` from
+/// per-pair holdings exposure + FX history.
+///
+/// For each pair `(from, base_currency)` where the user has material
+/// non-base-currency exposure across holdings, compute the
+/// `change_pct` over `FX_HYDRATE_WINDOW_DAYS` using
+/// `fx_service.get_historical_rates`, and emit one `FxPairMove`.
+///
+/// Engine filters against `FX_MATERIAL_MOVE_PCT` + `FX_MIN_EXPOSURE_BASE`
+/// in `eval_fx_moved`, so scheduler doesn't pre-filter — emit all
+/// pairs with non-zero exposure + a valid history pair.
+///
+/// Errors degrade silently (empty Vec).
+async fn hydrate_fx_pair_moves(
+    context: &std::sync::Arc<ServiceContext>,
+    base_currency: &str,
+) -> Vec<mizan_insights::FxPairMove> {
+    use log::debug;
+    use mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID;
+
+    /// 30-day window — matches the typical FX-rate dashboard horizon and
+    /// the eval rule's calibration ("USD/INR strengthened 4% over 30 days").
+    const FX_HYDRATE_WINDOW_DAYS: u32 = 30;
+
+    let holdings = match context
+        .holdings_service()
+        .get_holdings(PORTFOLIO_TOTAL_ACCOUNT_ID, base_currency)
+        .await
+    {
+        Ok(h) => h,
+        Err(e) => {
+            debug!("Insights/FxMoved: get_holdings failed: {e} — skipping rule");
+            return Vec::new();
+        }
+    };
+
+    // Per-currency base-exposure rollup. Only non-base currencies
+    // are eligible — the user has no FX risk on holdings already in
+    // their base currency.
+    let exposures = exposure_by_currency(&holdings, base_currency);
+    if exposures.is_empty() {
+        return Vec::new();
+    }
+
+    let fx = context.fx_service();
+    let mut out = Vec::with_capacity(exposures.len());
+    for (currency, exposure) in exposures {
+        let history = match fx.get_historical_rates(
+            &currency,
+            base_currency,
+            FX_HYDRATE_WINDOW_DAYS as i64,
+        ) {
+            Ok(h) => h,
+            Err(e) => {
+                debug!(
+                    "Insights/FxMoved: get_historical_rates({currency}→{base_currency}) failed: {e} — skipping pair"
+                );
+                continue;
+            }
+        };
+        let Some(change_pct) = fx_change_pct(&history) else {
+            continue;
+        };
+        out.push(mizan_insights::FxPairMove {
+            from_currency: currency,
+            to_currency: base_currency.to_string(),
+            window_days: FX_HYDRATE_WINDOW_DAYS,
+            change_pct,
+            exposure_base: exposure,
+        });
+    }
+    out
+}
+
+/// Pure-math helper for `hydrate_fx_pair_moves` — sums each holding's
+/// base-currency value into its `instrument.currency` bucket, excluding
+/// base-currency holdings (zero FX exposure).
+fn exposure_by_currency(
+    holdings: &[mizan_core::portfolio::holdings::Holding],
+    base_currency: &str,
+) -> Vec<(String, rust_decimal::Decimal)> {
+    use rust_decimal::Decimal;
+    use std::collections::HashMap;
+
+    let mut by_currency: HashMap<String, Decimal> = HashMap::new();
+    for h in holdings {
+        let value = h.market_value.base;
+        if value <= Decimal::ZERO {
+            continue;
+        }
+        let currency = h
+            .instrument
+            .as_ref()
+            .map(|i| i.currency.as_str())
+            .unwrap_or(base_currency);
+        if currency.is_empty() || currency.eq_ignore_ascii_case(base_currency) {
+            continue;
+        }
+        *by_currency
+            .entry(currency.to_uppercase())
+            .or_insert(Decimal::ZERO) += value;
+    }
+    by_currency.into_iter().collect()
+}
+
+/// Pure-math helper: computes the change percentage between the
+/// oldest and newest exchange-rate samples in the supplied vec.
+/// Returns None when fewer than 2 samples or when the older rate is
+/// non-positive (would divide by zero).
+fn fx_change_pct(history: &[mizan_core::fx::ExchangeRate]) -> Option<rust_decimal::Decimal> {
+    use rust_decimal::Decimal;
+
+    if history.len() < 2 {
+        return None;
+    }
+    // Sort by timestamp so we don't depend on the service's ordering.
+    let mut sorted: Vec<&mizan_core::fx::ExchangeRate> = history.iter().collect();
+    sorted.sort_by_key(|r| r.timestamp);
+    let oldest = sorted.first()?.rate;
+    let newest = sorted.last()?.rate;
+    if oldest <= Decimal::ZERO {
+        return None;
+    }
+    Some((newest - oldest) / oldest)
+}
+
 /// Track C PR-C5.d.3 — hydrate `InsightsInput.bond_maturity_candidates`
 /// from the user's bond/sukuk holdings.
 ///
@@ -1504,6 +1636,173 @@ mod hawl_label_tests {
     #[test]
     fn empty_string_safe() {
         assert_eq!(pretty_cohort_label(""), "");
+    }
+}
+
+#[cfg(test)]
+mod fx_move_tests {
+    use super::{exposure_by_currency, fx_change_pct};
+    use chrono::{Duration, Utc};
+    use mizan_core::fx::ExchangeRate;
+    use mizan_core::portfolio::holdings::{Holding, HoldingType, Instrument, MonetaryValue};
+    use rust_decimal::Decimal;
+
+    fn dec_str(s: &str) -> Decimal {
+        s.parse::<Decimal>().unwrap()
+    }
+
+    fn make_holding(currency: &str, base_value: Decimal) -> Holding {
+        Holding {
+            id: format!("h_{currency}"),
+            account_id: "acc-1".into(),
+            holding_type: HoldingType::Security,
+            instrument: Some(Instrument {
+                id: format!("i_{currency}"),
+                symbol: format!("SYM_{currency}"),
+                name: None,
+                currency: currency.into(),
+                notes: None,
+                pricing_mode: "MARKET".into(),
+                preferred_provider: None,
+                exchange_mic: None,
+                classifications: None,
+            }),
+            asset_kind: None,
+            quantity: dec_str("1"),
+            contract_multiplier: dec_str("1"),
+            local_currency: currency.into(),
+            base_currency: "USD".into(),
+            market_value: MonetaryValue {
+                local: base_value,
+                base: base_value,
+            },
+            cost_basis: None,
+            fx_rate: None,
+            open_date: None,
+            lots: None,
+            price: None,
+            purchase_price: None,
+            unrealized_gain: None,
+            unrealized_gain_pct: None,
+            realized_gain: None,
+            realized_gain_pct: None,
+            dividend_income: None,
+            total_gain: None,
+            total_gain_pct: None,
+            day_change: None,
+            day_change_pct: None,
+            prev_close_value: None,
+            weight: dec_str("0"),
+            as_of_date: chrono::NaiveDate::from_ymd_opt(2026, 6, 4).unwrap(),
+            metadata: None,
+        }
+    }
+
+    fn rate(from: &str, to: &str, value: Decimal, days_ago: i64) -> ExchangeRate {
+        ExchangeRate {
+            id: format!("{from}-{to}-{days_ago}"),
+            from_currency: from.into(),
+            to_currency: to.into(),
+            rate: value,
+            source: "test".into(),
+            timestamp: Utc::now() - Duration::days(days_ago),
+        }
+    }
+
+    #[test]
+    fn exposure_excludes_base_currency_holdings() {
+        let holdings = vec![
+            make_holding("USD", dec_str("100000")),
+            make_holding("INR", dec_str("50000")),
+            make_holding("SGD", dec_str("75000")),
+        ];
+        let mut out = exposure_by_currency(&holdings, "USD");
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].0, "INR");
+        assert_eq!(out[0].1, dec_str("50000"));
+        assert_eq!(out[1].0, "SGD");
+        assert_eq!(out[1].1, dec_str("75000"));
+    }
+
+    #[test]
+    fn exposure_currency_is_case_insensitive_match() {
+        // Holding currency `usd` should still be classified as base.
+        let holdings = vec![make_holding("usd", dec_str("100000"))];
+        assert!(exposure_by_currency(&holdings, "USD").is_empty());
+    }
+
+    #[test]
+    fn exposure_aggregates_same_currency_holdings() {
+        let holdings = vec![
+            make_holding("INR", dec_str("30000")),
+            make_holding("INR", dec_str("20000")),
+        ];
+        let out = exposure_by_currency(&holdings, "USD");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, "INR");
+        assert_eq!(out[0].1, dec_str("50000"));
+    }
+
+    #[test]
+    fn exposure_skips_zero_and_negative_values() {
+        let holdings = vec![
+            make_holding("INR", dec_str("0")),
+            make_holding("SGD", dec_str("-100")),
+            make_holding("EUR", dec_str("1000")),
+        ];
+        let out = exposure_by_currency(&holdings, "USD");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, "EUR");
+    }
+
+    #[test]
+    fn fx_change_pct_two_samples_returns_delta_over_oldest() {
+        // newest=84, oldest=80 → +0.05 (5% strengthening)
+        let history = vec![
+            rate("USD", "INR", dec_str("80"), 30),
+            rate("USD", "INR", dec_str("84"), 0),
+        ];
+        let pct = fx_change_pct(&history).unwrap();
+        assert_eq!(pct, dec_str("0.05"));
+    }
+
+    #[test]
+    fn fx_change_pct_handles_reverse_input_order() {
+        // Caller may supply unsorted; helper sorts by timestamp.
+        let history = vec![
+            rate("USD", "INR", dec_str("84"), 0),
+            rate("USD", "INR", dec_str("80"), 30),
+        ];
+        let pct = fx_change_pct(&history).unwrap();
+        assert_eq!(pct, dec_str("0.05"));
+    }
+
+    #[test]
+    fn fx_change_pct_returns_none_with_fewer_than_two_samples() {
+        assert!(fx_change_pct(&[]).is_none());
+        let single = vec![rate("USD", "INR", dec_str("82"), 0)];
+        assert!(fx_change_pct(&single).is_none());
+    }
+
+    #[test]
+    fn fx_change_pct_returns_none_on_zero_oldest_rate() {
+        let history = vec![
+            rate("USD", "INR", dec_str("0"), 30),
+            rate("USD", "INR", dec_str("84"), 0),
+        ];
+        assert!(fx_change_pct(&history).is_none());
+    }
+
+    #[test]
+    fn fx_change_pct_negative_when_weakening() {
+        // newest=72, oldest=80 → -0.10
+        let history = vec![
+            rate("USD", "INR", dec_str("80"), 30),
+            rate("USD", "INR", dec_str("72"), 0),
+        ];
+        let pct = fx_change_pct(&history).unwrap();
+        assert_eq!(pct, dec_str("-0.10"));
     }
 }
 
