@@ -10,7 +10,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::sync::Arc;
 
-use super::model::{ZakatInputs, ZakatReport};
+use super::model::{School, ZakatInputs, ZakatReport};
 use super::traits::ZakatServiceTrait;
 // Track H PR-H3.b note: the engine currently consumes mizan-core's AssetKind
 // and HoldingType. mizan-domain-types declares duplicates per ADR 0003 but
@@ -43,7 +43,17 @@ impl ZakatService {
 /// Stateless math entry — exposed for unit tests and the assistant tool.
 /// Negative `net_zakat_base` (user is net-indebted) collapses to zero Zakat
 /// regardless of whether assets cross Nisab.
+///
+/// # School branching (PR-F2)
+///
+/// `inputs.school` selects the school of jurisprudence. The Hanafi
+/// math today is shared by all four schools at the arithmetic level;
+/// what differs is the `notes` array on the result so the audit trail
+/// records which school produced the number. School-specific MATH
+/// (Maliki real-estate intent + Hanbali debt deduction) lands in
+/// PR-F2.b/c.
 pub fn assess(inputs: ZakatInputs) -> ZakatReport {
+    let school = inputs.school;
     let total_assets = inputs.liquid_cash + inputs.precious_metals + inputs.tradable_assets;
     let net_base = total_assets - inputs.short_term_debts;
     let above = net_base >= inputs.nisab && net_base > Decimal::ZERO;
@@ -53,6 +63,8 @@ pub fn assess(inputs: ZakatInputs) -> ZakatReport {
         Decimal::ZERO
     };
 
+    let notes = vec![DEFAULT_NOTE.to_string(), school.school_note().to_string()];
+
     ZakatReport {
         total_assessable_assets: total_assets,
         deductible_debts: inputs.short_term_debts,
@@ -61,8 +73,18 @@ pub fn assess(inputs: ZakatInputs) -> ZakatReport {
         is_above_nisab: above,
         zakat_due: due,
         currency: inputs.currency,
-        notes: vec![DEFAULT_NOTE.to_string()],
+        notes,
+        school,
     }
+}
+
+/// Assess Zakat against an explicit school selector. Convenience wrapper
+/// around `assess` that constructs the inputs with the school filled in.
+/// Used by the desktop's `compute_zakat` Tauri command + the AI agent's
+/// `compute_zakat` tool (PR-C12.b).
+pub fn assess_for_school(mut inputs: ZakatInputs, school: School) -> ZakatReport {
+    inputs.school = school;
+    assess(inputs)
 }
 
 #[async_trait]
@@ -133,6 +155,7 @@ impl ZakatServiceTrait for ZakatService {
             short_term_debts,
             nisab,
             currency: Some(base_currency.to_string()),
+            school: School::default(),
         });
         // Add a portfolio-specific note clarifying what was excluded.
         report.notes.push(
@@ -240,6 +263,7 @@ mod tests {
             short_term_debts: Decimal::from(debts),
             nisab: Decimal::from(nisab),
             currency: Some("USD".to_string()),
+            school: School::default(),
         }
     }
 
@@ -304,6 +328,7 @@ mod tests {
             short_term_debts: Decimal::ZERO,
             nisab: dec!(5_000),
             currency: Some("USD".to_string()),
+            school: School::default(),
         });
         assert_eq!(r.zakat_due, dec!(194.444250));
     }
@@ -423,5 +448,118 @@ mod tests {
         assert_eq!(report.deductible_debts, dec!(7_000));
         assert_eq!(report.net_zakat_base, dec!(13_000));
         assert_eq!(report.zakat_due, dec!(325)); // 2.5% × 13k
+    }
+
+    // ─── PR-F2: School enum + per-school branching ────────────────
+
+    #[test]
+    fn school_default_is_hanafi() {
+        assert_eq!(School::default(), School::Hanafi);
+    }
+
+    #[test]
+    fn school_parse_canonical_names() {
+        assert_eq!(School::parse("hanafi"), Some(School::Hanafi));
+        assert_eq!(School::parse("Hanafi"), Some(School::Hanafi));
+        assert_eq!(School::parse("  HANAFI  "), Some(School::Hanafi));
+        assert_eq!(School::parse("shafii"), Some(School::Shafii));
+        assert_eq!(School::parse("shafi'i"), Some(School::Shafii));
+        assert_eq!(School::parse("shafi-i"), Some(School::Shafii));
+        assert_eq!(School::parse("shafi"), Some(School::Shafii));
+        assert_eq!(School::parse("maliki"), Some(School::Maliki));
+        assert_eq!(School::parse("hanbali"), Some(School::Hanbali));
+    }
+
+    #[test]
+    fn school_parse_unknown_returns_none() {
+        assert_eq!(School::parse("zaydi"), None);
+        assert_eq!(School::parse(""), None);
+        assert_eq!(School::parse("ibadi"), None);
+    }
+
+    #[test]
+    fn school_labels_match_canonical_spelling() {
+        assert_eq!(School::Hanafi.label(), "Hanafi");
+        assert_eq!(School::Shafii.label(), "Shafi'i");
+        assert_eq!(School::Maliki.label(), "Maliki");
+        assert_eq!(School::Hanbali.label(), "Hanbali");
+    }
+
+    #[test]
+    fn school_notes_reference_relevant_adr() {
+        assert!(
+            School::Maliki.school_note().contains("ADR 0015"),
+            "Maliki note must cite ADR 0015 so the audit trail surfaces the source"
+        );
+        assert!(
+            School::Hanbali.school_note().contains("ADR 0016"),
+            "Hanbali note must cite ADR 0016"
+        );
+        assert!(School::Hanafi.school_note().contains("Hanafi"));
+        assert!(School::Shafii.school_note().contains("Shafi"));
+    }
+
+    #[test]
+    fn assess_includes_school_note_in_report() {
+        let r = assess(ZakatInputs {
+            school: School::Maliki,
+            ..inputs(100_000, 0, 0, 0, 5_000)
+        });
+        assert_eq!(r.school, School::Maliki);
+        // Notes must include both the universal disclaimer AND the school-specific note
+        assert!(r.notes.len() >= 2);
+        assert!(r.notes[0].contains("imam"));
+        assert!(
+            r.notes.iter().any(|n| n.contains("Maliki")),
+            "Expected a Maliki-specific note in {:?}",
+            r.notes
+        );
+    }
+
+    #[test]
+    fn assess_for_school_overrides_inputs_school() {
+        let inputs_hanafi = ZakatInputs {
+            school: School::Hanafi,
+            ..inputs(100_000, 0, 0, 0, 5_000)
+        };
+        let r = assess_for_school(inputs_hanafi, School::Hanbali);
+        assert_eq!(r.school, School::Hanbali);
+        assert!(r.notes.iter().any(|n| n.contains("Hanbali")));
+    }
+
+    #[test]
+    fn all_four_schools_produce_same_arithmetic_today() {
+        // PR-F2 ships the enum + branching plumbing; PR-F2.b/c will
+        // diverge the math. Until then all four schools must produce
+        // the same number for the same inputs — this test pins that
+        // invariant so PR-F2.b/c will deliberately break it.
+        let base = inputs(100_000, 0, 0, 0, 5_000);
+        let r_hanafi = assess_for_school(base.clone(), School::Hanafi);
+        let r_shafii = assess_for_school(base.clone(), School::Shafii);
+        let r_maliki = assess_for_school(base.clone(), School::Maliki);
+        let r_hanbali = assess_for_school(base, School::Hanbali);
+        assert_eq!(r_hanafi.zakat_due, r_shafii.zakat_due);
+        assert_eq!(r_hanafi.zakat_due, r_maliki.zakat_due);
+        assert_eq!(r_hanafi.zakat_due, r_hanbali.zakat_due);
+        // But the school field + notes differ — audit trail discriminator.
+        assert_ne!(r_hanafi.school, r_maliki.school);
+        assert_ne!(r_hanafi.notes, r_maliki.notes);
+    }
+
+    #[test]
+    fn school_serializes_lowercase() {
+        let json = serde_json::to_string(&School::Maliki).expect("ok");
+        assert_eq!(json, "\"maliki\"");
+        let parsed: School = serde_json::from_str("\"hanbali\"").expect("ok");
+        assert_eq!(parsed, School::Hanbali);
+    }
+
+    #[test]
+    fn school_deserialize_accepts_shafii_aliases() {
+        // Per #[serde(alias)] on the variant
+        let parsed: School = serde_json::from_str("\"shafi-i\"").expect("ok");
+        assert_eq!(parsed, School::Shafii);
+        let parsed: School = serde_json::from_str("\"shafi'i\"").expect("ok");
+        assert_eq!(parsed, School::Shafii);
     }
 }
