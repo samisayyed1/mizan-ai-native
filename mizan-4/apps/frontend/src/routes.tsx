@@ -23,6 +23,7 @@ import ZakatPage from "@/pages/zakat/zakat-page";
 import HoldingsPage from "@/pages/holdings/holdings-page";
 import BankCashPanelPage from "@/pages/panels/bank-cash/bank-cash-panel";
 import EquitiesPanelPage from "@/pages/panels/equities/equities-panel";
+import RealEstatePanelPage from "@/pages/panels/real-estate/real-estate-panel";
 import SukuksPanelPage from "@/pages/panels/sukuks/sukuks-panel";
 import IncomePage from "@/pages/income/income-page";
 import NewsPage from "@/pages/news/news-page";
@@ -110,6 +111,8 @@ export function AppRoutes() {
               <Route path="panels/equities" element={<EquitiesPanelPage />} />
               {/* Track B PR-B3 — Bank & Cash panel (country/currency donut). */}
               <Route path="panels/bank-cash" element={<BankCashPanelPage />} />
+              {/* Track B PR-B11 — Real Estate panel (intent donut + per-property bar). */}
+              <Route path="panels/real-estate" element={<RealEstatePanelPage />} />
               <Route path="news" element={<NewsPage />} />
               <Route path="holdings-insights" element={<HoldingsInsightsPage />} />
               <Route path="holdings/:assetId" element={<AssetProfilePage />} />

@@ -26,7 +26,7 @@
 | B9 | ⏸️ Pending | Provident Funds panel (CPF/EPF/401k/NPS/Super) + nested holdings UX |
 | B10 | ⏸️ Pending | Insurance panel — investment-linked + pure protection split |
 | B11 | ⏸️ Pending | Private Equity panel — vintage bar + J-curve projection |
-| B12 | ⏸️ Pending | Real Estate panel + AI estimation pipeline + `'ai-estimated'` badge wiring |
+| B12 | ✅ Done (2026-06-04 as PR-B11 per Goal v3 §V Phase 5 — frontend panel slice; AI estimation pipeline + ai-estimated badge wiring track separately as PR-B11.b) | Real Estate panel. New `apps/frontend/src/pages/panels/real-estate/` with `rollup.ts` pure-math helpers (`isRealEstateHolding` predicate on `assetKind==='PROPERTY'`, `rollupByIntent` mapping `metadata.property.propertyType` to Residence/Rental/Land/Commercial/Other, `rollupByProperty` for per-property bars, `totalRealEstateExposure`) + `real-estate-panel.tsx` page (header + intent donut + per-property bar + properties list, tap-row → holding detail). Route `/panels/real-estate` + descriptor wired. **16 unit tests** including the §23 anchor fixture (Bukit Batok residence + 3 Hyderabad rentals + 1 Hyderabad held-for-sale = $1.65M / 5 properties), case-insensitive propertyType, missing-metadata Other fallback, non-property reject, same-symbol distinct-property pin, holdingId nav preservation. Frontend vitest 963/963 (was 947; +16); lint 0 errors / 399 warnings unchanged; tsc clean. |
 | B13 | ⏸️ Pending | Crypto panel — CCXT + chain reader (read-only scope enforced at validation) |
 | B14 | ⏸️ Pending | Commodities panel — donut with MetalpriceAPI feed |
 | B15 | ⏸️ Pending | Collectibles panel + AI estimation pipeline |
