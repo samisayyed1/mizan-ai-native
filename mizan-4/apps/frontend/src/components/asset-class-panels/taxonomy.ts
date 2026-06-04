@@ -81,7 +81,10 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "bonds-sukuks",
     label: "Bonds & Sukuks",
     iconKey: "Coins",
-    holdingsHref: "/holdings?panel=bonds-sukuks",
+    // Track B PR-B1 — dedicated panel page (§23 anchor surface).
+    // Other panels stay on the holdings-page filter route until
+    // PR-B2..B7 ship their dedicated surfaces.
+    holdingsHref: "/panels/sukuks",
   },
   {
     id: "provident-funds",

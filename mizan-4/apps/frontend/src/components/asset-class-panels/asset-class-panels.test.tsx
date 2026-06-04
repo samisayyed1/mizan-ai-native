@@ -92,9 +92,13 @@ describe("ASSET_CLASS_PANELS", () => {
     ]);
   });
 
-  it("every panel has a navigable holdings href", () => {
+  it("every panel has a navigable href", () => {
+    // Accepts either the dedicated /panels/<id> route (shipped one
+    // panel at a time by Track B PR-B1..B7) or the fallback
+    // /holdings?panel=<id> filter route used by panels whose
+    // dedicated page hasn't shipped yet.
     for (const panel of ASSET_CLASS_PANELS) {
-      expect(panel.holdingsHref).toMatch(/^\/holdings\?panel=/);
+      expect(panel.holdingsHref).toMatch(/^\/(panels|holdings)/);
     }
   });
 });
@@ -266,7 +270,7 @@ describe("<AssetClassPanelGrid />", () => {
       </MemoryRouter>,
     );
     const sukuks = screen.getByLabelText("Open Bonds & Sukuks panel");
-    expect(sukuks).toHaveAttribute("href", "/holdings?panel=bonds-sukuks");
+    expect(sukuks).toHaveAttribute("href", "/panels/sukuks");
   });
 
   it("hides absolute values in privacy mode but keeps holdings count", () => {
