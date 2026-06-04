@@ -68,6 +68,7 @@ fn kind_to_str(k: LedgerEntryKind) -> &'static str {
         LedgerEntryKind::GoalCreated => "goal_created",
         LedgerEntryKind::FxRateObserved => "fx_rate_observed",
         LedgerEntryKind::QuoteObserved => "quote_observed",
+        LedgerEntryKind::ZakatComputed => "zakat_computed",
     }
 }
 
@@ -84,6 +85,7 @@ fn kind_from_str(s: &str) -> Option<LedgerEntryKind> {
         "goal_created" => LedgerEntryKind::GoalCreated,
         "fx_rate_observed" => LedgerEntryKind::FxRateObserved,
         "quote_observed" => LedgerEntryKind::QuoteObserved,
+        "zakat_computed" => LedgerEntryKind::ZakatComputed,
         _ => return None,
     })
 }

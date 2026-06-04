@@ -45,12 +45,14 @@
 
 mod model;
 mod service;
+mod zakat_helper;
 
 pub use model::{
     canonical_payload, derive_entry_hash, LedgerEntry, LedgerEntryKind, LedgerIntegrityError,
     GENESIS_PREV_HASH,
 };
 pub use service::{AppendInput, TruthLedger, TruthLedgerRetryQueue};
+pub use zakat_helper::{build_zakat_append_input, ZakatLedgerInputs};
 
 #[cfg(any(test, feature = "test-utils"))]
 pub use service::InMemoryTruthLedger;
