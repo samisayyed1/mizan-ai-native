@@ -117,6 +117,71 @@ fn extract_property_intent(
     PropertyIntent::Unknown
 }
 
+/// Read `metadata.liability.kind` from a Holding's metadata JSON.
+/// Returns [`DebtKind::ShortTerm`] as the default — that's the
+/// conservative direction (most liabilities the user adds are
+/// near-term obligations they intend to pay).
+///
+/// PR-F2.c.1: only consulted for Liability-kind holdings under Hanbali
+/// when computing the long-term mortgage deduction.
+fn extract_debt_kind(
+    h: &mizan_core::portfolio::holdings::holdings_model::Holding,
+) -> super::hanbali_rules::DebtKind {
+    use super::hanbali_rules::DebtKind;
+    let Some(meta) = h.metadata.as_ref() else {
+        return DebtKind::ShortTerm;
+    };
+    if let Some(kind) = meta
+        .get("liability")
+        .and_then(|l| l.get("kind"))
+        .and_then(|k| k.as_str())
+    {
+        return DebtKind::parse(kind);
+    }
+    DebtKind::ShortTerm
+}
+
+/// Returns (is_locked, years_to_unlock) from `metadata.retirement.*`.
+/// `years_to_unlock` defaults to `Decimal::ZERO` when undeclared so
+/// Hanbali's `locked_retirement_tradable` conservatively treats the
+/// holding as 1-year-remaining (full balance enters tradable).
+///
+/// PR-F2.c.1: only consulted for INVESTMENT holdings under Hanbali
+/// where `metadata.retirement.locked` is true.
+fn extract_retirement_metadata(
+    h: &mizan_core::portfolio::holdings::holdings_model::Holding,
+) -> (bool, Decimal) {
+    let Some(meta) = h.metadata.as_ref() else {
+        return (false, Decimal::ZERO);
+    };
+    let Some(retirement) = meta.get("retirement") else {
+        return (false, Decimal::ZERO);
+    };
+    let locked = retirement
+        .get("locked")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let years = retirement
+        .get("years_to_unlock")
+        .or_else(|| retirement.get("yearsToUnlock"))
+        .and_then(|v| {
+            // Accept numeric OR numeric-string; chained from serde_json.
+            if let Some(n) = v.as_f64() {
+                // f64 → Decimal via String round-trip to avoid the
+                // f64-in-money-paths clippy lint while still accepting
+                // the JSON shape. years_to_unlock is a time horizon,
+                // not money, so the precision concern is muted.
+                Decimal::from_str_exact(&n.to_string()).ok()
+            } else if let Some(s) = v.as_str() {
+                Decimal::from_str_exact(s).ok()
+            } else {
+                v.as_i64().map(Decimal::from)
+            }
+        })
+        .unwrap_or(Decimal::ZERO);
+    (locked, years)
+}
+
 #[async_trait]
 impl ZakatServiceTrait for ZakatService {
     fn assess(&self, inputs: ZakatInputs) -> ZakatReport {
@@ -137,6 +202,9 @@ impl ZakatServiceTrait for ZakatService {
         base_currency: &str,
         nisab: Decimal,
     ) -> Result<ZakatReport> {
+        use super::hanbali_rules::{
+            locked_retirement_tradable, long_term_mortgage_deductible, DebtKind,
+        };
         use super::property_intent::{route_property, PropertyBucket};
 
         // Aggregate the consolidated portfolio. The "TOTAL" sentinel account
@@ -163,6 +231,9 @@ impl ZakatServiceTrait for ZakatService {
         // surface a "$X of for-sale property routed via Maliki" note.
         let mut maliki_property_tradable = Decimal::ZERO;
         let mut maliki_property_unknown_intent_count: usize = 0;
+        // PR-F2.c.1: track Hanbali-specific routing for audit notes.
+        let mut hanbali_mortgage_deducted = Decimal::ZERO;
+        let mut hanbali_locked_retirement_tradable = Decimal::ZERO;
 
         for h in &holdings {
             // Each holding carries a base-currency value in `market_value.base`.
@@ -172,10 +243,63 @@ impl ZakatServiceTrait for ZakatService {
             // the majority jurisprudence view.
             let value = h.market_value.base;
             match (&h.holding_type, &h.asset_kind) {
-                (_, Some(AssetKind::Liability)) => short_term_debts += value.abs(),
+                (_, Some(AssetKind::Liability)) => {
+                    // PR-F2.c.1: Hanbali allows long-term mortgage principal
+                    // deduction under the delayed-debt doctrine. Read the
+                    // debt kind from metadata; if it's a long-term mortgage
+                    // AND school is Hanbali, route the principal into
+                    // deductible_debts via long_term_mortgage_deductible
+                    // (which returns the principal for Hanbali, zero
+                    // otherwise — so the helper is school-aware by design).
+                    let abs_value = value.abs();
+                    let debt_kind = extract_debt_kind(h);
+                    let extra_deduction = match debt_kind {
+                        DebtKind::LongTermMortgage => {
+                            let deduction = long_term_mortgage_deductible(school, abs_value);
+                            if deduction > Decimal::ZERO {
+                                hanbali_mortgage_deducted += deduction;
+                            }
+                            deduction
+                        }
+                        DebtKind::Other => Decimal::ZERO,
+                        DebtKind::ShortTerm => Decimal::ZERO,
+                    };
+                    // Short-term debts always count — current-year portion
+                    // of any debt is deductible under every school.
+                    let short_term_contribution = match debt_kind {
+                        DebtKind::ShortTerm => abs_value,
+                        // For long-term mortgage under Hanbali, we count the
+                        // FULL principal via extra_deduction above — don't
+                        // double-count by also adding to short_term_debts.
+                        // For LongTermMortgage under other schools, the
+                        // within-year portion is the caller's responsibility
+                        // to declare separately as a ShortTerm liability.
+                        DebtKind::LongTermMortgage | DebtKind::Other => Decimal::ZERO,
+                    };
+                    short_term_debts += short_term_contribution + extra_deduction;
+                }
                 (HoldingType::Cash, _) => liquid += value,
                 (_, Some(AssetKind::PreciousMetal)) => metals += value,
-                (_, Some(AssetKind::Investment)) => tradable += value,
+                (_, Some(AssetKind::Investment)) => {
+                    // PR-F2.c.1: locked retirement balances under Hanbali
+                    // apportion to tradable via locked_retirement_tradable;
+                    // other schools treat as inaccessible (full balance
+                    // exempt until withdrawn). Accessible balances count at
+                    // full value under every school.
+                    let (locked, years) = extract_retirement_metadata(h);
+                    if locked {
+                        let apportioned = locked_retirement_tradable(school, value, years);
+                        if apportioned > Decimal::ZERO {
+                            tradable += apportioned;
+                            hanbali_locked_retirement_tradable += apportioned;
+                        }
+                        // Under non-Hanbali schools, apportioned is zero
+                        // and the balance falls through to exempt.
+                    } else {
+                        // Accessible investment — full value into tradable.
+                        tradable += value;
+                    }
+                }
                 // Private equity is generally zakatable: the underlying
                 // business holds zakatable assets and the share is held for
                 // appreciation, not consumption. Treat as tradable.
@@ -256,6 +380,24 @@ impl ZakatServiceTrait for ZakatService {
                  → Assets so this is no longer ambiguous.",
                 other_kind_count, other_kind_value, base_currency
             ));
+        }
+        // PR-F2.c.1: Hanbali-specific routing notes for the audit trail.
+        if matches!(school, School::Hanbali) {
+            if hanbali_mortgage_deducted > Decimal::ZERO {
+                report.notes.push(format!(
+                    "Hanbali delayed-debt doctrine applied (ADR 0016): {} {} of long-term \
+                     mortgage principal deducted from net Zakatable wealth.",
+                    hanbali_mortgage_deducted, base_currency
+                ));
+            }
+            if hanbali_locked_retirement_tradable > Decimal::ZERO {
+                report.notes.push(format!(
+                    "Hanbali locked-retirement proportionate share applied (ADR 0016): {} {} \
+                     of locked-retirement balance routed into tradable assets at this year's \
+                     apportioned share.",
+                    hanbali_locked_retirement_tradable, base_currency
+                ));
+            }
         }
         Ok(report)
     }
@@ -796,5 +938,196 @@ mod tests {
             .unwrap();
         // for-sale routes into tradable under Maliki
         assert_eq!(report.total_assessable_assets, dec!(210_000));
+    }
+
+    // ─── PR-F2.c.1: Hanbali debt + locked retirement wired ────────
+
+    /// Build a Liability holding with `metadata.liability.kind` set.
+    fn liability_holding(base: Decimal, kind: &str) -> Holding {
+        let mut h = zakat_holding(HoldingType::Security, Some(AssetKind::Liability), -base);
+        h.metadata = Some(serde_json::json!({
+            "liability": { "kind": kind }
+        }));
+        h
+    }
+
+    /// Build an Investment-kind holding tagged as a locked retirement.
+    fn locked_retirement_holding(base: Decimal, years_to_unlock: i64) -> Holding {
+        let mut h = zakat_holding(HoldingType::Security, Some(AssetKind::Investment), base);
+        h.metadata = Some(serde_json::json!({
+            "retirement": { "locked": true, "yearsToUnlock": years_to_unlock }
+        }));
+        h
+    }
+
+    #[tokio::test]
+    async fn s23_hanbali_deducts_long_term_mortgage_principal() {
+        // §23 reference user under Hanbali:
+        //   - $100K cash, $200K liquid sukuks (treated as investment-tradable)
+        //   - $450K Bukit Batok long-term mortgage (Hanbali deductible)
+        //   - $5K credit-card debt (short-term, deductible under all schools)
+        //   - $15K student loan (Other, NOT deductible)
+        // Net under Hanbali = 100 + 200 - 450 - 5 = -155K → negative net,
+        // collapses to zero Zakat. Pin the routing.
+        let holdings = vec![
+            zakat_holding(HoldingType::Cash, None, dec!(100_000)),
+            zakat_holding(
+                HoldingType::Security,
+                Some(AssetKind::Investment),
+                dec!(200_000),
+            ),
+            liability_holding(dec!(450_000), "long-term-mortgage"),
+            liability_holding(dec!(5_000), "short-term"),
+            liability_holding(dec!(15_000), "other"),
+        ];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        let report = svc
+            .assess_portfolio_for_school(School::Hanbali, "USD", dec!(5_000))
+            .await
+            .unwrap();
+
+        // Hanbali: $5K short-term + $450K long-term mortgage = $455K deductible
+        assert_eq!(report.deductible_debts, dec!(455_000));
+        // Tradable assets: $200K investment; liquid: $100K cash
+        assert_eq!(report.total_assessable_assets, dec!(300_000));
+        // Net base = 300K - 455K = -155K → negative → zero Zakat
+        assert_eq!(report.zakat_due, Decimal::ZERO);
+        assert!(!report.is_above_nisab);
+        // Audit note pin
+        assert!(
+            report
+                .notes
+                .iter()
+                .any(|n| n.contains("delayed-debt doctrine")),
+            "Hanbali delayed-debt note missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn s23_hanafi_ignores_long_term_mortgage_doesnt_deduct() {
+        // Same fixture under Hanafi: long-term mortgage NOT deducted;
+        // only the $5K short-term debt counts.
+        let holdings = vec![
+            zakat_holding(HoldingType::Cash, None, dec!(100_000)),
+            zakat_holding(
+                HoldingType::Security,
+                Some(AssetKind::Investment),
+                dec!(200_000),
+            ),
+            liability_holding(dec!(450_000), "long-term-mortgage"),
+            liability_holding(dec!(5_000), "short-term"),
+        ];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        let report = svc
+            .assess_portfolio_for_school(School::Hanafi, "USD", dec!(5_000))
+            .await
+            .unwrap();
+
+        // Hanafi: only $5K deductible
+        assert_eq!(report.deductible_debts, dec!(5_000));
+        assert_eq!(report.total_assessable_assets, dec!(300_000));
+        // Net = 295K → 7,375 Zakat
+        assert_eq!(report.zakat_due, dec!(7_375));
+    }
+
+    #[tokio::test]
+    async fn hanbali_apportions_locked_retirement_balance() {
+        // CPF SA $100K locked 10 years → Hanbali apportions $10K/year
+        // into tradable. Plus $10K cash.
+        let holdings = vec![
+            zakat_holding(HoldingType::Cash, None, dec!(10_000)),
+            locked_retirement_holding(dec!(100_000), 10),
+        ];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        let report = svc
+            .assess_portfolio_for_school(School::Hanbali, "USD", dec!(5_000))
+            .await
+            .unwrap();
+
+        // $10K cash + $10K apportioned retirement = $20K
+        assert_eq!(report.total_assessable_assets, dec!(20_000));
+        assert_eq!(report.zakat_due, dec!(500)); // 2.5% × 20k
+        assert!(
+            report
+                .notes
+                .iter()
+                .any(|n| n.contains("locked-retirement proportionate share applied")),
+            "Hanbali locked-retirement note missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn other_schools_exempt_locked_retirement() {
+        let holdings = vec![
+            zakat_holding(HoldingType::Cash, None, dec!(10_000)),
+            locked_retirement_holding(dec!(100_000), 10),
+        ];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        for school in [School::Hanafi, School::Shafii, School::Maliki] {
+            let report = svc
+                .assess_portfolio_for_school(school, "USD", dec!(5_000))
+                .await
+                .unwrap();
+            // Only cash counts; locked retirement exempt
+            assert_eq!(
+                report.total_assessable_assets,
+                dec!(10_000),
+                "{school:?} must exempt locked retirement"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn accessible_retirement_counts_under_all_schools() {
+        // metadata.retirement.locked = false → accessible → full
+        // balance into tradable under every school
+        let mut h = zakat_holding(
+            HoldingType::Security,
+            Some(AssetKind::Investment),
+            dec!(50_000),
+        );
+        h.metadata = Some(serde_json::json!({
+            "retirement": { "locked": false, "yearsToUnlock": 0 }
+        }));
+        let holdings = vec![h, zakat_holding(HoldingType::Cash, None, dec!(10_000))];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        for school in [
+            School::Hanafi,
+            School::Shafii,
+            School::Maliki,
+            School::Hanbali,
+        ] {
+            let report = svc
+                .assess_portfolio_for_school(school, "USD", dec!(5_000))
+                .await
+                .unwrap();
+            assert_eq!(
+                report.total_assessable_assets,
+                dec!(60_000),
+                "{school:?} accessible retirement must count at full"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn hanbali_unknown_years_to_unlock_full_balance() {
+        // Locked but no years_to_unlock declared → conservative
+        // inclusion: full balance enters tradable under Hanbali
+        let mut h = zakat_holding(
+            HoldingType::Security,
+            Some(AssetKind::Investment),
+            dec!(50_000),
+        );
+        h.metadata = Some(serde_json::json!({
+            "retirement": { "locked": true }
+        }));
+        let holdings = vec![h, zakat_holding(HoldingType::Cash, None, dec!(10_000))];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        let report = svc
+            .assess_portfolio_for_school(School::Hanbali, "USD", dec!(5_000))
+            .await
+            .unwrap();
+        // Conservative: full $50K + $10K cash = $60K
+        assert_eq!(report.total_assessable_assets, dec!(60_000));
     }
 }
