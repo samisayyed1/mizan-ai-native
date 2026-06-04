@@ -21,6 +21,7 @@ import MonthlyReportsPage from "@/pages/reports/monthly-reports-page";
 import ReportsIndexPage from "@/pages/reports/reports-index-page";
 import ZakatPage from "@/pages/zakat/zakat-page";
 import HoldingsPage from "@/pages/holdings/holdings-page";
+import SukuksPanelPage from "@/pages/panels/sukuks/sukuks-panel";
 import IncomePage from "@/pages/income/income-page";
 import NewsPage from "@/pages/news/news-page";
 import PortfolioInsightsPage from "@/pages/insights/portfolio-insights";
@@ -99,6 +100,10 @@ export function AppRoutes() {
               <Route path="activities" element={<ActivityPage />} />
               <Route path="activities/manage" element={<ActivityManagerPage />} />
               <Route path="holdings" element={<HoldingsPage />} />
+              {/* Track B PR-B1 — Sukuks panel (§23 anchor surface). Track B
+                  PR-B2..B7 add the rest of the twelve panels under
+                  /panels/* as they ship. */}
+              <Route path="panels/sukuks" element={<SukuksPanelPage />} />
               <Route path="news" element={<NewsPage />} />
               <Route path="holdings-insights" element={<HoldingsInsightsPage />} />
               <Route path="holdings/:assetId" element={<AssetProfilePage />} />

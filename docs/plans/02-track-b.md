@@ -22,7 +22,7 @@
 | B5 | ⏸️ Pending | Bank/Cash: Tink |
 | B6 | ⏸️ Pending | Bank/Cash: Basiq |
 | B7 | ⏸️ Pending | Bank/Cash: Lean |
-| B8 | ⏸️ Pending | Bonds & Sukuks panel (issuer/maturity toggle bar) |
+| B8 | ✅ Done (2026-06-04 as PR-B1 per Goal v3 §V Phase 5) | **Bonds & Sukuks panel — §23 anchor surface.** New `mizan-4/apps/frontend/src/pages/panels/sukuks/` with `rollup.ts` pure-math helpers (`isBondHolding`, `rollupByIssuer`, `rollupByMaturityYear`, `extractMaturityYear`, `totalBondExposure`) and `sukuks-panel.tsx` page composition. Bar chart toggle between "by issuer" (default — Emaar/DAR/Sobha desc-by-exposure) + "by maturity year" (asc-by-year). Holdings list below the chart, tap-row navigates to asset detail. Route `/panels/sukuks` registered; the dashboard's twelve-panel grid (PR-A4 #94) now points `bonds-sukuks` → `/panels/sukuks`. The `extractMaturityYear` helper reads `Asset.bond_spec().maturityDate` JSON via an `unknown` cast (frontend Instrument type doesn't expose `metadata` yet — PR-B1.a will thread it through). **24 unit tests** including the §23 Emaar/DAR/Sobha fixture pinning `[Emaar 300K, DAR 200K, Sobha 150K]` issuer-rollup + the `[2026 188K, 2027 350K]` maturity-rollup. Frontend tests 910/910 (was 886; +24); lint 0 errors / 399 warnings unchanged from main; tsc clean. |
 | B9 | ⏸️ Pending | Provident Funds panel (CPF/EPF/401k/NPS/Super) + nested holdings UX |
 | B10 | ⏸️ Pending | Insurance panel — investment-linked + pure protection split |
 | B11 | ⏸️ Pending | Private Equity panel — vintage bar + J-curve projection |
