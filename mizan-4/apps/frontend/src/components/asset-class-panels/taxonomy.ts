@@ -117,7 +117,8 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "crypto",
     label: "Crypto",
     iconKey: "Bitcoin",
-    holdingsHref: "/holdings?panel=crypto",
+    // Track B PR-B9 — dedicated panel page (chain donut).
+    holdingsHref: "/panels/crypto",
   },
   {
     id: "commodities",
