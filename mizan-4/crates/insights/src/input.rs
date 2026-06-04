@@ -85,6 +85,55 @@ pub struct DividendEvent {
     pub amount_base: Decimal,
 }
 
+/// One bond / sukuk position whose maturity date is upcoming. Caller
+/// computes `days_to_maturity` against the user's local "today" so
+/// the engine stays pure.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BondMaturityCandidate {
+    pub holding_id: String,
+    /// Display symbol or ISIN (e.g. "EMAAR 6.5 2026").
+    pub symbol: String,
+    /// Maturity date — used in copy + dedupe key.
+    pub maturity_date: NaiveDate,
+    /// Days remaining until maturity from the user's local "today".
+    /// Caller computes; engine compares against 90/30/7/1 thresholds.
+    pub days_to_maturity: i64,
+    /// Principal returning at maturity in base currency (for copy).
+    pub principal_returning_base: Decimal,
+}
+
+/// One FX pair the user has material exposure to that has moved beyond
+/// the materiality threshold over the comparison window.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FxPairMove {
+    /// Base currency of the pair (e.g. "USD").
+    pub from_currency: String,
+    /// Quote currency of the pair (e.g. "INR").
+    pub to_currency: String,
+    /// Window over which the move was computed (in days).
+    pub window_days: u32,
+    /// Pre-computed pct change over the window. Engine compares
+    /// against FX_MATERIAL_MOVE_PCT.
+    pub change_pct: Decimal,
+    /// User's net exposure to this pair in base currency (so the
+    /// engine can suppress small-exposure noise).
+    pub exposure_base: Decimal,
+}
+
+/// A holding whose AAOIFI screening verdict changed since the prior
+/// evaluation. Caller computes the flip (either direction) and hands
+/// the engine the before/after pair.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShariaStatusChange {
+    pub holding_id: String,
+    pub symbol: String,
+    /// Prior verdict (e.g. "compliant"). Free-form string so the
+    /// engine doesn't have to know the AAOIFI worker's verdict enum.
+    pub prior_verdict: String,
+    /// New verdict (e.g. "mixed").
+    pub new_verdict: String,
+}
+
 /// A sync that failed and is degrading data quality the user can see.
 /// Source includes the provider slug for the deep-link target.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -131,4 +180,15 @@ pub struct InsightsInput {
     /// notification emitted per event so the user gets credit for each
     /// individual payment in the activity history.
     pub dividend_events: Vec<DividendEvent>,
+    /// Bond / sukuk positions approaching maturity. Engine emits at
+    /// most one notification per holding per crossed threshold
+    /// (90/30/7/1 day) per Goal v3 §V step C5.a / Track C PR-C5.a.
+    pub bond_maturity_candidates: Vec<BondMaturityCandidate>,
+    /// FX pairs whose move over `window_days` exceeded
+    /// FX_MATERIAL_MOVE_PCT against `exposure_base`. Engine emits one
+    /// per pair per day.
+    pub fx_pair_moves: Vec<FxPairMove>,
+    /// Holdings whose AAOIFI screening verdict flipped. Engine emits
+    /// one per holding per day.
+    pub sharia_status_changes: Vec<ShariaStatusChange>,
 }

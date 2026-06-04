@@ -13,7 +13,10 @@ use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use serde_json::json;
 
-use super::input::{DividendEvent, GoalProgress, InsightsInput, SyncFailureInput};
+use super::input::{
+    BondMaturityCandidate, DividendEvent, FxPairMove, GoalProgress, InsightsInput,
+    ShariaStatusChange, SyncFailureInput,
+};
 use mizan_core::notifications::{Notification, NotificationKind, NotificationSeverity};
 
 /// Threshold for the BigMove rule: any holding moving > this in absolute
@@ -46,6 +49,30 @@ const NW_DIP_THRESHOLD_PCT: f64 = 0.03;
 /// "consider deploying" warning.
 const CASH_DRAG_PCT_THRESHOLD: f64 = 0.10;
 const CASH_DRAG_DAYS_THRESHOLD: u32 = 30;
+
+/// Bond/sukuk maturity-approaching thresholds — fire once per crossed
+/// step per Goal v3 §V step C5.a. The §23 scenario needs the 47-day
+/// reminder; 90 covers that, and we step down 30/7/1 so the user gets a
+/// month-out + final-week + final-day nudge as well.
+///
+/// Ordering matters: declared smallest-first so `iter().find(|t| days <= t)`
+/// returns the smallest crossed step (e.g. days=5 → step=7, not step=90).
+const BOND_MATURITY_DAY_THRESHOLDS: &[i64] = &[1, 7, 30, 90];
+
+/// Minimum principal returning at maturity to qualify for a notification.
+/// Same logic as BigMove's value floor — suppress notifications on
+/// trivial principal returns where the user already knows.
+const BOND_MATURITY_MIN_PRINCIPAL_BASE: f64 = 1_000.0;
+
+/// FX-moved-materially threshold: an FX pair the user has exposure to
+/// must move > this absolute fraction over the comparison window.
+/// 3% is the "material to a Singapore millionaire with USD-base CPF"
+/// calibration from Goal v3 §23.
+const FX_MATERIAL_MOVE_PCT: f64 = 0.03;
+
+/// Minimum exposure (base currency) to qualify for an FX-moved-materially
+/// notification. A $50 FX exposure moving 10% isn't actionable.
+const FX_MIN_EXPOSURE_BASE: f64 = 5_000.0;
 
 fn dec_to_f64(d: Decimal) -> f64 {
     d.to_f64().unwrap_or(0.0)
@@ -394,10 +421,182 @@ fn sync_failure_notification(f: &SyncFailureInput, input: &InsightsInput) -> Not
     )
 }
 
+/// Bond / sukuk maturity-approaching rule per Goal v3 §V step C5.a.
+///
+/// Emits one Notification per holding per crossed threshold (90/30/7/1
+/// day). The `days_to_maturity` value selects the smallest threshold
+/// that is >= the days remaining — i.e. a bond with 47 days to maturity
+/// crosses the 30-day step (since 47 > 30 is false; 47 <= 90 is the
+/// crossed step). Caller is expected to evict the candidate from the
+/// next tick after each step fires so the engine doesn't re-emit.
+///
+/// Severity:
+///   - 90/30 day → Info (planning horizon)
+///   - 7 day → Warning (act this week)
+///   - 1 day → Critical (today)
+fn eval_bond_maturity(
+    candidate: &BondMaturityCandidate,
+    input: &InsightsInput,
+) -> Option<Notification> {
+    if dec_to_f64(candidate.principal_returning_base) < BOND_MATURITY_MIN_PRINCIPAL_BASE {
+        return None;
+    }
+    // Pick the smallest threshold that's still >= days_to_maturity.
+    // Iteration order matters: thresholds are declared 90,30,7,1 so we
+    // walk descending and stop at the first match.
+    let crossed = BOND_MATURITY_DAY_THRESHOLDS
+        .iter()
+        .find(|t| candidate.days_to_maturity <= **t)?;
+    let severity = match *crossed {
+        1 => NotificationSeverity::Critical,
+        7 => NotificationSeverity::Warning,
+        _ => NotificationSeverity::Info,
+    };
+    let title = format!(
+        "{} matures in {} {}",
+        candidate.symbol,
+        candidate.days_to_maturity,
+        if candidate.days_to_maturity == 1 {
+            "day"
+        } else {
+            "days"
+        },
+    );
+    let body = format!(
+        "{} {:.0} returns to your account on {} — start shortlisting replacements.",
+        input.base_currency,
+        dec_to_f64(candidate.principal_returning_base),
+        candidate.maturity_date,
+    );
+    let payload = json!({
+        "holdingId": candidate.holding_id,
+        "symbol": candidate.symbol,
+        "maturityDate": candidate.maturity_date,
+        "daysToMaturity": candidate.days_to_maturity,
+        "principalReturningBase": candidate.principal_returning_base,
+        "thresholdDays": crossed,
+    });
+    let dedupe = format!(
+        "bond_maturity:{}:{}:{}",
+        candidate.holding_id, crossed, candidate.maturity_date
+    );
+    Some(fresh(
+        NotificationKind::BondMaturityApproaching,
+        severity,
+        title,
+        body,
+        Some(format!("mizan://holding/{}", candidate.holding_id)),
+        payload.to_string(),
+        dedupe,
+    ))
+}
+
+/// FX-moved-materially rule per Goal v3 §V step C5.a.
+///
+/// Emits one Notification per FX pair per day where the move over the
+/// configured `window_days` exceeded FX_MATERIAL_MOVE_PCT AND the user's
+/// exposure to that pair exceeds the minimum-exposure threshold.
+fn eval_fx_moved(pair: &FxPairMove, input: &InsightsInput) -> Option<Notification> {
+    if dec_to_f64(pair.change_pct).abs() < FX_MATERIAL_MOVE_PCT {
+        return None;
+    }
+    if dec_to_f64(pair.exposure_base) < FX_MIN_EXPOSURE_BASE {
+        return None;
+    }
+    let dir = if dec_to_f64(pair.change_pct) >= 0.0 {
+        "strengthened"
+    } else {
+        "weakened"
+    };
+    let pct = fmt_pct_signed(pair.change_pct);
+    let title = format!("{}/{} {}", pair.from_currency, pair.to_currency, pct);
+    let body = format!(
+        "{} has {} {} against {} over {} days — your {:.0} {} exposure is now worth notably more.",
+        pair.from_currency,
+        dir,
+        pct,
+        pair.to_currency,
+        pair.window_days,
+        dec_to_f64(pair.exposure_base),
+        input.base_currency,
+    );
+    let payload = json!({
+        "fromCurrency": pair.from_currency,
+        "toCurrency": pair.to_currency,
+        "windowDays": pair.window_days,
+        "changePct": pair.change_pct,
+        "exposureBase": pair.exposure_base,
+    });
+    let dedupe = format!(
+        "fx_moved:{}_{}_{}d:{}",
+        pair.from_currency,
+        pair.to_currency,
+        pair.window_days,
+        today_str(input)
+    );
+    Some(fresh(
+        NotificationKind::FxMovedMaterially,
+        NotificationSeverity::Info,
+        title,
+        body,
+        Some(format!(
+            "mizan://fx/{}/{}",
+            pair.from_currency, pair.to_currency
+        )),
+        payload.to_string(),
+        dedupe,
+    ))
+}
+
+/// Sharia-status-changed rule per Goal v3 §V step C5.a.
+///
+/// Emits one Notification per holding whose AAOIFI screening verdict
+/// flipped since the prior evaluation. Severity is `Warning` because
+/// the user often needs to act (purify dividends, exit position, etc.).
+fn eval_sharia_status_change(
+    change: &ShariaStatusChange,
+    input: &InsightsInput,
+) -> Option<Notification> {
+    if change.prior_verdict == change.new_verdict {
+        return None;
+    }
+    let title = format!(
+        "{} Sharia status: {} → {}",
+        change.symbol, change.prior_verdict, change.new_verdict
+    );
+    let body = format!(
+        "AAOIFI screening for {} flipped from {} to {}. Review whether action is required.",
+        change.symbol, change.prior_verdict, change.new_verdict
+    );
+    let payload = json!({
+        "holdingId": change.holding_id,
+        "symbol": change.symbol,
+        "priorVerdict": change.prior_verdict,
+        "newVerdict": change.new_verdict,
+    });
+    let dedupe = format!(
+        "sharia_status:{}:{}->{}:{}",
+        change.holding_id,
+        change.prior_verdict,
+        change.new_verdict,
+        today_str(input)
+    );
+    Some(fresh(
+        NotificationKind::ShariaStatusChanged,
+        NotificationSeverity::Warning,
+        title,
+        body,
+        Some(format!("mizan://holding/{}", change.holding_id)),
+        payload.to_string(),
+        dedupe,
+    ))
+}
+
 /// Run every rule against the input and return the union, in a stable
 /// order (BigMove → GoalMilestone → ATH/Dip → CashDrag → DividendPosted
-/// → SyncFailure). Order matters because the bell panel renders the
-/// result list as-is for batches emitted in the same tick.
+/// → SyncFailure → BondMaturityApproaching → FxMovedMaterially →
+/// ShariaStatusChanged). Order matters because the bell panel renders
+/// the result list as-is for batches emitted in the same tick.
 pub fn evaluate(input: &InsightsInput) -> Vec<Notification> {
     let mut out = Vec::new();
     if let Some(n) = eval_big_move(input) {
@@ -410,5 +609,24 @@ pub fn evaluate(input: &InsightsInput) -> Vec<Notification> {
     }
     out.extend(eval_dividend_events(input));
     out.extend(eval_sync_failures(input));
+    // Bond / FX / Sharia rules added in Track C PR-C5.a — they're per-
+    // item (one notification per holding/pair/change), so we iterate
+    // the caller-supplied slice rather than re-querying inside the
+    // eval fn. Engine stays pure; caller decides which items qualify.
+    for candidate in &input.bond_maturity_candidates {
+        if let Some(n) = eval_bond_maturity(candidate, input) {
+            out.push(n);
+        }
+    }
+    for pair in &input.fx_pair_moves {
+        if let Some(n) = eval_fx_moved(pair, input) {
+            out.push(n);
+        }
+    }
+    for change in &input.sharia_status_changes {
+        if let Some(n) = eval_sharia_status_change(change, input) {
+            out.push(n);
+        }
+    }
     out
 }

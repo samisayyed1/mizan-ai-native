@@ -9,8 +9,8 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 
 use super::input::{
-    DividendEvent, GoalProgress, HoldingDayMove, InsightsInput, NetWorthHistoryPoint,
-    SyncFailureInput,
+    BondMaturityCandidate, DividendEvent, FxPairMove, GoalProgress, HoldingDayMove, InsightsInput,
+    NetWorthHistoryPoint, ShariaStatusChange, SyncFailureInput,
 };
 use super::rules::evaluate;
 use mizan_core::notifications::{NotificationKind, NotificationSeverity};
@@ -27,6 +27,9 @@ fn base_input() -> InsightsInput {
         cash_high_for_days: None,
         sync_failures: vec![],
         dividend_events: vec![],
+        bond_maturity_candidates: vec![],
+        fx_pair_moves: vec![],
+        sharia_status_changes: vec![],
     }
 }
 
@@ -324,4 +327,276 @@ fn dedupe_keys_are_deterministic_for_same_input() {
     // ids differ (uuid each time) — that's intentional, the row gets a
     // fresh primary key but the UNIQUE on dedupe_key catches the dupe.
     assert_ne!(a[0].id, b[0].id);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.a — BondMaturityApproaching rule
+// ─────────────────────────────────────────────────────────────────────
+
+fn emaar_sukuk_47d() -> BondMaturityCandidate {
+    BondMaturityCandidate {
+        holding_id: "h_emaar_2026".into(),
+        symbol: "EMAAR 6.5 2026".into(),
+        maturity_date: NaiveDate::from_ymd_opt(2026, 7, 13).unwrap(),
+        days_to_maturity: 47,
+        principal_returning_base: dec!(188_000),
+    }
+}
+
+#[test]
+fn bond_maturity_fires_at_30day_threshold_for_47day_remaining() {
+    // §23 scenario: Emaar Sukuk 47 days to maturity. 47 ≤ 90 — fires
+    // at the 90-day step. (90/30/7/1 are *latest-by* thresholds, so a
+    // bond with 47 days has crossed the 90 already but not the 30.)
+    let mut i = base_input();
+    i.bond_maturity_candidates.push(emaar_sukuk_47d());
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].kind, NotificationKind::BondMaturityApproaching);
+    assert_eq!(out[0].severity, NotificationSeverity::Info);
+    assert!(out[0].title.contains("EMAAR"));
+    assert!(out[0].title.contains("47"));
+    assert!(
+        out[0].body.contains("188000")
+            || out[0].body.contains("188,000")
+            || out[0].body.contains("188")
+    );
+}
+
+#[test]
+fn bond_maturity_critical_at_one_day() {
+    let mut i = base_input();
+    let mut c = emaar_sukuk_47d();
+    c.days_to_maturity = 1;
+    i.bond_maturity_candidates.push(c);
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].severity, NotificationSeverity::Critical);
+    assert!(out[0].title.contains("1 day"));
+}
+
+#[test]
+fn bond_maturity_warning_at_seven_days() {
+    let mut i = base_input();
+    let mut c = emaar_sukuk_47d();
+    c.days_to_maturity = 5;
+    i.bond_maturity_candidates.push(c);
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].severity, NotificationSeverity::Warning);
+}
+
+#[test]
+fn bond_maturity_suppresses_trivial_principal() {
+    let mut i = base_input();
+    let mut c = emaar_sukuk_47d();
+    c.principal_returning_base = dec!(500); // below 1000 floor
+    i.bond_maturity_candidates.push(c);
+    let out = evaluate(&i);
+    assert!(out.is_empty());
+}
+
+#[test]
+fn bond_maturity_silent_past_horizon() {
+    let mut i = base_input();
+    let mut c = emaar_sukuk_47d();
+    c.days_to_maturity = 365; // beyond all thresholds
+    i.bond_maturity_candidates.push(c);
+    let out = evaluate(&i);
+    assert!(out.is_empty());
+}
+
+#[test]
+fn bond_maturity_dedupe_key_includes_threshold_step() {
+    // The dedupe key must include the threshold step so a holding
+    // that crosses 90 → 30 fires both notifications (different keys).
+    let mut i = base_input();
+    let mut at_90 = emaar_sukuk_47d();
+    at_90.days_to_maturity = 60;
+    let mut at_30 = emaar_sukuk_47d();
+    at_30.days_to_maturity = 20;
+    i.bond_maturity_candidates.push(at_90);
+    i.bond_maturity_candidates.push(at_30);
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 2);
+    assert_ne!(out[0].dedupe_key, out[1].dedupe_key);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.a — FxMovedMaterially rule
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn fx_moved_fires_on_4pct_move_with_material_exposure() {
+    let mut i = base_input();
+    i.fx_pair_moves.push(FxPairMove {
+        from_currency: "USD".into(),
+        to_currency: "INR".into(),
+        window_days: 30,
+        change_pct: dec!(0.04),
+        exposure_base: dec!(50_000),
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].kind, NotificationKind::FxMovedMaterially);
+    assert_eq!(out[0].severity, NotificationSeverity::Info);
+    assert!(out[0].title.contains("USD"));
+    assert!(out[0].title.contains("INR"));
+}
+
+#[test]
+fn fx_moved_silent_below_threshold() {
+    let mut i = base_input();
+    i.fx_pair_moves.push(FxPairMove {
+        from_currency: "USD".into(),
+        to_currency: "EUR".into(),
+        window_days: 30,
+        change_pct: dec!(0.02), // 2% < 3% threshold
+        exposure_base: dec!(50_000),
+    });
+    assert!(evaluate(&i).is_empty());
+}
+
+#[test]
+fn fx_moved_silent_with_small_exposure() {
+    let mut i = base_input();
+    i.fx_pair_moves.push(FxPairMove {
+        from_currency: "USD".into(),
+        to_currency: "EUR".into(),
+        window_days: 30,
+        change_pct: dec!(0.05),     // material move
+        exposure_base: dec!(1_000), // but tiny exposure
+    });
+    assert!(evaluate(&i).is_empty());
+}
+
+#[test]
+fn fx_moved_handles_negative_change_pct() {
+    let mut i = base_input();
+    i.fx_pair_moves.push(FxPairMove {
+        from_currency: "USD".into(),
+        to_currency: "JPY".into(),
+        window_days: 30,
+        change_pct: dec!(-0.05),
+        exposure_base: dec!(20_000),
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert!(out[0].body.contains("weakened"));
+}
+
+#[test]
+fn fx_moved_dedupe_key_per_pair_per_day() {
+    let mut i = base_input();
+    i.fx_pair_moves.push(FxPairMove {
+        from_currency: "USD".into(),
+        to_currency: "INR".into(),
+        window_days: 30,
+        change_pct: dec!(0.04),
+        exposure_base: dec!(50_000),
+    });
+    let a = evaluate(&i);
+    let b = evaluate(&i);
+    assert_eq!(a[0].dedupe_key, b[0].dedupe_key);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.a — ShariaStatusChanged rule
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn sharia_status_change_fires_on_compliant_to_mixed() {
+    let mut i = base_input();
+    i.sharia_status_changes.push(ShariaStatusChange {
+        holding_id: "h_spus".into(),
+        symbol: "SPUS".into(),
+        prior_verdict: "compliant".into(),
+        new_verdict: "mixed".into(),
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].kind, NotificationKind::ShariaStatusChanged);
+    assert_eq!(out[0].severity, NotificationSeverity::Warning);
+    assert!(out[0].title.contains("SPUS"));
+    assert!(out[0].title.contains("compliant"));
+    assert!(out[0].title.contains("mixed"));
+}
+
+#[test]
+fn sharia_status_change_silent_on_no_change() {
+    // Caller may pass through a same-verdict entry; engine should
+    // not fire on it (defence-in-depth against caller bugs).
+    let mut i = base_input();
+    i.sharia_status_changes.push(ShariaStatusChange {
+        holding_id: "h_spus".into(),
+        symbol: "SPUS".into(),
+        prior_verdict: "compliant".into(),
+        new_verdict: "compliant".into(),
+    });
+    assert!(evaluate(&i).is_empty());
+}
+
+#[test]
+fn sharia_status_change_dedupe_key_includes_flip_direction() {
+    // A flip back-and-forth (compliant → mixed → compliant) must fire
+    // twice with distinct dedupe keys, so the user gets credit for
+    // both transitions in the audit timeline.
+    let mut i = base_input();
+    i.sharia_status_changes.push(ShariaStatusChange {
+        holding_id: "h_x".into(),
+        symbol: "X".into(),
+        prior_verdict: "compliant".into(),
+        new_verdict: "mixed".into(),
+    });
+    i.sharia_status_changes.push(ShariaStatusChange {
+        holding_id: "h_x".into(),
+        symbol: "X".into(),
+        prior_verdict: "mixed".into(),
+        new_verdict: "compliant".into(),
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 2);
+    assert_ne!(out[0].dedupe_key, out[1].dedupe_key);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.a — Stable rule ordering (regression guard)
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn evaluate_emits_new_rules_after_existing_set() {
+    // The bell-panel UI renders rules in `evaluate()` order. A future
+    // PR that inserts a new rule earlier in the order silently
+    // re-arranges the user's notification feed; this test pins the
+    // current sequence post-PR-C5.a.
+    let mut i = base_input();
+    i.holding_moves.push(HoldingDayMove {
+        symbol: "AAPL".into(),
+        asset_name: None,
+        asset_id: None,
+        prev_price_base: dec!(100),
+        curr_price_base: dec!(92),
+        change_pct: dec!(-0.08),
+        current_value_base: dec!(5_000),
+    });
+    i.bond_maturity_candidates.push(emaar_sukuk_47d());
+    i.fx_pair_moves.push(FxPairMove {
+        from_currency: "USD".into(),
+        to_currency: "INR".into(),
+        window_days: 30,
+        change_pct: dec!(0.04),
+        exposure_base: dec!(50_000),
+    });
+    i.sharia_status_changes.push(ShariaStatusChange {
+        holding_id: "h_spus".into(),
+        symbol: "SPUS".into(),
+        prior_verdict: "compliant".into(),
+        new_verdict: "mixed".into(),
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 4);
+    assert_eq!(out[0].kind, NotificationKind::BigMove);
+    assert_eq!(out[1].kind, NotificationKind::BondMaturityApproaching);
+    assert_eq!(out[2].kind, NotificationKind::FxMovedMaterially);
+    assert_eq!(out[3].kind, NotificationKind::ShariaStatusChanged);
 }
