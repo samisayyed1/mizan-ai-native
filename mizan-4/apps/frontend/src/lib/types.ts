@@ -530,6 +530,23 @@ export interface NewsArticle {
   summary?: string | null;
   relatedSymbols: string[];
   urgency?: number | null;
+  /**
+   * Personalization rationale strings — "Why this matters to you"
+   * sub-label content surfaced by the Mizan Connect news ranking
+   * stack (PR-D2 lexical + PR-D3 pgvector similarity). When absent
+   * the news card hides the rationale section gracefully.
+   *
+   * Strings are ordered by signal weight (ticker > category >
+   * memory keyword > pgvector similarity) so the first entry is
+   * the most salient reason.
+   */
+  rationale?: string[];
+  /**
+   * Personalization score in [0, 1]. Surfaced for the "Relevant"
+   * tab sort order. PR-D4.b uses this to render a subtle relevance
+   * indicator chip.
+   */
+  relevanceScore?: number | null;
 }
 
 /** A single live quote for the dashboard ticker (`get_ticker_quotes`). */

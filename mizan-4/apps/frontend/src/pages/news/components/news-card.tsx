@@ -5,6 +5,7 @@ import { ExternalLink } from "@/components/external-link";
 import type { NewsArticle } from "@/lib/types";
 
 import { relativeNewsTime } from "./news-utils";
+import { WhyThisMatters } from "./why-this-matters";
 
 /** A single headline card in the magazine grid. */
 export function NewsCard({ article }: { article: NewsArticle }) {
@@ -20,6 +21,10 @@ export function NewsCard({ article }: { article: NewsArticle }) {
             {article.summary}
           </p>
         )}
+        {/* PR-D4: "Why this matters to you" rationale from the
+            Mizan Connect news ranker. Renders nothing when absent
+            (Global tab / non-personalized providers). */}
+        <WhyThisMatters rationale={article.rationale} />
         <div className="text-muted-foreground mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
           {article.source && <span className="font-medium">{article.source}</span>}
           {time && <span>· {time}</span>}
