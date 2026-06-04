@@ -32,11 +32,16 @@
 
 #![forbid(unsafe_code)]
 
+mod hanbali_rules;
 mod model;
 mod property_intent;
 mod service;
 mod traits;
 
+pub use hanbali_rules::{
+    accessible_retirement_tradable, locked_retirement_tradable, long_term_mortgage_deductible,
+    sum_long_term_mortgage_deductible, DebtKind, RetirementKind,
+};
 pub use model::*;
 pub use property_intent::{route_property, sum_property_tradable, PropertyBucket, PropertyIntent};
 pub use service::*;
