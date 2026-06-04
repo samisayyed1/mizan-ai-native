@@ -99,7 +99,8 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "insurance",
     label: "Insurance",
     iconKey: "ShieldCheck",
-    holdingsHref: "/holdings?panel=insurance",
+    // Track B PR-B10 — dedicated panel page (category donut + stale badges).
+    holdingsHref: "/panels/insurance",
   },
   {
     id: "private-equity",
