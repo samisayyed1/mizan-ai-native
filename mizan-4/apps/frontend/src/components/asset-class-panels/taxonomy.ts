@@ -104,7 +104,8 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "private-equity",
     label: "Private Equity",
     iconKey: "Building",
-    holdingsHref: "/holdings?panel=private-equity",
+    // Track B PR-B7 — dedicated panel page (vintage bar + per-position bar).
+    holdingsHref: "/panels/private-equity",
   },
   {
     id: "real-estate",
