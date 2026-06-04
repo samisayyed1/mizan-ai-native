@@ -33,6 +33,7 @@ import {
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { NetWorthChart } from "./net-worth-chart";
+import NetWorthAllocationSection from "./net-worth-allocation-section";
 
 // Goldish orange for net worth theme (matches chart)
 const THEME_COLOR = "hsl(38 75% 50%)";
@@ -526,6 +527,13 @@ export function NetWorthContent({ onAddAsset, onAddLiability }: NetWorthContentP
               />
             </div>
           )}
+        </div>
+
+        {/* Allocation Sankey — PR-NW2: flows Net Worth → asset classes.
+             Sits between the history chart and the Composition grid so
+             the user sees the decomposition before the per-class list. */}
+        <div className="px-4 pt-4 md:px-6 md:pt-6 lg:px-10 lg:pt-8">
+          <NetWorthAllocationSection />
         </div>
 
         {/* Content section */}
