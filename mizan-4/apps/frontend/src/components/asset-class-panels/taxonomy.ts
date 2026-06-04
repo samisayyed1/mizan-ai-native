@@ -110,7 +110,8 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "real-estate",
     label: "Real Estate",
     iconKey: "Home",
-    holdingsHref: "/holdings?panel=real-estate",
+    // Track B PR-B11 — dedicated panel page (intent donut + per-property bar).
+    holdingsHref: "/panels/real-estate",
   },
   {
     id: "crypto",
