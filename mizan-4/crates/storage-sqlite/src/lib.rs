@@ -62,6 +62,7 @@ pub mod fx;
 pub mod goals;
 pub mod hawl;
 pub mod health;
+pub mod holdings_metadata;
 pub mod limits;
 pub mod market_data;
 pub mod net_worth_snapshot;

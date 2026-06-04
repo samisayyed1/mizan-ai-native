@@ -514,6 +514,9 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
     // ── 9) FxMovedMaterially — per-pair window deltas vs user exposure ──
     let fx_pair_moves = hydrate_fx_pair_moves(context, &base_currency).await;
 
+    // ── 10) ShariaStatusChanged — AAOIFI verdict flips per holding ──
+    let sharia_status_changes = hydrate_sharia_status_changes(context, today);
+
     let input = InsightsInput {
         today: Some(today),
         base_currency,
@@ -537,9 +540,11 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
         // window per user-exposure pair. Engine filters against
         // FX_MATERIAL_MOVE_PCT + FX_MIN_EXPOSURE_BASE in PR-C5.a.
         fx_pair_moves,
-        // PR-C5.d.5 will hydrate Sharia status flips from the AAOIFI
-        // worker output (PR-E4). Until then the rule no-ops.
-        sharia_status_changes: Vec::new(),
+        // Track C PR-C5.d.5 — Sharia-status flips from the AAOIFI
+        // worker output (Track E PR-E4 writes to holdings_metadata;
+        // here we diff today's verdict vs the most-recent prior
+        // verdict per holding).
+        sharia_status_changes,
         // Track C PR-C5.d.1 — hydrate Hawl approaching candidates from
         // the hawl_anchors table (PR-F1 migration). Grace window 90
         // days matches the largest HAWL_DAY_THRESHOLDS step in
@@ -1268,6 +1273,50 @@ fn rollup_concentration_findings(
         });
     }
     out
+}
+
+/// Track C PR-C5.d.5 — hydrate `InsightsInput.sharia_status_changes`
+/// by detecting AAOIFI screening flips per holding.
+///
+/// Reads `holdings_metadata` via `HoldingsMetadataRepository`,
+/// groups by `(account_id, holding_symbol)`, finds the latest
+/// verdict ≤ `today` and the most-recent prior verdict that differs,
+/// emits one `ShariaStatusChange` per holding whose verdict flipped.
+///
+/// Engine's `eval_sharia_status_change` validates that `prior !=
+/// new` again (defence in depth) and emits a Warning notification.
+///
+/// Errors degrade silently (empty Vec).
+fn hydrate_sharia_status_changes(
+    context: &std::sync::Arc<ServiceContext>,
+    today: chrono::NaiveDate,
+) -> Vec<mizan_insights::ShariaStatusChange> {
+    use log::debug;
+    use mizan_insights::ShariaStatusChange;
+
+    let flips = match context
+        .holdings_metadata_repository
+        .recent_sharia_flips(today)
+    {
+        Ok(flips) => flips,
+        Err(e) => {
+            debug!("Insights/Sharia: recent_sharia_flips read failed: {e} — skipping rule");
+            return Vec::new();
+        }
+    };
+
+    flips
+        .into_iter()
+        .map(|f| ShariaStatusChange {
+            // holdings_metadata's composite key (account_id, holding_symbol)
+            // serves as the holding_id for dedupe purposes — the bell-panel
+            // UNIQUE constraint on dedupe_key catches re-fires across ticks.
+            holding_id: format!("{}:{}", f.account_id, f.holding_symbol),
+            symbol: f.holding_symbol,
+            prior_verdict: f.prior_verdict,
+            new_verdict: f.new_verdict,
+        })
+        .collect()
 }
 
 /// Track C PR-C5.d.4 — hydrate `InsightsInput.fx_pair_moves` from
