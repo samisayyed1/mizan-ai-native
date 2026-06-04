@@ -146,6 +146,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(crate::plaid::router())
         .merge(crate::snaptrade::router())
         .merge(crate::sharia::router())
+        .merge(crate::news::router())
         // Public self-discovery endpoint for the desktop: returns
         // Supabase URL + anon key + feature flags so a fresh install
         // can render the sign-in flow without a build-time .env.

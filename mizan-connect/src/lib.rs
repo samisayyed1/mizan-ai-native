@@ -16,6 +16,7 @@ pub mod db;
 pub mod error;
 pub mod health;
 pub mod middleware;
+pub mod news;
 pub mod plaid;
 pub mod public_config;
 pub mod secret_crypto;
