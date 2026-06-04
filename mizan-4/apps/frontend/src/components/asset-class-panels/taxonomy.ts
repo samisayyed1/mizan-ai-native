@@ -136,8 +136,9 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
   {
     id: "forex",
     label: "Forex",
-    iconKey: "RefreshCcw",
-    holdingsHref: "/holdings?panel=forex",
+    iconKey: "RefreshCw",
+    // Track B PR-B16 — dedicated panel page (per-pair bar + long-leg donut).
+    holdingsHref: "/panels/forex",
   },
 ] as const;
 

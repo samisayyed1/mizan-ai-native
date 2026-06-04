@@ -25,6 +25,7 @@ import BankCashPanelPage from "@/pages/panels/bank-cash/bank-cash-panel";
 import CommoditiesPanelPage from "@/pages/panels/commodities/commodities-panel";
 import CryptoPanelPage from "@/pages/panels/crypto/crypto-panel";
 import EquitiesPanelPage from "@/pages/panels/equities/equities-panel";
+import ForexPanelPage from "@/pages/panels/forex/forex-panel";
 import RealEstatePanelPage from "@/pages/panels/real-estate/real-estate-panel";
 import SukuksPanelPage from "@/pages/panels/sukuks/sukuks-panel";
 import IncomePage from "@/pages/income/income-page";
@@ -119,6 +120,8 @@ export function AppRoutes() {
               <Route path="panels/crypto" element={<CryptoPanelPage />} />
               {/* Track B PR-B10 — Commodities panel (metal donut). */}
               <Route path="panels/commodities" element={<CommoditiesPanelPage />} />
+              {/* Track B PR-B16 — Forex panel (per-pair bar + long-leg donut). */}
+              <Route path="panels/forex" element={<ForexPanelPage />} />
               <Route path="news" element={<NewsPage />} />
               <Route path="holdings-insights" element={<HoldingsInsightsPage />} />
               <Route path="holdings/:assetId" element={<AssetProfilePage />} />
