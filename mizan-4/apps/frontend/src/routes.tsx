@@ -28,6 +28,7 @@ import CommoditiesPanelPage from "@/pages/panels/commodities/commodities-panel";
 import CryptoPanelPage from "@/pages/panels/crypto/crypto-panel";
 import EquitiesPanelPage from "@/pages/panels/equities/equities-panel";
 import ForexPanelPage from "@/pages/panels/forex/forex-panel";
+import InsurancePanelPage from "@/pages/panels/insurance/insurance-panel";
 import PrivateEquityPanelPage from "@/pages/panels/private-equity/private-equity-panel";
 import RealEstatePanelPage from "@/pages/panels/real-estate/real-estate-panel";
 import SukuksPanelPage from "@/pages/panels/sukuks/sukuks-panel";
@@ -131,6 +132,8 @@ export function AppRoutes() {
               <Route path="panels/private-equity" element={<PrivateEquityPanelPage />} />
               {/* Track B PR-B8 — Brokerage Accounts panel (donut by broker + accounts list). */}
               <Route path="panels/brokerage-accounts" element={<BrokerageAccountsPanelPage />} />
+              {/* Track B PR-B10 — Insurance panel (category donut + stale badges + ULIP surrender). */}
+              <Route path="panels/insurance" element={<InsurancePanelPage />} />
               <Route path="news" element={<NewsPage />} />
               <Route path="holdings-insights" element={<HoldingsInsightsPage />} />
               <Route path="holdings/:assetId" element={<AssetProfilePage />} />
