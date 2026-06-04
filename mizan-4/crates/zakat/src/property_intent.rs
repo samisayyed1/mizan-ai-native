@@ -78,7 +78,7 @@ impl PropertyIntent {
     pub fn parse(raw: &str) -> Self {
         match raw.trim().to_lowercase().replace([' ', '_'], "-").as_str() {
             "for-sale" | "forsale" | "for-resale" | "tijara" => Self::ForSale,
-            "rental" | "rent" | "lease" | "leased" | "income" => Self::Rental,
+            "rental" | "rent" | "for-rent" | "lease" | "leased" | "income" => Self::Rental,
             "residence" | "home" | "primary" | "primary-residence" | "family"
             | "owner-occupied" => Self::Residence,
             _ => Self::Unknown,

@@ -87,6 +87,36 @@ pub fn assess_for_school(mut inputs: ZakatInputs, school: School) -> ZakatReport
     assess(inputs)
 }
 
+/// Read `metadata.property.intent` from a Holding's optional metadata
+/// JSON. Returns [`PropertyIntent::Unknown`] for any holding without
+/// a declared intent — under Maliki's conservative routing this means
+/// the property flows into `tradable_assets` (see `route_property`).
+///
+/// Looks for both `metadata.property.intent` (the v2 shape per the
+/// autonomous directive) and the flat `metadata.intent` key (the v1
+/// shape that some legacy fixtures still use).
+fn extract_property_intent(
+    h: &mizan_core::portfolio::holdings::holdings_model::Holding,
+) -> super::property_intent::PropertyIntent {
+    use super::property_intent::PropertyIntent;
+    let Some(meta) = h.metadata.as_ref() else {
+        return PropertyIntent::Unknown;
+    };
+    // v2 shape: metadata.property.intent
+    if let Some(intent) = meta
+        .get("property")
+        .and_then(|p| p.get("intent"))
+        .and_then(|i| i.as_str())
+    {
+        return PropertyIntent::parse(intent);
+    }
+    // v1 shape: metadata.intent (some legacy fixtures)
+    if let Some(intent) = meta.get("intent").and_then(|i| i.as_str()) {
+        return PropertyIntent::parse(intent);
+    }
+    PropertyIntent::Unknown
+}
+
 #[async_trait]
 impl ZakatServiceTrait for ZakatService {
     fn assess(&self, inputs: ZakatInputs) -> ZakatReport {
@@ -94,6 +124,21 @@ impl ZakatServiceTrait for ZakatService {
     }
 
     async fn assess_portfolio(&self, base_currency: &str, nisab: Decimal) -> Result<ZakatReport> {
+        // Backward-compat shim: delegate to the school-aware path with
+        // Hanafi (the default school). This preserves the legacy
+        // behaviour for any caller still on the old API.
+        self.assess_portfolio_for_school(School::Hanafi, base_currency, nisab)
+            .await
+    }
+
+    async fn assess_portfolio_for_school(
+        &self,
+        school: School,
+        base_currency: &str,
+        nisab: Decimal,
+    ) -> Result<ZakatReport> {
+        use super::property_intent::{route_property, PropertyBucket};
+
         // Aggregate the consolidated portfolio. The "TOTAL" sentinel account
         // holds every alt-asset; per-real-account holdings cover the
         // securities side. We sum once across both via the holdings service's
@@ -114,6 +159,10 @@ impl ZakatServiceTrait for ZakatService {
         // report can flag them for the user to review with their imam.
         let mut other_kind_count: usize = 0;
         let mut other_kind_value = Decimal::ZERO;
+        // Track per-school property routing so the audit trail can
+        // surface a "$X of for-sale property routed via Maliki" note.
+        let mut maliki_property_tradable = Decimal::ZERO;
+        let mut maliki_property_unknown_intent_count: usize = 0;
 
         for h in &holdings {
             // Each holding carries a base-currency value in `market_value.base`.
@@ -131,10 +180,25 @@ impl ZakatServiceTrait for ZakatService {
                 // business holds zakatable assets and the share is held for
                 // appreciation, not consumption. Treat as tradable.
                 (_, Some(AssetKind::PrivateEquity)) => tradable += value,
-                // Consumer-use exclusions (majority view: not zakatable).
-                (_, Some(AssetKind::Property))
-                | (_, Some(AssetKind::Vehicle))
-                | (_, Some(AssetKind::Collectible)) => {}
+                // Property — PR-F2.b.1: school-aware routing via the
+                // route_property table (ADR 0015 for Maliki). Maliki
+                // routes for-sale property into tradable; other schools
+                // keep the consumer-use exclusion baseline.
+                (_, Some(AssetKind::Property)) => {
+                    let intent = extract_property_intent(h);
+                    match route_property(school, intent) {
+                        PropertyBucket::Tradable => {
+                            tradable += value;
+                            if matches!(intent, super::property_intent::PropertyIntent::Unknown) {
+                                maliki_property_unknown_intent_count += 1;
+                            }
+                            maliki_property_tradable += value;
+                        }
+                        PropertyBucket::Exempt => {}
+                    }
+                }
+                // Vehicles + collectibles: always consumer-use exempt.
+                (_, Some(AssetKind::Vehicle)) | (_, Some(AssetKind::Collectible)) => {}
                 // FX is infrastructure (not directly holdable per the enum).
                 (_, Some(AssetKind::Fx)) => {}
                 // Unknown/unclassified: include conservatively in tradable
@@ -155,16 +219,36 @@ impl ZakatServiceTrait for ZakatService {
             short_term_debts,
             nisab,
             currency: Some(base_currency.to_string()),
-            school: School::default(),
+            school,
         });
         // Add a portfolio-specific note clarifying what was excluded.
-        report.notes.push(
-            "Property, collectibles, and vehicles were excluded (consumer-use, not held \
-             for resale). Long-term-held stocks/ETFs, crypto, sukuk, treasuries and private \
-             equity are included as `tradable assets` per the most common modern \
-             interpretation."
-                .to_string(),
-        );
+        // Wording branches by school so the user's imam sees exactly
+        // what was routed where.
+        if matches!(school, School::Maliki) {
+            report.notes.push(format!(
+                "Maliki routing applied (ADR 0015): {} {} of for-sale / unknown-intent property \
+                 routed into tradable assets at market value. Primary-residence and rental \
+                 property remain exempt from market-value Zakat (rental income routes separately \
+                 via cash flows). Vehicles and collectibles are excluded.",
+                maliki_property_tradable, base_currency,
+            ));
+            if maliki_property_unknown_intent_count > 0 {
+                report.notes.push(format!(
+                    "{} property holding(s) had no `metadata.property.intent` declared — \
+                     conservatively routed into tradable assets under Maliki. Set intent under \
+                     Settings → Assets so future calculations are precise.",
+                    maliki_property_unknown_intent_count,
+                ));
+            }
+        } else {
+            report.notes.push(
+                "Property, collectibles, and vehicles were excluded (consumer-use, not held \
+                 for resale). Long-term-held stocks/ETFs, crypto, sukuk, treasuries and private \
+                 equity are included as `tradable assets` per the most common modern \
+                 interpretation."
+                    .to_string(),
+            );
+        }
         if other_kind_count > 0 {
             report.notes.push(format!(
                 "{} unclassified holding(s) worth {:.2} {} were included as tradable assets \
@@ -561,5 +645,156 @@ mod tests {
         assert_eq!(parsed, School::Shafii);
         let parsed: School = serde_json::from_str("\"shafi'i\"").expect("ok");
         assert_eq!(parsed, School::Shafii);
+    }
+
+    // ─── PR-F2.b.1: route_property wired into assess_portfolio ────
+
+    /// Build a Property-kind Holding with `metadata.property.intent` set.
+    fn property_holding(base: Decimal, intent: &str) -> Holding {
+        let mut h = zakat_holding(HoldingType::Security, Some(AssetKind::Property), base);
+        h.metadata = Some(serde_json::json!({
+            "property": { "intent": intent }
+        }));
+        h
+    }
+
+    #[tokio::test]
+    async fn s23_singapore_fixture_maliki_routes_for_sale_into_tradable() {
+        // §23 reference user:
+        //   - Bukit Batok primary-residence ($800K) → exempt under Maliki
+        //   - 3 Hyderabad rentals ($250K + $225K + $225K) → exempt
+        //     (rental income routes via cash flows, PR-F2.b.2)
+        //   - 1 Hyderabad for-sale unit ($300K) → tradable under Maliki
+        // Plus $10K liquid cash so the report is above Nisab.
+        let holdings = vec![
+            property_holding(dec!(800_000), "primary-residence"),
+            property_holding(dec!(250_000), "for-rent"),
+            property_holding(dec!(225_000), "for-rent"),
+            property_holding(dec!(225_000), "for-rent"),
+            property_holding(dec!(300_000), "for-sale"),
+            zakat_holding(HoldingType::Cash, None, dec!(10_000)),
+        ];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        let report = svc
+            .assess_portfolio_for_school(School::Maliki, "USD", dec!(5_000))
+            .await
+            .unwrap();
+
+        // Under Maliki: cash $10K + for-sale property $300K = $310K
+        assert_eq!(report.total_assessable_assets, dec!(310_000));
+        assert_eq!(report.school, School::Maliki);
+        assert!(report.is_above_nisab);
+        assert_eq!(report.zakat_due, dec!(7_750)); // 2.5% × 310k
+                                                   // Report notes must mention the Maliki routing
+        assert!(
+            report
+                .notes
+                .iter()
+                .any(|n| n.contains("Maliki routing applied")),
+            "Maliki note missing; notes: {:?}",
+            report.notes
+        );
+    }
+
+    #[tokio::test]
+    async fn s23_singapore_fixture_hanafi_excludes_all_property() {
+        // Same fixture as above, but under Hanafi (default) — ALL
+        // property is consumer-use exempt. Only cash $10K counts.
+        let holdings = vec![
+            property_holding(dec!(800_000), "primary-residence"),
+            property_holding(dec!(250_000), "for-rent"),
+            property_holding(dec!(225_000), "for-rent"),
+            property_holding(dec!(225_000), "for-rent"),
+            property_holding(dec!(300_000), "for-sale"),
+            zakat_holding(HoldingType::Cash, None, dec!(10_000)),
+        ];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        let report = svc
+            .assess_portfolio_for_school(School::Hanafi, "USD", dec!(5_000))
+            .await
+            .unwrap();
+
+        assert_eq!(report.total_assessable_assets, dec!(10_000));
+        assert_eq!(report.school, School::Hanafi);
+        assert_eq!(report.zakat_due, dec!(250)); // 2.5% × 10k
+    }
+
+    #[tokio::test]
+    async fn assess_portfolio_backward_compat_default_is_hanafi() {
+        // Existing assess_portfolio(&self, base, nisab) callers must
+        // continue to get the Hanafi consumer-use exclusion baseline.
+        let holdings = vec![
+            property_holding(dec!(500_000), "for-sale"),
+            zakat_holding(HoldingType::Cash, None, dec!(10_000)),
+        ];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        let report = svc.assess_portfolio("USD", dec!(5_000)).await.unwrap();
+        // Backward-compat: school = Hanafi → for-sale property exempt
+        assert_eq!(report.total_assessable_assets, dec!(10_000));
+        assert_eq!(report.school, School::Hanafi);
+    }
+
+    #[tokio::test]
+    async fn maliki_unknown_intent_property_flagged_in_notes() {
+        let holdings = vec![
+            property_holding(dec!(400_000), "investment-condo"), // unrecognised → Unknown
+            zakat_holding(HoldingType::Cash, None, dec!(10_000)),
+        ];
+        let svc = ZakatService::new(Arc::new(StubHoldingsService { holdings }));
+        let report = svc
+            .assess_portfolio_for_school(School::Maliki, "USD", dec!(5_000))
+            .await
+            .unwrap();
+        // Conservative inclusion: unknown intent → tradable
+        assert_eq!(report.total_assessable_assets, dec!(410_000));
+        // And the report flags it
+        assert!(
+            report
+                .notes
+                .iter()
+                .any(|n| n.contains("no `metadata.property.intent` declared")),
+            "Unknown-intent note missing; notes: {:?}",
+            report.notes
+        );
+    }
+
+    #[tokio::test]
+    async fn extract_property_intent_handles_missing_metadata() {
+        // No metadata at all → PropertyIntent::Unknown → under Maliki,
+        // conservative inclusion. Pin via assess_portfolio_for_school.
+        let h = zakat_holding(
+            HoldingType::Security,
+            Some(AssetKind::Property),
+            dec!(200_000),
+        );
+        let svc = ZakatService::new(Arc::new(StubHoldingsService {
+            holdings: vec![h, zakat_holding(HoldingType::Cash, None, dec!(10_000))],
+        }));
+        let report = svc
+            .assess_portfolio_for_school(School::Maliki, "USD", dec!(5_000))
+            .await
+            .unwrap();
+        assert_eq!(report.total_assessable_assets, dec!(210_000));
+    }
+
+    #[tokio::test]
+    async fn extract_property_intent_v1_flat_metadata_shape() {
+        // Legacy fixtures use `metadata.intent` directly (no nested
+        // `property` key). The reader must accept both shapes.
+        let mut h = zakat_holding(
+            HoldingType::Security,
+            Some(AssetKind::Property),
+            dec!(200_000),
+        );
+        h.metadata = Some(serde_json::json!({ "intent": "for-sale" }));
+        let svc = ZakatService::new(Arc::new(StubHoldingsService {
+            holdings: vec![h, zakat_holding(HoldingType::Cash, None, dec!(10_000))],
+        }));
+        let report = svc
+            .assess_portfolio_for_school(School::Maliki, "USD", dec!(5_000))
+            .await
+            .unwrap();
+        // for-sale routes into tradable under Maliki
+        assert_eq!(report.total_assessable_assets, dec!(210_000));
     }
 }
