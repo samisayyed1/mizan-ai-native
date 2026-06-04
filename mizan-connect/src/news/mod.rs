@@ -44,6 +44,7 @@
 
 pub mod handlers;
 pub mod personalization;
+pub mod pgvector_similarity;
 pub mod providers;
 pub mod types;
 
@@ -53,6 +54,9 @@ use axum::Router;
 use crate::state::AppState;
 
 pub use personalization::{rank_articles, RankedArticle, RankingInput};
+pub use pgvector_similarity::{
+    cosine_similarity, rank_with_memory_embeddings, ArticleEmbedding, UserMemoryEmbedding,
+};
 pub use types::{NewsCategory, NewsTab, RawArticle};
 
 /// Subrouter for `/v1/news/*` endpoints — merged into the v1 tree.
