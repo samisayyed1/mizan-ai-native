@@ -504,6 +504,9 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
     // ── 6) GoalMilestone — current progress per goal ──────────────────
     let goal_progress = hydrate_goal_progress(context);
 
+    // ── 7) ConcentrationRisk — per-issuer + per-currency rollup ───────
+    let concentration_findings = hydrate_concentration_findings(context, &base_currency).await;
+
     let input = InsightsInput {
         today: Some(today),
         base_currency,
@@ -530,10 +533,12 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
         // to filter against. Failures degrade silently — better to
         // skip the rule on this tick than break the whole bell panel.
         hawl_anchors_approaching: hydrate_hawl_anchors(context, today),
-        // PR-C5.d.2+ will hydrate concentration / cash-drag-opportunity
-        // / tax-window candidates the same way. Until then the rules
-        // no-op (empty vecs).
-        concentration_findings: Vec::new(),
+        // Track C PR-C5.d.2 — hydrate concentration findings from
+        // existing holdings rollup. Computes per-issuer + per-currency
+        // exposure as a fraction of the portfolio total. Engine
+        // filters against CONCENTRATION_THRESHOLD_PCT + min exposure.
+        concentration_findings,
+        // PR-C5.d.3+ will hydrate cash-drag-opportunity + tax-window.
         cash_drag_opportunities: Vec::new(),
         tax_optimization_windows: Vec::new(),
     };
@@ -1138,6 +1143,119 @@ fn hydrate_goal_progress(
         .collect()
 }
 
+/// Track C PR-C5.d.2 — hydrate `InsightsInput.concentration_findings`
+/// from the existing holdings rollup.
+///
+/// Builds two dimensions today: **issuer** (one entry per
+/// `instrument.symbol`) + **currency** (one entry per
+/// `instrument.currency`). Sector + geography use weighted multi-
+/// category distributions that need a more nuanced rollup; deferred
+/// to a follow-up.
+///
+/// The engine filters against `CONCENTRATION_THRESHOLD_PCT` (25%) +
+/// `CONCENTRATION_MIN_EXPOSURE_BASE` ($10K) per `eval_concentration_risk`
+/// in `crates/insights/src/rules.rs`, so we pass every rollup row — the
+/// scheduler doesn't pre-filter.
+///
+/// Errors degrade silently (empty Vec) — better to skip the rule on
+/// this tick than break the whole bell panel.
+async fn hydrate_concentration_findings(
+    context: &std::sync::Arc<ServiceContext>,
+    base_currency: &str,
+) -> Vec<mizan_insights::ConcentrationRiskFinding> {
+    use log::debug;
+    use mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID;
+
+    let holdings = match context
+        .holdings_service()
+        .get_holdings(PORTFOLIO_TOTAL_ACCOUNT_ID, base_currency)
+        .await
+    {
+        Ok(h) => h,
+        Err(e) => {
+            debug!("Insights/Concentration: get_holdings failed: {e} — skipping rule");
+            return Vec::new();
+        }
+    };
+
+    rollup_concentration_findings(&holdings, base_currency)
+}
+
+/// Pure-math helper for `hydrate_concentration_findings` — testable
+/// without a `ServiceContext`. Per-issuer (keyed on
+/// `instrument.symbol`) + per-currency rollup over the holdings slice.
+///
+/// Net-worth denominator = sum of `market_value.base` across the
+/// holdings. Zero-or-negative total returns an empty vec (the
+/// fraction computation would underflow).
+fn rollup_concentration_findings(
+    holdings: &[mizan_core::portfolio::holdings::Holding],
+    base_currency: &str,
+) -> Vec<mizan_insights::ConcentrationRiskFinding> {
+    use mizan_insights::ConcentrationRiskFinding;
+    use rust_decimal::Decimal;
+    use std::collections::HashMap;
+
+    let total_value: Decimal = holdings.iter().map(|h| h.market_value.base).sum();
+    if total_value <= Decimal::ZERO {
+        return Vec::new();
+    }
+
+    // Per-issuer (instrument symbol → (display_label, summed_exposure))
+    let mut by_issuer: HashMap<String, (String, Decimal)> = HashMap::new();
+    // Per-currency (instrument currency, falling back to base for
+    // cash / no-instrument holdings)
+    let mut by_currency: HashMap<String, Decimal> = HashMap::new();
+
+    for h in holdings {
+        let value = h.market_value.base;
+        if value <= Decimal::ZERO {
+            continue;
+        }
+        if let Some(inst) = &h.instrument {
+            let display_label = inst
+                .name
+                .as_deref()
+                .filter(|n| !n.is_empty())
+                .unwrap_or(&inst.symbol)
+                .to_string();
+            by_issuer
+                .entry(inst.symbol.clone())
+                .and_modify(|(_, sum)| *sum += value)
+                .or_insert((display_label, value));
+            let currency_key = if inst.currency.is_empty() {
+                base_currency.to_string()
+            } else {
+                inst.currency.clone()
+            };
+            *by_currency.entry(currency_key).or_insert(Decimal::ZERO) += value;
+        } else {
+            *by_currency
+                .entry(base_currency.to_string())
+                .or_insert(Decimal::ZERO) += value;
+        }
+    }
+
+    let mut out = Vec::with_capacity(by_issuer.len() + by_currency.len());
+    for (_symbol, (label, exposure)) in by_issuer {
+        out.push(ConcentrationRiskFinding {
+            dimension: "issuer".to_string(),
+            label,
+            fraction_of_net_worth: exposure / total_value,
+            exposure_base: exposure,
+        });
+    }
+    for (currency, exposure) in by_currency {
+        out.push(ConcentrationRiskFinding {
+            dimension: "currency".to_string(),
+            label: currency,
+            fraction_of_net_worth: exposure / total_value,
+            exposure_base: exposure,
+        });
+    }
+    out
+}
+
 /// Track C PR-C5.d.1 — hydrate `InsightsInput.hawl_anchors_approaching`
 /// from the `hawl_anchors` table.
 ///
@@ -1243,5 +1361,167 @@ mod hawl_label_tests {
     #[test]
     fn empty_string_safe() {
         assert_eq!(pretty_cohort_label(""), "");
+    }
+}
+
+#[cfg(test)]
+mod concentration_tests {
+    use super::rollup_concentration_findings;
+    use chrono::NaiveDate;
+    use mizan_core::portfolio::holdings::{Holding, HoldingType, Instrument, MonetaryValue};
+    use rust_decimal::Decimal;
+
+    fn dec_str(s: &str) -> Decimal {
+        s.parse::<Decimal>().unwrap()
+    }
+
+    fn make_holding(
+        symbol: &str,
+        name: Option<&str>,
+        currency: &str,
+        base_value: Decimal,
+    ) -> Holding {
+        Holding {
+            id: format!("h_{symbol}"),
+            account_id: "acc-1".into(),
+            holding_type: HoldingType::Security,
+            instrument: Some(Instrument {
+                id: format!("i_{symbol}"),
+                symbol: symbol.into(),
+                name: name.map(|s| s.to_string()),
+                currency: currency.into(),
+                notes: None,
+                pricing_mode: "MARKET".into(),
+                preferred_provider: None,
+                exchange_mic: None,
+                classifications: None,
+            }),
+            asset_kind: None,
+            quantity: dec_str("1"),
+            contract_multiplier: dec_str("1"),
+            local_currency: currency.into(),
+            base_currency: "USD".into(),
+            market_value: MonetaryValue {
+                local: base_value,
+                base: base_value,
+            },
+            cost_basis: None,
+            fx_rate: None,
+            open_date: None,
+            lots: None,
+            price: None,
+            purchase_price: None,
+            unrealized_gain: None,
+            unrealized_gain_pct: None,
+            realized_gain: None,
+            realized_gain_pct: None,
+            dividend_income: None,
+            total_gain: None,
+            total_gain_pct: None,
+            day_change: None,
+            day_change_pct: None,
+            prev_close_value: None,
+            weight: dec_str("0"),
+            as_of_date: NaiveDate::from_ymd_opt(2026, 6, 4).unwrap(),
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn empty_holdings_returns_empty() {
+        assert!(rollup_concentration_findings(&[], "USD").is_empty());
+    }
+
+    #[test]
+    fn zero_total_returns_empty() {
+        let h = make_holding("X", None, "USD", dec_str("0"));
+        assert!(rollup_concentration_findings(&[h], "USD").is_empty());
+    }
+
+    #[test]
+    fn issuer_and_currency_dimensions_emitted() {
+        // 1M total: 300K Emaar (USD), 200K DAR (USD), 500K AAPL (USD).
+        // Expected per-dimension entries: 3 issuers + 1 currency (USD).
+        let holdings = vec![
+            make_holding("EMAAR", Some("Emaar Sukuk"), "USD", dec_str("300000")),
+            make_holding("DAR", Some("Dar al Arkan Sukuk"), "USD", dec_str("200000")),
+            make_holding("AAPL", Some("Apple Inc."), "USD", dec_str("500000")),
+        ];
+        let mut out = rollup_concentration_findings(&holdings, "USD");
+        out.sort_by(|a, b| a.dimension.cmp(&b.dimension).then(a.label.cmp(&b.label)));
+
+        let issuers: Vec<_> = out.iter().filter(|f| f.dimension == "issuer").collect();
+        let currencies: Vec<_> = out.iter().filter(|f| f.dimension == "currency").collect();
+
+        assert_eq!(issuers.len(), 3);
+        assert_eq!(currencies.len(), 1);
+
+        // §23-flavored issuer pin: Emaar at 30% of 1M
+        let emaar = issuers.iter().find(|f| f.label == "Emaar Sukuk").unwrap();
+        assert_eq!(emaar.fraction_of_net_worth, dec_str("0.3"));
+        assert_eq!(emaar.exposure_base, dec_str("300000"));
+
+        // USD = 100% of 1M
+        assert_eq!(currencies[0].label, "USD");
+        assert_eq!(currencies[0].fraction_of_net_worth, dec_str("1"));
+    }
+
+    #[test]
+    fn duplicate_symbol_aggregates_into_one_issuer_row() {
+        // Two AAPL lots → one issuer entry summing to 200K.
+        let holdings = vec![
+            make_holding("AAPL", Some("Apple"), "USD", dec_str("100000")),
+            make_holding("AAPL", Some("Apple"), "USD", dec_str("100000")),
+        ];
+        let out = rollup_concentration_findings(&holdings, "USD");
+        let issuers: Vec<_> = out.iter().filter(|f| f.dimension == "issuer").collect();
+        assert_eq!(issuers.len(), 1);
+        assert_eq!(issuers[0].exposure_base, dec_str("200000"));
+        assert_eq!(issuers[0].fraction_of_net_worth, dec_str("1"));
+    }
+
+    #[test]
+    fn name_falls_back_to_symbol_when_missing_or_empty() {
+        let mut h = make_holding("TSLA", Some(""), "USD", dec_str("50000"));
+        // Empty string should fall through to symbol.
+        if let Some(inst) = h.instrument.as_mut() {
+            inst.name = Some(String::new());
+        }
+        let out = rollup_concentration_findings(&[h], "USD");
+        let issuer = out.iter().find(|f| f.dimension == "issuer").unwrap();
+        assert_eq!(issuer.label, "TSLA");
+    }
+
+    #[test]
+    fn multi_currency_rollup() {
+        // 600K USD + 400K SGD = 1M; 60/40 split.
+        let holdings = vec![
+            make_holding("AAPL", None, "USD", dec_str("600000")),
+            make_holding("D05", None, "SGD", dec_str("400000")),
+        ];
+        let out = rollup_concentration_findings(&holdings, "USD");
+        let mut currencies: Vec<_> = out.iter().filter(|f| f.dimension == "currency").collect();
+        currencies.sort_by(|a, b| a.label.cmp(&b.label));
+        assert_eq!(currencies.len(), 2);
+        assert_eq!(currencies[0].label, "SGD");
+        assert_eq!(currencies[0].fraction_of_net_worth, dec_str("0.4"));
+        assert_eq!(currencies[1].label, "USD");
+        assert_eq!(currencies[1].fraction_of_net_worth, dec_str("0.6"));
+    }
+
+    #[test]
+    fn no_instrument_falls_to_base_currency_bucket() {
+        // Cash-type holding without an instrument — bucketed into base
+        let mut h = make_holding("X", None, "USD", dec_str("100000"));
+        h.instrument = None;
+        h.holding_type = HoldingType::Cash;
+        let out = rollup_concentration_findings(&[h], "USD");
+        let issuers: Vec<_> = out.iter().filter(|f| f.dimension == "issuer").collect();
+        let currencies: Vec<_> = out.iter().filter(|f| f.dimension == "currency").collect();
+        // No issuer entry (no instrument to key on)
+        assert!(issuers.is_empty());
+        // But it still shows up under currency
+        assert_eq!(currencies.len(), 1);
+        assert_eq!(currencies[0].label, "USD");
     }
 }
