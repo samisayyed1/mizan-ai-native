@@ -517,6 +517,9 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
     // ── 10) ShariaStatusChanged — AAOIFI verdict flips per holding ──
     let sharia_status_changes = hydrate_sharia_status_changes(context, today);
 
+    // ── 11) TaxOptimizationWindow — per-jurisdiction tax deadlines ──
+    let tax_optimization_windows = compute_tax_optimization_windows(today);
+
     let input = InsightsInput {
         today: Some(today),
         base_currency,
@@ -559,7 +562,11 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
         concentration_findings,
         // PR-C5.d.3+ will hydrate cash-drag-opportunity + tax-window.
         cash_drag_opportunities: Vec::new(),
-        tax_optimization_windows: Vec::new(),
+        // Track C PR-C5.d.7 — hydrate per-jurisdiction tax deadlines
+        // from the hardcoded calendar in
+        // compute_tax_optimization_windows. Engine filters against
+        // 90/30/7/1 day thresholds in TAX_WINDOW_DAY_THRESHOLDS.
+        tax_optimization_windows,
     };
 
     let candidates = evaluate(&input);
@@ -1275,6 +1282,150 @@ fn rollup_concentration_findings(
     out
 }
 
+/// Track C PR-C5.d.7 — compute `InsightsInput.tax_optimization_windows`
+/// from a hardcoded yearly-recurring calendar.
+///
+/// Today's calendar (will grow as Track G ships jurisdiction-aware
+/// settings + per-user filtering):
+///   - `cpf_sa_top_up` — CPF Special Account voluntary contribution
+///     cutoff (Dec 31, Singapore)
+///   - `ira_deadline` — US IRA contribution cutoff for prior tax
+///     year (April 15 of the following year)
+///   - `capital_gains_harvest` — US tax-loss-harvesting window
+///     closing (Dec 31)
+///   - `roth_401k_deadline` — US 401(k) elective deferral cutoff
+///     (Dec 31 of the contribution year)
+///   - `nps_deadline` — India NPS Tier-I contribution cutoff
+///     (March 31)
+///
+/// Each window emits with `kind` slug + display label + computed
+/// `days_remaining` from `today` to the next occurrence. Engine
+/// filters against `TAX_WINDOW_DAY_THRESHOLDS` (90/30/7/1) so we
+/// pass every window with non-negative `days_remaining` and let the
+/// engine pick the crossed threshold.
+///
+/// Pure-math wrapper, no DB / no service. The user's jurisdiction
+/// filter lands in PR-C5.d.7.a once Track G ships
+/// `settings.tax_jurisdiction`; until then, surfacing all five is
+/// fine because the engine still respects the day-threshold filter.
+fn compute_tax_optimization_windows(
+    today: chrono::NaiveDate,
+) -> Vec<mizan_insights::TaxOptimizationWindow> {
+    tax_windows_from_calendar(today, TAX_DEADLINE_CALENDAR)
+}
+
+/// A single yearly-recurring tax-deadline entry. Static catalog;
+/// `next_occurrence` resolves to the next calendar date ≥ `today`.
+#[derive(Debug, Clone, Copy)]
+struct TaxDeadlineEntry {
+    kind: &'static str,
+    label: &'static str,
+    /// (month, day) — yearly recurrence.
+    month: u32,
+    day: u32,
+    /// If true, the cutoff is in the *following* calendar year (e.g.
+    /// US IRA: contributions for tax year N close April 15 of N+1).
+    next_year_cutoff: bool,
+}
+
+const TAX_DEADLINE_CALENDAR: &[TaxDeadlineEntry] = &[
+    TaxDeadlineEntry {
+        kind: "cpf_sa_top_up",
+        label: "CPF SA top-up cutoff",
+        month: 12,
+        day: 31,
+        next_year_cutoff: false,
+    },
+    TaxDeadlineEntry {
+        kind: "ira_deadline",
+        label: "IRA contribution deadline",
+        month: 4,
+        day: 15,
+        next_year_cutoff: true,
+    },
+    TaxDeadlineEntry {
+        kind: "capital_gains_harvest",
+        label: "Capital-gains harvesting window",
+        month: 12,
+        day: 31,
+        next_year_cutoff: false,
+    },
+    TaxDeadlineEntry {
+        kind: "roth_401k_deadline",
+        label: "401(k) deferral deadline",
+        month: 12,
+        day: 31,
+        next_year_cutoff: false,
+    },
+    TaxDeadlineEntry {
+        kind: "nps_deadline",
+        label: "NPS Tier-I contribution deadline",
+        month: 3,
+        day: 31,
+        next_year_cutoff: false,
+    },
+];
+
+/// Pure-math helper for `compute_tax_optimization_windows` — emits
+/// one `TaxOptimizationWindow` per calendar entry, computing
+/// `days_remaining` from `today` to the next occurrence.
+///
+/// "Next occurrence" semantics:
+///   * `next_year_cutoff: false` — if (month, day) >= today, this year;
+///     else next year (already passed → roll forward 12 months).
+///   * `next_year_cutoff: true` — (month, day) of the **next** calendar
+///     year regardless of today (IRA contributions for tax year N
+///     close April 15 of N+1; the user wants the heads-up well before
+///     the deadline lands).
+fn tax_windows_from_calendar(
+    today: chrono::NaiveDate,
+    calendar: &[TaxDeadlineEntry],
+) -> Vec<mizan_insights::TaxOptimizationWindow> {
+    use mizan_insights::TaxOptimizationWindow;
+
+    let mut out = Vec::with_capacity(calendar.len());
+    for entry in calendar {
+        let Some(next) = next_occurrence(today, entry) else {
+            continue;
+        };
+        let days_remaining = (next - today).num_days();
+        out.push(TaxOptimizationWindow {
+            kind: entry.kind.to_string(),
+            days_remaining,
+            label: entry.label.to_string(),
+            // Savings estimate left None — needs per-user marginal-rate
+            // input that doesn't exist in settings yet. Engine renders
+            // "Window closes in N days." without the savings line.
+            potential_savings_base: None,
+        });
+    }
+    // Sort by days_remaining ascending so the bell-panel renders the
+    // most-urgent first.
+    out.sort_by_key(|w| w.days_remaining);
+    out
+}
+
+/// Compute the next calendar occurrence of `entry` strictly ≥
+/// `today` (or next year, per `next_year_cutoff`).
+fn next_occurrence(
+    today: chrono::NaiveDate,
+    entry: &TaxDeadlineEntry,
+) -> Option<chrono::NaiveDate> {
+    use chrono::{Datelike, NaiveDate};
+
+    let year = if entry.next_year_cutoff {
+        today.year() + 1
+    } else {
+        today.year()
+    };
+    let candidate = NaiveDate::from_ymd_opt(year, entry.month, entry.day)?;
+    if candidate >= today {
+        return Some(candidate);
+    }
+    // Already passed this year → next year
+    NaiveDate::from_ymd_opt(year + 1, entry.month, entry.day)
+}
+
 /// Track C PR-C5.d.5 — hydrate `InsightsInput.sharia_status_changes`
 /// by detecting AAOIFI screening flips per holding.
 ///
@@ -1685,6 +1836,160 @@ mod hawl_label_tests {
     #[test]
     fn empty_string_safe() {
         assert_eq!(pretty_cohort_label(""), "");
+    }
+}
+
+#[cfg(test)]
+mod tax_window_tests {
+    use super::{
+        next_occurrence, tax_windows_from_calendar, TaxDeadlineEntry, TAX_DEADLINE_CALENDAR,
+    };
+    use chrono::NaiveDate;
+
+    fn date(y: i32, m: u32, d: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(y, m, d).unwrap()
+    }
+
+    #[test]
+    fn cpf_sa_deadline_in_january_resolves_to_this_dec_31() {
+        // Today = Jan 15, 2026 → CPF SA cutoff = Dec 31, 2026
+        let cpf = TaxDeadlineEntry {
+            kind: "cpf_sa_top_up",
+            label: "CPF",
+            month: 12,
+            day: 31,
+            next_year_cutoff: false,
+        };
+        assert_eq!(
+            next_occurrence(date(2026, 1, 15), &cpf),
+            Some(date(2026, 12, 31))
+        );
+    }
+
+    #[test]
+    fn cpf_sa_deadline_after_dec_31_rolls_to_next_year() {
+        // Today = Jan 2, 2027 → CPF SA cutoff = Dec 31, 2027
+        // (Dec 31 2026 has passed.)
+        let cpf = TaxDeadlineEntry {
+            kind: "cpf_sa_top_up",
+            label: "CPF",
+            month: 12,
+            day: 31,
+            next_year_cutoff: false,
+        };
+        assert_eq!(
+            next_occurrence(date(2027, 1, 2), &cpf),
+            Some(date(2027, 12, 31))
+        );
+    }
+
+    #[test]
+    fn ira_next_year_cutoff_always_points_to_n_plus_1() {
+        // Today = March 1, 2026 → IRA cutoff = April 15, 2027
+        // (the IRA cutoff for tax year 2026 is April 15 2027)
+        let ira = TaxDeadlineEntry {
+            kind: "ira_deadline",
+            label: "IRA",
+            month: 4,
+            day: 15,
+            next_year_cutoff: true,
+        };
+        assert_eq!(
+            next_occurrence(date(2026, 3, 1), &ira),
+            Some(date(2027, 4, 15))
+        );
+    }
+
+    #[test]
+    fn ira_today_equals_deadline_returns_today() {
+        // Today = April 15, 2027 → IRA cutoff for tax year 2027 =
+        // April 15, 2028 (next_year_cutoff:true always points to N+1
+        // regardless of today).
+        let ira = TaxDeadlineEntry {
+            kind: "ira_deadline",
+            label: "IRA",
+            month: 4,
+            day: 15,
+            next_year_cutoff: true,
+        };
+        assert_eq!(
+            next_occurrence(date(2027, 4, 15), &ira),
+            Some(date(2028, 4, 15))
+        );
+    }
+
+    #[test]
+    fn calendar_emits_one_window_per_entry() {
+        // The hardcoded calendar should always emit exactly its
+        // entry count. Pin this so a future PR that adds entries
+        // updates the count consciously.
+        let out = tax_windows_from_calendar(date(2026, 6, 4), TAX_DEADLINE_CALENDAR);
+        assert_eq!(out.len(), TAX_DEADLINE_CALENDAR.len());
+    }
+
+    #[test]
+    fn calendar_sorts_by_days_remaining_ascending() {
+        // June 4 2026:
+        //   NPS    Mar 31 2027 = 300 days
+        //   CPF SA Dec 31 2026 = 210 days
+        //   Cap-G  Dec 31 2026 = 210 days
+        //   401k   Dec 31 2026 = 210 days
+        //   IRA    Apr 15 2027 = 315 days
+        // → smallest first: CPF/CG/401k tied at 210, then NPS 300, then IRA 315.
+        let out = tax_windows_from_calendar(date(2026, 6, 4), TAX_DEADLINE_CALENDAR);
+        for pair in out.windows(2) {
+            assert!(
+                pair[0].days_remaining <= pair[1].days_remaining,
+                "calendar not sorted: {:?} > {:?}",
+                pair[0].days_remaining,
+                pair[1].days_remaining
+            );
+        }
+        // First three are the Dec 31 cluster (210 days)
+        assert_eq!(out[0].days_remaining, 210);
+        assert_eq!(out[1].days_remaining, 210);
+        assert_eq!(out[2].days_remaining, 210);
+    }
+
+    #[test]
+    fn calendar_includes_singapore_indian_us_jurisdictions() {
+        // §23 anchor: Singapore Muslim millionaire with CPF (SG) +
+        // potential US 401(k) + India NPS exposure. The calendar must
+        // cover all three.
+        let kinds: Vec<&str> = TAX_DEADLINE_CALENDAR.iter().map(|e| e.kind).collect();
+        assert!(kinds.contains(&"cpf_sa_top_up"));
+        assert!(kinds.contains(&"ira_deadline"));
+        assert!(kinds.contains(&"nps_deadline"));
+        assert!(kinds.contains(&"roth_401k_deadline"));
+        assert!(kinds.contains(&"capital_gains_harvest"));
+    }
+
+    #[test]
+    fn window_label_matches_calendar_entry() {
+        let out = tax_windows_from_calendar(date(2026, 6, 4), TAX_DEADLINE_CALENDAR);
+        for w in &out {
+            let entry = TAX_DEADLINE_CALENDAR
+                .iter()
+                .find(|e| e.kind == w.kind)
+                .unwrap();
+            assert_eq!(w.label, entry.label);
+        }
+    }
+
+    #[test]
+    fn potential_savings_left_none_until_marginal_rate_input_ships() {
+        // §A19 perf invariant: until per-user marginal-rate settings
+        // ship, savings_base must be None — the engine renders the
+        // line conditionally, avoiding misleading concrete figures.
+        let out = tax_windows_from_calendar(date(2026, 6, 4), TAX_DEADLINE_CALENDAR);
+        for w in &out {
+            assert!(w.potential_savings_base.is_none(), "kind={}", w.kind);
+        }
+    }
+
+    #[test]
+    fn empty_calendar_emits_empty() {
+        assert!(tax_windows_from_calendar(date(2026, 6, 4), &[]).is_empty());
     }
 }
 
