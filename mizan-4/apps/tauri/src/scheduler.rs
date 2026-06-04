@@ -507,6 +507,10 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
     // ── 7) ConcentrationRisk — per-issuer + per-currency rollup ───────
     let concentration_findings = hydrate_concentration_findings(context, &base_currency).await;
 
+    // ── 8) BondMaturityApproaching — bonds/sukuks within the maturity window ──
+    let bond_maturity_candidates =
+        hydrate_bond_maturity_candidates(context, &base_currency, today).await;
+
     let input = InsightsInput {
         today: Some(today),
         base_currency,
@@ -518,12 +522,16 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
         cash_high_for_days,
         sync_failures,
         dividend_events,
-        // Track C PR-C5.a (#108) added three rule families. The scheduler
-        // hydration for these lands in PR-C5.c alongside the AAOIFI
-        // worker output + bond-maturity reads; until then the empty
-        // vecs make the rules no-op (preserves the per-rule version-
-        // ability documented in crates/insights/src/input.rs §Versionable).
-        bond_maturity_candidates: Vec::new(),
+        // Track C PR-C5.d.3 — bond/sukuk maturity hydration. Reads
+        // holdings via holdings_service, filters to bond-classified
+        // instruments, looks up `Asset.bond_spec().maturity_date` via
+        // asset_service.get_assets_by_asset_ids, computes
+        // days_to_maturity against `today`, emits
+        // BondMaturityCandidate. Engine filters against
+        // BOND_MATURITY_DAY_THRESHOLDS (90/30/7/1).
+        bond_maturity_candidates,
+        // PR-C5.d.4+ will hydrate FX moves + Sharia status flips from
+        // the AAOIFI worker output + FX history table.
         fx_pair_moves: Vec::new(),
         sharia_status_changes: Vec::new(),
         // Track C PR-C5.d.1 — hydrate Hawl approaching candidates from
@@ -1256,6 +1264,141 @@ fn rollup_concentration_findings(
     out
 }
 
+/// Track C PR-C5.d.3 — hydrate `InsightsInput.bond_maturity_candidates`
+/// from the user's bond/sukuk holdings.
+///
+/// Pulls the portfolio's holdings via `holdings_service`, filters to
+/// bond-classified instruments (`assetType.key` starting with `BOND_`
+/// or in `{DEBT_SECURITY, MONEY_MARKET_DEBT, SUKUK}` — same predicate
+/// `eval_bond_maturity` uses), looks up each `Asset.bond_spec().maturity_date`
+/// via the asset service, computes `days_to_maturity` against `today`,
+/// and emits one `BondMaturityCandidate` per holding.
+///
+/// Engine filters against `BOND_MATURITY_DAY_THRESHOLDS` (90/30/7/1) +
+/// the principal floor in `eval_bond_maturity` — scheduler doesn't
+/// pre-filter, so a bond beyond the 90-day horizon still appears in
+/// the candidate vec and the engine silently drops it.
+///
+/// Errors degrade silently (empty Vec) — matches every other
+/// `hydrate_*` fn in this module.
+async fn hydrate_bond_maturity_candidates(
+    context: &std::sync::Arc<ServiceContext>,
+    base_currency: &str,
+    today: chrono::NaiveDate,
+) -> Vec<mizan_insights::BondMaturityCandidate> {
+    use log::debug;
+    use mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID;
+
+    let holdings = match context
+        .holdings_service()
+        .get_holdings(PORTFOLIO_TOTAL_ACCOUNT_ID, base_currency)
+        .await
+    {
+        Ok(h) => h,
+        Err(e) => {
+            debug!("Insights/BondMaturity: get_holdings failed: {e} — skipping rule");
+            return Vec::new();
+        }
+    };
+
+    // Filter to bond-classified holdings only — saves the per-holding
+    // asset lookup for non-bonds.
+    let bond_holdings: Vec<_> = holdings.into_iter().filter(is_bond_holding).collect();
+    if bond_holdings.is_empty() {
+        return Vec::new();
+    }
+
+    // Batch fetch the underlying assets to avoid N round-trips.
+    let asset_ids: Vec<String> = bond_holdings
+        .iter()
+        .filter_map(|h| h.instrument.as_ref().map(|i| i.id.clone()))
+        .collect();
+    let assets = match context
+        .asset_service()
+        .get_assets_by_asset_ids(&asset_ids)
+        .await
+    {
+        Ok(a) => a,
+        Err(e) => {
+            debug!("Insights/BondMaturity: get_assets_by_asset_ids failed: {e} — skipping rule");
+            return Vec::new();
+        }
+    };
+    let mut asset_by_id: std::collections::HashMap<String, mizan_core::assets::Asset> =
+        std::collections::HashMap::with_capacity(assets.len());
+    for a in assets {
+        asset_by_id.insert(a.id.clone(), a);
+    }
+
+    bond_maturity_candidates_from(&bond_holdings, &asset_by_id, today)
+}
+
+/// Pure-math helper for `hydrate_bond_maturity_candidates` — testable
+/// without a `ServiceContext`. Given a slice of bond-classified
+/// holdings + an asset lookup map + today's date, emits one
+/// `BondMaturityCandidate` per holding whose underlying asset carries
+/// a `bond_spec().maturity_date`.
+///
+/// Holdings without a maturity date are silently skipped (the user
+/// has the bond but we don't know when it matures — the engine
+/// couldn't fire anyway). Holdings whose principal value is non-
+/// positive are also skipped.
+fn bond_maturity_candidates_from(
+    bond_holdings: &[mizan_core::portfolio::holdings::Holding],
+    asset_by_id: &std::collections::HashMap<String, mizan_core::assets::Asset>,
+    today: chrono::NaiveDate,
+) -> Vec<mizan_insights::BondMaturityCandidate> {
+    use mizan_insights::BondMaturityCandidate;
+    use rust_decimal::Decimal;
+
+    let mut out = Vec::with_capacity(bond_holdings.len());
+    for h in bond_holdings {
+        let Some(inst) = &h.instrument else { continue };
+        let Some(asset) = asset_by_id.get(&inst.id) else {
+            continue;
+        };
+        let Some(spec) = asset.bond_spec() else {
+            continue;
+        };
+        let Some(maturity_date) = spec.maturity_date else {
+            continue;
+        };
+        let principal = h.market_value.base;
+        if principal <= Decimal::ZERO {
+            continue;
+        }
+        let days_to_maturity = (maturity_date - today).num_days();
+        out.push(BondMaturityCandidate {
+            holding_id: h.id.clone(),
+            symbol: inst.name.clone().unwrap_or_else(|| inst.symbol.clone()),
+            maturity_date,
+            days_to_maturity,
+            principal_returning_base: principal,
+        });
+    }
+    out
+}
+
+/// Bond-classified instrument predicate — matches the same key set
+/// `eval_bond_maturity` walks (BOND_* / DEBT_SECURITY /
+/// MONEY_MARKET_DEBT / SUKUK).
+fn is_bond_holding(h: &mizan_core::portfolio::holdings::Holding) -> bool {
+    let Some(inst) = &h.instrument else {
+        return false;
+    };
+    let Some(classifications) = &inst.classifications else {
+        return false;
+    };
+    let Some(asset_type) = &classifications.asset_type else {
+        return false;
+    };
+    let key = asset_type.key.to_ascii_uppercase();
+    key.starts_with("BOND_")
+        || key == "DEBT_SECURITY"
+        || key == "MONEY_MARKET_DEBT"
+        || key == "SUKUK"
+}
+
 /// Track C PR-C5.d.1 — hydrate `InsightsInput.hawl_anchors_approaching`
 /// from the `hawl_anchors` table.
 ///
@@ -1361,6 +1504,256 @@ mod hawl_label_tests {
     #[test]
     fn empty_string_safe() {
         assert_eq!(pretty_cohort_label(""), "");
+    }
+}
+
+#[cfg(test)]
+mod bond_maturity_tests {
+    use super::{bond_maturity_candidates_from, is_bond_holding};
+    use chrono::{NaiveDate, NaiveDateTime};
+    use mizan_core::assets::{Asset, AssetClassifications, AssetKind, QuoteMode};
+    use mizan_core::portfolio::holdings::{Holding, HoldingType, Instrument, MonetaryValue};
+    use mizan_core::taxonomies::Category;
+    use rust_decimal::Decimal;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    fn dec_str(s: &str) -> Decimal {
+        s.parse::<Decimal>().unwrap()
+    }
+
+    fn taxonomy_cat(key: &str) -> Category {
+        Category {
+            id: format!("cat_{key}"),
+            taxonomy_id: "asset_type".into(),
+            parent_id: None,
+            name: key.to_string(),
+            key: key.to_string(),
+            color: "#000".into(),
+            description: None,
+            sort_order: 0,
+            created_at: NaiveDateTime::default(),
+            updated_at: NaiveDateTime::default(),
+        }
+    }
+
+    fn make_holding(
+        holding_id: &str,
+        asset_id: &str,
+        name: &str,
+        asset_type_key: Option<&str>,
+        base: Decimal,
+    ) -> Holding {
+        Holding {
+            id: holding_id.into(),
+            account_id: "acc-1".into(),
+            holding_type: HoldingType::Security,
+            instrument: Some(Instrument {
+                id: asset_id.into(),
+                symbol: name.into(),
+                name: Some(name.into()),
+                currency: "USD".into(),
+                notes: None,
+                pricing_mode: "MARKET".into(),
+                preferred_provider: None,
+                exchange_mic: None,
+                classifications: asset_type_key.map(|k| AssetClassifications {
+                    asset_type: Some(taxonomy_cat(k)),
+                    risk_category: None,
+                    asset_classes: vec![],
+                    sectors: vec![],
+                    regions: vec![],
+                    custom_groups: vec![],
+                }),
+            }),
+            asset_kind: None,
+            quantity: dec_str("1"),
+            contract_multiplier: dec_str("1"),
+            local_currency: "USD".into(),
+            base_currency: "USD".into(),
+            market_value: MonetaryValue { local: base, base },
+            cost_basis: None,
+            fx_rate: None,
+            open_date: None,
+            lots: None,
+            price: None,
+            purchase_price: None,
+            unrealized_gain: None,
+            unrealized_gain_pct: None,
+            realized_gain: None,
+            realized_gain_pct: None,
+            dividend_income: None,
+            total_gain: None,
+            total_gain_pct: None,
+            day_change: None,
+            day_change_pct: None,
+            prev_close_value: None,
+            weight: dec_str("0"),
+            as_of_date: NaiveDate::from_ymd_opt(2026, 6, 4).unwrap(),
+            metadata: None,
+        }
+    }
+
+    fn make_bond_asset(asset_id: &str, name: &str, maturity: Option<NaiveDate>) -> Asset {
+        Asset {
+            id: asset_id.into(),
+            kind: AssetKind::Investment,
+            name: Some(name.into()),
+            display_code: Some(name.into()),
+            notes: None,
+            metadata: maturity.map(|m| json!({"bond": {"maturityDate": m.to_string()}})),
+            is_active: true,
+            quote_mode: QuoteMode::Manual,
+            quote_ccy: "USD".into(),
+            instrument_type: Some(mizan_core::assets::InstrumentType::Bond),
+            instrument_symbol: Some(name.into()),
+            instrument_exchange_mic: None,
+            instrument_key: None,
+            provider_config: None,
+            exchange_name: None,
+            created_at: NaiveDateTime::default(),
+            updated_at: NaiveDateTime::default(),
+        }
+    }
+
+    #[test]
+    fn is_bond_holding_recognises_sukuk_key() {
+        let h = make_holding("h1", "a_emaar", "EMAAR", Some("SUKUK"), dec_str("100000"));
+        assert!(is_bond_holding(&h));
+    }
+
+    #[test]
+    fn is_bond_holding_recognises_bond_prefix() {
+        let h = make_holding(
+            "h2",
+            "a_ust",
+            "UST10Y",
+            Some("BOND_GOVERNMENT"),
+            dec_str("100000"),
+        );
+        assert!(is_bond_holding(&h));
+        let h = make_holding(
+            "h3",
+            "a_corp",
+            "AAPL_BOND",
+            Some("BOND_CORPORATE"),
+            dec_str("100000"),
+        );
+        assert!(is_bond_holding(&h));
+    }
+
+    #[test]
+    fn is_bond_holding_recognises_debt_security_and_money_market() {
+        let h1 = make_holding("h4", "a_ds", "DS", Some("DEBT_SECURITY"), dec_str("100000"));
+        let h2 = make_holding(
+            "h5",
+            "a_mm",
+            "MM",
+            Some("MONEY_MARKET_DEBT"),
+            dec_str("100000"),
+        );
+        assert!(is_bond_holding(&h1));
+        assert!(is_bond_holding(&h2));
+    }
+
+    #[test]
+    fn is_bond_holding_rejects_equity() {
+        let h = make_holding("h6", "a_aapl", "AAPL", Some("EQUITY"), dec_str("100000"));
+        assert!(!is_bond_holding(&h));
+    }
+
+    #[test]
+    fn is_bond_holding_rejects_no_classifications() {
+        let h = make_holding("h7", "a_x", "X", None, dec_str("100000"));
+        assert!(!is_bond_holding(&h));
+    }
+
+    #[test]
+    fn emits_one_candidate_per_bond_holding_with_maturity() {
+        // §23-flavored fixture: Emaar Sukuk matures 47 days out,
+        // $188K principal.
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let maturity = today + chrono::Duration::days(47);
+        let h = make_holding(
+            "h_emaar",
+            "a_emaar",
+            "EMAAR 6.5 2026",
+            Some("SUKUK"),
+            dec_str("188000"),
+        );
+        let asset = make_bond_asset("a_emaar", "EMAAR 6.5 2026", Some(maturity));
+        let mut asset_map = HashMap::new();
+        asset_map.insert(asset.id.clone(), asset);
+
+        let out = bond_maturity_candidates_from(&[h], &asset_map, today);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].symbol, "EMAAR 6.5 2026");
+        assert_eq!(out[0].days_to_maturity, 47);
+        assert_eq!(out[0].principal_returning_base, dec_str("188000"));
+        assert_eq!(out[0].maturity_date, maturity);
+    }
+
+    #[test]
+    fn skips_holdings_without_maturity_in_metadata() {
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let h = make_holding(
+            "h_unknown",
+            "a_unknown",
+            "X",
+            Some("SUKUK"),
+            dec_str("100000"),
+        );
+        let asset = make_bond_asset("a_unknown", "X", None);
+        let mut asset_map = HashMap::new();
+        asset_map.insert(asset.id.clone(), asset);
+
+        assert!(bond_maturity_candidates_from(&[h], &asset_map, today).is_empty());
+    }
+
+    #[test]
+    fn skips_holdings_with_zero_principal() {
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let maturity = today + chrono::Duration::days(47);
+        let h = make_holding("h_zero", "a_zero", "ZERO", Some("SUKUK"), dec_str("0"));
+        let asset = make_bond_asset("a_zero", "ZERO", Some(maturity));
+        let mut asset_map = HashMap::new();
+        asset_map.insert(asset.id.clone(), asset);
+
+        assert!(bond_maturity_candidates_from(&[h], &asset_map, today).is_empty());
+    }
+
+    #[test]
+    fn skips_holdings_when_asset_not_in_map() {
+        // Caller supplied bond_holdings but the asset lookup failed
+        // for that id — handler must not panic.
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let h = make_holding(
+            "h_orphan",
+            "a_missing",
+            "X",
+            Some("SUKUK"),
+            dec_str("100000"),
+        );
+        let asset_map: HashMap<String, Asset> = HashMap::new();
+        assert!(bond_maturity_candidates_from(&[h], &asset_map, today).is_empty());
+    }
+
+    #[test]
+    fn days_to_maturity_can_be_negative_for_past_dates() {
+        // Defensive: the rule engine filters past horizons, but the
+        // hydrate path must surface negative days so the bell-panel
+        // dedupe table still gets a row for matured-but-unstamped
+        // positions (operational signal for the user).
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let maturity = today - chrono::Duration::days(3);
+        let h = make_holding("h_past", "a_past", "PAST", Some("SUKUK"), dec_str("50000"));
+        let asset = make_bond_asset("a_past", "PAST", Some(maturity));
+        let mut asset_map = HashMap::new();
+        asset_map.insert(asset.id.clone(), asset);
+
+        let out = bond_maturity_candidates_from(&[h], &asset_map, today);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].days_to_maturity, -3);
     }
 }
 
