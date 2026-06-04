@@ -76,7 +76,8 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "bank-cash",
     label: "Bank & Cash",
     iconKey: "Wallet",
-    holdingsHref: "/holdings?panel=bank-cash",
+    // Track B PR-B3 — dedicated panel page (country/currency donut).
+    holdingsHref: "/panels/bank-cash",
   },
   {
     id: "bonds-sukuks",
