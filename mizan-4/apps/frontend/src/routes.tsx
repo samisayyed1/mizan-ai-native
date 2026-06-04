@@ -22,6 +22,7 @@ import ReportsIndexPage from "@/pages/reports/reports-index-page";
 import ZakatPage from "@/pages/zakat/zakat-page";
 import HoldingsPage from "@/pages/holdings/holdings-page";
 import BankCashPanelPage from "@/pages/panels/bank-cash/bank-cash-panel";
+import CommoditiesPanelPage from "@/pages/panels/commodities/commodities-panel";
 import CryptoPanelPage from "@/pages/panels/crypto/crypto-panel";
 import EquitiesPanelPage from "@/pages/panels/equities/equities-panel";
 import RealEstatePanelPage from "@/pages/panels/real-estate/real-estate-panel";
@@ -116,6 +117,8 @@ export function AppRoutes() {
               <Route path="panels/real-estate" element={<RealEstatePanelPage />} />
               {/* Track B PR-B9 — Crypto panel (chain donut). */}
               <Route path="panels/crypto" element={<CryptoPanelPage />} />
+              {/* Track B PR-B10 — Commodities panel (metal donut). */}
+              <Route path="panels/commodities" element={<CommoditiesPanelPage />} />
               <Route path="news" element={<NewsPage />} />
               <Route path="holdings-insights" element={<HoldingsInsightsPage />} />
               <Route path="holdings/:assetId" element={<AssetProfilePage />} />
