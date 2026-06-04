@@ -15,6 +15,7 @@ pub mod connect;
 pub mod db;
 pub mod error;
 pub mod health;
+pub mod mcp;
 pub mod middleware;
 pub mod news;
 pub mod oauth;
