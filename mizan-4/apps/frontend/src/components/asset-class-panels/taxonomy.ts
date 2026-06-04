@@ -93,7 +93,8 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "provident-funds",
     label: "Provident Funds",
     iconKey: "PiggyBank",
-    holdingsHref: "/holdings?panel=provident-funds",
+    // Track B PR-B9 — dedicated panel page (scheme donut + CPF sub-donut).
+    holdingsHref: "/panels/provident-funds",
   },
   {
     id: "insurance",

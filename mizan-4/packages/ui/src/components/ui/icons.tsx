@@ -98,6 +98,7 @@ import {
   Pencil,
   Percent,
   PieChart,
+  PiggyBank,
   Pin,
   PinOff,
   PlayCircle,
@@ -252,6 +253,7 @@ const IconsInternal = {
   QrCode: QrCode,
   Smartphone: Smartphone,
   PieChart: PieChart,
+  PiggyBank: PiggyBank,
   BarChart: BarChart,
   Spinner: Loader2,
   Loader: Loader,
@@ -800,6 +802,7 @@ export type IconName =
   | "QrCode"
   | "Smartphone"
   | "PieChart"
+  | "PiggyBank"
   | "BarChart"
   | "Spinner"
   | "Loader"
