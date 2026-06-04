@@ -122,5 +122,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     include: ["**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+    // E2E Playwright specs live in `e2e/` and are runnable only against
+    // a live dev server. Exclude them from the vitest harness so a
+    // plain `pnpm test` doesn't try to load Playwright fixtures.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
   },
 } as unknown as import("vitest/config").UserConfigExport);

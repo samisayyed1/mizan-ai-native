@@ -13,7 +13,7 @@
       "#platform": ["./src/adapters/tauri/core"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "e2e"],
   "references": [
     { "path": "./tsconfig.node.json" },
     { "path": "../../packages/ui" },
