@@ -38,8 +38,8 @@ mod rules;
 mod tests;
 
 pub use input::{
-    DividendEvent, GoalProgress, HoldingDayMove, InsightsInput, NetWorthHistoryPoint,
-    SyncFailureInput,
+    BondMaturityCandidate, DividendEvent, FxPairMove, GoalProgress, HoldingDayMove, InsightsInput,
+    NetWorthHistoryPoint, ShariaStatusChange, SyncFailureInput,
 };
 pub use rules::evaluate;
 

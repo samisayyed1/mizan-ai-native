@@ -29,6 +29,15 @@ pub enum NotificationKind {
     /// AI-generated 2-sentence digest summarising the day's insights.
     /// Emitted at most once per user per day.
     AiDigest,
+    /// A bond or sukuk position is within the maturity-window thresholds
+    /// (90/30/7/1 day) per Track C PR-C5.a + Goal v3 §V step C5.a.
+    BondMaturityApproaching,
+    /// An FX pair material to a user's exposure moved beyond the
+    /// FX-materially-moved threshold per Goal v3 §V step C5.a.
+    FxMovedMaterially,
+    /// AAOIFI screening verdict flipped (compliant ↔ non-compliant /
+    /// mixed) for a held instrument per Goal v3 §V step C5.a.
+    ShariaStatusChanged,
 }
 
 impl NotificationKind {
@@ -43,6 +52,9 @@ impl NotificationKind {
             Self::NetWorthDip => "net_worth_dip",
             Self::SyncFailure => "sync_failure",
             Self::AiDigest => "ai_digest",
+            Self::BondMaturityApproaching => "bond_maturity_approaching",
+            Self::FxMovedMaterially => "fx_moved_materially",
+            Self::ShariaStatusChanged => "sharia_status_changed",
         }
     }
 
@@ -60,6 +72,9 @@ impl NotificationKind {
             "net_worth_dip" => Self::NetWorthDip,
             "sync_failure" => Self::SyncFailure,
             "ai_digest" => Self::AiDigest,
+            "bond_maturity_approaching" => Self::BondMaturityApproaching,
+            "fx_moved_materially" => Self::FxMovedMaterially,
+            "sharia_status_changed" => Self::ShariaStatusChanged,
             _ => Self::BigMove,
         }
     }
