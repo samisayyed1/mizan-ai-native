@@ -33,6 +33,7 @@
 
 mod input;
 mod rules;
+mod todays_signal;
 
 #[cfg(test)]
 mod tests;
@@ -43,6 +44,7 @@ pub use input::{
     NetWorthHistoryPoint, ShariaStatusChange, SyncFailureInput, TaxOptimizationWindow,
 };
 pub use rules::evaluate;
+pub use todays_signal::{pick_todays_signal, score_signal};
 
 use thiserror::Error;
 
