@@ -42,11 +42,12 @@
 //! - The "Discuss with Mizan" handoff to the agent
 //! - The `'mcp'`-style provider trust badge
 
+pub mod handlers;
 pub mod personalization;
 pub mod providers;
 pub mod types;
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::state::AppState;
@@ -54,11 +55,11 @@ use crate::state::AppState;
 pub use personalization::{rank_articles, RankedArticle, RankingInput};
 pub use types::{NewsCategory, NewsTab, RawArticle};
 
-/// Subrouter for `/v1/news/*` endpoints — merged into the v1 tree
-/// once PR-D2.b wires `handlers.rs`. Kept stub so server.rs can wire
-/// the call site idempotently.
+/// Subrouter for `/v1/news/*` endpoints — merged into the v1 tree.
 pub fn router() -> Router<AppState> {
-    Router::new().route("/news/health", get(health_check))
+    Router::new()
+        .route("/news/health", get(health_check))
+        .route("/news/feed", post(handlers::feed_handler))
 }
 
 /// Trivial health endpoint so the news router is non-empty before
