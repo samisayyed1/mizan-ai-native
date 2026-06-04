@@ -131,7 +131,8 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "collectibles",
     label: "Collectibles",
     iconKey: "Sparkles",
-    holdingsHref: "/holdings?panel=collectibles",
+    // Track B PR-B15 — dedicated panel page (category donut + per-item bar).
+    holdingsHref: "/panels/collectibles",
   },
   {
     id: "forex",
