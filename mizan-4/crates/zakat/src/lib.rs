@@ -34,6 +34,7 @@
 
 mod hanbali_rules;
 mod model;
+mod pay_zakat;
 mod property_intent;
 mod service;
 mod traits;
@@ -43,6 +44,10 @@ pub use hanbali_rules::{
     sum_long_term_mortgage_deductible, DebtKind, RetirementKind,
 };
 pub use model::*;
+pub use pay_zakat::{
+    build_receipt, find_charity, format_hijri_display, gregorian_to_civil_hijri, hijri_month_name,
+    BuildReceiptError, BuildReceiptInputs, Charity, PayZakatReceipt, CATALOG,
+};
 pub use property_intent::{route_property, sum_property_tradable, PropertyBucket, PropertyIntent};
 pub use service::*;
 pub use traits::*;
