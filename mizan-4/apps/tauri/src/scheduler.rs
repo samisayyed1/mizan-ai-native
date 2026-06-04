@@ -523,13 +523,16 @@ pub async fn run_insights_tick(handle: &AppHandle, context: &std::sync::Arc<Serv
         bond_maturity_candidates: Vec::new(),
         fx_pair_moves: Vec::new(),
         sharia_status_changes: Vec::new(),
-        // Track C PR-C5.b added four more rule families. Same pattern:
-        // hydration lands in PR-C5.c (Hawl from hawl_anchors PR-F1;
-        // concentration from existing holdings rollup; cash-drag
-        // alternative from the yield-discovery worker; tax windows
-        // from per-jurisdiction calendar tables). Empty vecs no-op
-        // the rules until data sources land.
-        hawl_anchors_approaching: Vec::new(),
+        // Track C PR-C5.d.1 — hydrate Hawl approaching candidates from
+        // the hawl_anchors table (PR-F1 migration). Grace window 90
+        // days matches the largest HAWL_DAY_THRESHOLDS step in
+        // crates/insights/src/rules.rs so the engine has the full set
+        // to filter against. Failures degrade silently — better to
+        // skip the rule on this tick than break the whole bell panel.
+        hawl_anchors_approaching: hydrate_hawl_anchors(context, today),
+        // PR-C5.d.2+ will hydrate concentration / cash-drag-opportunity
+        // / tax-window candidates the same way. Until then the rules
+        // no-op (empty vecs).
         concentration_findings: Vec::new(),
         cash_drag_opportunities: Vec::new(),
         tax_optimization_windows: Vec::new(),
@@ -1133,4 +1136,112 @@ fn hydrate_goal_progress(
             })
         })
         .collect()
+}
+
+/// Track C PR-C5.d.1 — hydrate `InsightsInput.hawl_anchors_approaching`
+/// from the `hawl_anchors` table.
+///
+/// Reads via the repository, converts each row's `current_qualifying_amount`
+/// to the engine's `HawlAnchorCandidate` shape, and derives a human label
+/// for the cohort. Errors degrade silently (empty Vec) — better to skip
+/// the rule on this tick than break the whole bell panel.
+///
+/// Grace window 90 days matches the largest `HAWL_DAY_THRESHOLDS` step in
+/// `crates/insights/src/rules.rs` so the engine sees the full candidate
+/// set and picks the actual crossed threshold.
+fn hydrate_hawl_anchors(
+    context: &std::sync::Arc<ServiceContext>,
+    today: chrono::NaiveDate,
+) -> Vec<mizan_insights::HawlAnchorCandidate> {
+    use log::debug;
+    use mizan_insights::HawlAnchorCandidate;
+
+    const HAWL_GRACE_DAYS: i64 = 90;
+
+    let rows = match context
+        .hawl_anchor_repository
+        .approaching(today, HAWL_GRACE_DAYS)
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            debug!("Insights/Hawl: approaching read failed: {e} — skipping rule");
+            return Vec::new();
+        }
+    };
+
+    rows.into_iter()
+        .map(|r| HawlAnchorCandidate {
+            cohort_id: r.cohort_id.clone(),
+            // Cohort label derivation: until the migration adds a
+            // `label` column, surface the cohort id as the display
+            // string. The Zakat engine will start writing labels in
+            // a follow-on PR; until then this is the best we have.
+            cohort_label: pretty_cohort_label(&r.cohort_id),
+            days_to_completion: r.days_to_completion,
+            qualifying_amount_base: r.current_qualifying_amount,
+        })
+        .collect()
+}
+
+/// Best-effort cohort-id → display label. The migration's example slugs
+/// (`default`, `cash-2026`, `emaar-sukuk-2024`) become `"Default"`,
+/// `"Cash (2026)"`, `"Emaar Sukuk (2024)"`. Unknown shapes fall through
+/// as title-case.
+fn pretty_cohort_label(cohort_id: &str) -> String {
+    if cohort_id == "default" {
+        return "Default".to_string();
+    }
+    // Detect trailing-year pattern: `slug-YYYY`
+    if let Some((stem, year)) = cohort_id.rsplit_once('-') {
+        if year.len() == 4 && year.chars().all(|c| c.is_ascii_digit()) {
+            let pretty_stem = stem
+                .split('-')
+                .map(title_case_word)
+                .collect::<Vec<_>>()
+                .join(" ");
+            return format!("{pretty_stem} ({year})");
+        }
+    }
+    cohort_id
+        .split('-')
+        .map(title_case_word)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn title_case_word(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod hawl_label_tests {
+    use super::pretty_cohort_label;
+
+    #[test]
+    fn default_cohort() {
+        assert_eq!(pretty_cohort_label("default"), "Default");
+    }
+
+    #[test]
+    fn trailing_year_pattern() {
+        assert_eq!(pretty_cohort_label("cash-2026"), "Cash (2026)");
+        assert_eq!(
+            pretty_cohort_label("emaar-sukuk-2024"),
+            "Emaar Sukuk (2024)"
+        );
+    }
+
+    #[test]
+    fn no_year_falls_through_to_title_case() {
+        assert_eq!(pretty_cohort_label("real-estate"), "Real Estate");
+    }
+
+    #[test]
+    fn empty_string_safe() {
+        assert_eq!(pretty_cohort_label(""), "");
+    }
 }

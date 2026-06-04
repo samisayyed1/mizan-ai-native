@@ -113,6 +113,10 @@ pub async fn initialize_context(
     ));
     let fx_repository = Arc::new(FxRepository::new(pool.clone(), writer.clone()));
     let snapshot_repository = Arc::new(SnapshotRepository::new(pool.clone(), writer.clone()));
+    // Track C PR-C5.d.1 — read-only; no writer needed
+    let hawl_anchor_repository = Arc::new(mizan_storage_sqlite::hawl::HawlAnchorRepository::new(
+        pool.clone(),
+    ));
     let app_sync_repository = Arc::new(AppSyncRepository::new(pool.clone(), writer.clone()));
     let valuation_repository = Arc::new(ValuationRepository::new(pool.clone(), writer.clone()));
     let platform_repository = Arc::new(PlatformRepository::new(pool.clone(), writer.clone()));
@@ -422,6 +426,7 @@ pub async fn initialize_context(
             income_service,
             snapshot_service,
             snapshot_repository,
+            hawl_anchor_repository,
             app_sync_repository,
             holdings_service,
             allocation_service,
