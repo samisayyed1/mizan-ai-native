@@ -41,6 +41,16 @@ pub enum LedgerEntryKind {
     FxRateObserved,
     /// Quote observed (used to lock historical valuations).
     QuoteObserved,
+    /// Zakat assessment computed — Track F PR-F4.
+    ///
+    /// Payload carries school + total assessable + debts + net base +
+    /// nisab + zakat due + currency so the user's imam (or an external
+    /// auditor) can re-derive the number from the immutable trail.
+    ///
+    /// CLAUDE.md §0 rule 1: every Zakat calculation that produces a
+    /// number for the user MUST emit one of these so the trail is
+    /// sacred + chain-verifiable.
+    ZakatComputed,
 }
 
 /// Errors a verifier returns. Each variant includes the entry id at
