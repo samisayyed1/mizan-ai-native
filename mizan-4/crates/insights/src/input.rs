@@ -134,6 +134,74 @@ pub struct ShariaStatusChange {
     pub new_verdict: String,
 }
 
+/// One Zakat-Hawl anchor approaching completion. Sourced from
+/// `hawl_anchors` (Track F PR-F1). Caller computes
+/// `days_to_completion` against the user's local "today" (lunar-year
+/// from `anchor_date`) so the engine stays pure.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HawlAnchorCandidate {
+    /// Stable id from `hawl_anchors.cohort_id`.
+    pub cohort_id: String,
+    /// Human label for the cohort (e.g. "Cash + Equities").
+    pub cohort_label: String,
+    /// Days remaining until lunar-year completion. Engine compares
+    /// against 30/7/1 thresholds.
+    pub days_to_completion: i64,
+    /// Current Zakatable balance for this cohort, base currency.
+    /// Used in copy to surface the qualifying amount.
+    pub qualifying_amount_base: Decimal,
+}
+
+/// A concentration risk finding — caller pre-computes the dimension
+/// (issuer / sector / currency / geography) and the exposure percent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConcentrationRiskFinding {
+    /// Dimension key: "issuer" / "sector" / "currency" / "geography".
+    pub dimension: String,
+    /// Concrete identifier within the dimension (e.g. "Apple" /
+    /// "Technology" / "USD" / "United States").
+    pub label: String,
+    /// Fraction of net worth in this concentration as a `[0, 1]`
+    /// number. Engine compares against CONCENTRATION_THRESHOLD_PCT.
+    pub fraction_of_net_worth: Decimal,
+    /// Absolute exposure in base currency (for copy).
+    pub exposure_base: Decimal,
+}
+
+/// A cash-drag opportunity — cash sitting at low yield while a
+/// higher-yielding alternative exists. Distinct from CashDrag which
+/// fires on duration; this fires on the presence of an alternative.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CashDragOpportunityCandidate {
+    /// Current cash balance in base currency.
+    pub cash_amount_base: Decimal,
+    /// Current effective yield as a `[0, 1]` fraction.
+    pub current_yield_pct: Decimal,
+    /// Yield available on the suggested alternative (e.g. a
+    /// Sharia-compatible money market fund) as a `[0, 1]` fraction.
+    pub alternative_yield_pct: Decimal,
+    /// Display label for the alternative (e.g. "Wahed Cash Plus").
+    pub alternative_label: String,
+}
+
+/// A tax-optimization window opening — caller computes from the
+/// user's jurisdiction (CPF SA top-up cutoff, IRA contribution
+/// deadline, capital-gains harvesting opportunity).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaxOptimizationWindow {
+    /// Stable kind slug ("cpf_sa_top_up", "ira_deadline",
+    /// "capital_gains_harvest", "401k_deadline", "nps_deadline").
+    pub kind: String,
+    /// Days until the window closes. Engine compares against
+    /// TAX_WINDOW_DAY_THRESHOLDS.
+    pub days_remaining: i64,
+    /// Display label (e.g. "CPF SA top-up cutoff").
+    pub label: String,
+    /// Maximum savings the user could realise by acting (base
+    /// currency), or `None` if unknown.
+    pub potential_savings_base: Option<Decimal>,
+}
+
 /// A sync that failed and is degrading data quality the user can see.
 /// Source includes the provider slug for the deep-link target.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -191,4 +259,19 @@ pub struct InsightsInput {
     /// Holdings whose AAOIFI screening verdict flipped. Engine emits
     /// one per holding per day.
     pub sharia_status_changes: Vec<ShariaStatusChange>,
+    /// Zakat-Hawl anchors approaching completion. Sourced from
+    /// `hawl_anchors` (Track F PR-F1). Engine emits at most one
+    /// notification per cohort per crossed threshold (30/7/1 day).
+    pub hawl_anchors_approaching: Vec<HawlAnchorCandidate>,
+    /// Concentration-risk findings — caller pre-computes the
+    /// dimension + label + exposure. Engine fires per finding above
+    /// CONCENTRATION_THRESHOLD_PCT.
+    pub concentration_findings: Vec<ConcentrationRiskFinding>,
+    /// Cash-drag opportunities — caller surfaces when a higher-
+    /// yielding alternative exists. Engine fires once per day if the
+    /// yield-gap and amount thresholds are met.
+    pub cash_drag_opportunities: Vec<CashDragOpportunityCandidate>,
+    /// Tax-deadline windows — caller computes from the user's
+    /// jurisdiction. Engine fires per window per crossed threshold.
+    pub tax_optimization_windows: Vec<TaxOptimizationWindow>,
 }

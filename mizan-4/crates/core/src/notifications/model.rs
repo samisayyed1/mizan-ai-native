@@ -38,6 +38,22 @@ pub enum NotificationKind {
     /// AAOIFI screening verdict flipped (compliant ↔ non-compliant /
     /// mixed) for a held instrument per Goal v3 §V step C5.a.
     ShariaStatusChanged,
+    /// A Zakat-Hawl anchor is within 30/7/1 days of completion per
+    /// Goal v3 §V step C5.b. Surfaces from `hawl_anchors` (Track F PR-F1).
+    ZakatHawlApproaching,
+    /// Single-issuer / sector / currency / geography exposure exceeds
+    /// the configured concentration-risk threshold per Goal v3 §V
+    /// step C5.b.
+    ConcentrationRisk,
+    /// Low-yielding cash > 10% net worth and a higher-yielding
+    /// Sharia-compatible alternative is identifiable per Goal v3 §V
+    /// step C5.b. Distinct from CashDrag — that fires on duration;
+    /// this fires on the presence of an actionable alternative.
+    CashDragOpportunity,
+    /// Tax-deadline window opens (CPF SA top-up, IRA contribution
+    /// cutoff, capital-gains harvesting opportunity) per Goal v3 §V
+    /// step C5.b.
+    TaxOptimizationWindow,
 }
 
 impl NotificationKind {
@@ -55,6 +71,10 @@ impl NotificationKind {
             Self::BondMaturityApproaching => "bond_maturity_approaching",
             Self::FxMovedMaterially => "fx_moved_materially",
             Self::ShariaStatusChanged => "sharia_status_changed",
+            Self::ZakatHawlApproaching => "zakat_hawl_approaching",
+            Self::ConcentrationRisk => "concentration_risk",
+            Self::CashDragOpportunity => "cash_drag_opportunity",
+            Self::TaxOptimizationWindow => "tax_optimization_window",
         }
     }
 
@@ -75,6 +95,10 @@ impl NotificationKind {
             "bond_maturity_approaching" => Self::BondMaturityApproaching,
             "fx_moved_materially" => Self::FxMovedMaterially,
             "sharia_status_changed" => Self::ShariaStatusChanged,
+            "zakat_hawl_approaching" => Self::ZakatHawlApproaching,
+            "concentration_risk" => Self::ConcentrationRisk,
+            "cash_drag_opportunity" => Self::CashDragOpportunity,
+            "tax_optimization_window" => Self::TaxOptimizationWindow,
             _ => Self::BigMove,
         }
     }

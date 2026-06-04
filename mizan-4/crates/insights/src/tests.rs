@@ -9,8 +9,9 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 
 use super::input::{
-    BondMaturityCandidate, DividendEvent, FxPairMove, GoalProgress, HoldingDayMove, InsightsInput,
-    NetWorthHistoryPoint, ShariaStatusChange, SyncFailureInput,
+    BondMaturityCandidate, CashDragOpportunityCandidate, ConcentrationRiskFinding, DividendEvent,
+    FxPairMove, GoalProgress, HawlAnchorCandidate, HoldingDayMove, InsightsInput,
+    NetWorthHistoryPoint, ShariaStatusChange, SyncFailureInput, TaxOptimizationWindow,
 };
 use super::rules::evaluate;
 use mizan_core::notifications::{NotificationKind, NotificationSeverity};
@@ -30,6 +31,10 @@ fn base_input() -> InsightsInput {
         bond_maturity_candidates: vec![],
         fx_pair_moves: vec![],
         sharia_status_changes: vec![],
+        hawl_anchors_approaching: vec![],
+        concentration_findings: vec![],
+        cash_drag_opportunities: vec![],
+        tax_optimization_windows: vec![],
     }
 }
 
@@ -599,4 +604,292 @@ fn evaluate_emits_new_rules_after_existing_set() {
     assert_eq!(out[1].kind, NotificationKind::BondMaturityApproaching);
     assert_eq!(out[2].kind, NotificationKind::FxMovedMaterially);
     assert_eq!(out[3].kind, NotificationKind::ShariaStatusChanged);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.b — ZakatHawlApproaching rule
+// ─────────────────────────────────────────────────────────────────────
+
+fn cash_eq_cohort(days: i64) -> HawlAnchorCandidate {
+    HawlAnchorCandidate {
+        cohort_id: "cohort_cash_eq".into(),
+        cohort_label: "Cash + Equities".into(),
+        days_to_completion: days,
+        qualifying_amount_base: dec!(750_000),
+    }
+}
+
+#[test]
+fn hawl_info_at_30_days() {
+    let mut i = base_input();
+    i.hawl_anchors_approaching.push(cash_eq_cohort(20));
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].kind, NotificationKind::ZakatHawlApproaching);
+    assert_eq!(out[0].severity, NotificationSeverity::Info);
+    assert!(out[0].title.contains("20"));
+    assert!(out[0].title.contains("Cash + Equities"));
+}
+
+#[test]
+fn hawl_warning_at_seven_days() {
+    let mut i = base_input();
+    i.hawl_anchors_approaching.push(cash_eq_cohort(5));
+    let out = evaluate(&i);
+    assert_eq!(out[0].severity, NotificationSeverity::Warning);
+}
+
+#[test]
+fn hawl_critical_at_one_day() {
+    let mut i = base_input();
+    i.hawl_anchors_approaching.push(cash_eq_cohort(1));
+    let out = evaluate(&i);
+    assert_eq!(out[0].severity, NotificationSeverity::Critical);
+    assert!(out[0].title.contains("1 day"));
+}
+
+#[test]
+fn hawl_silent_past_horizon() {
+    let mut i = base_input();
+    i.hawl_anchors_approaching.push(cash_eq_cohort(120));
+    assert!(evaluate(&i).is_empty());
+}
+
+#[test]
+fn hawl_dedupe_key_includes_threshold_step() {
+    let mut i = base_input();
+    i.hawl_anchors_approaching.push(cash_eq_cohort(20)); // step 30
+    i.hawl_anchors_approaching.push(HawlAnchorCandidate {
+        cohort_id: "cohort_pe".into(),
+        cohort_label: "Private Equity".into(),
+        days_to_completion: 5, // step 7
+        qualifying_amount_base: dec!(50_000),
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 2);
+    assert_ne!(out[0].dedupe_key, out[1].dedupe_key);
+    // Severity differs by step
+    assert_eq!(out[0].severity, NotificationSeverity::Info);
+    assert_eq!(out[1].severity, NotificationSeverity::Warning);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.b — ConcentrationRisk rule
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn concentration_fires_on_30pct_emaar_exposure() {
+    // §23-flavored: Emaar Sukuk + lateral holdings concentrate to 30%
+    // of net worth on a single issuer.
+    let mut i = base_input();
+    i.concentration_findings.push(ConcentrationRiskFinding {
+        dimension: "issuer".into(),
+        label: "Emaar".into(),
+        fraction_of_net_worth: dec!(0.30),
+        exposure_base: dec!(750_000),
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].kind, NotificationKind::ConcentrationRisk);
+    assert_eq!(out[0].severity, NotificationSeverity::Warning);
+    assert!(out[0].title.contains("Emaar"));
+    assert!(out[0].title.contains("issuer"));
+    assert!(out[0].title.contains("30%"));
+}
+
+#[test]
+fn concentration_silent_below_threshold() {
+    let mut i = base_input();
+    i.concentration_findings.push(ConcentrationRiskFinding {
+        dimension: "sector".into(),
+        label: "Technology".into(),
+        fraction_of_net_worth: dec!(0.20), // below 25% threshold
+        exposure_base: dec!(500_000),
+    });
+    assert!(evaluate(&i).is_empty());
+}
+
+#[test]
+fn concentration_silent_below_min_exposure() {
+    let mut i = base_input();
+    i.concentration_findings.push(ConcentrationRiskFinding {
+        dimension: "issuer".into(),
+        label: "TinyCo".into(),
+        fraction_of_net_worth: dec!(0.50),
+        exposure_base: dec!(2_000), // below $10K floor
+    });
+    assert!(evaluate(&i).is_empty());
+}
+
+#[test]
+fn concentration_dedupe_key_per_dimension_label_per_day() {
+    let mut i = base_input();
+    i.concentration_findings.push(ConcentrationRiskFinding {
+        dimension: "issuer".into(),
+        label: "Emaar".into(),
+        fraction_of_net_worth: dec!(0.30),
+        exposure_base: dec!(750_000),
+    });
+    i.concentration_findings.push(ConcentrationRiskFinding {
+        dimension: "currency".into(),
+        label: "USD".into(),
+        fraction_of_net_worth: dec!(0.40),
+        exposure_base: dec!(1_000_000),
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 2);
+    assert_ne!(out[0].dedupe_key, out[1].dedupe_key);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.b — CashDragOpportunity rule
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn cash_drag_opp_fires_when_gap_above_threshold() {
+    let mut i = base_input();
+    i.cash_drag_opportunities
+        .push(CashDragOpportunityCandidate {
+            cash_amount_base: dec!(100_000),
+            current_yield_pct: dec!(0.005),     // 0.5%
+            alternative_yield_pct: dec!(0.040), // 4.0%
+            alternative_label: "Wahed Cash Plus".into(),
+        });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].kind, NotificationKind::CashDragOpportunity);
+    assert_eq!(out[0].severity, NotificationSeverity::Info);
+    assert!(out[0].body.contains("Wahed Cash Plus"));
+}
+
+#[test]
+fn cash_drag_opp_silent_when_gap_below_threshold() {
+    // Gap 1% < 1.5% threshold — silent.
+    let mut i = base_input();
+    i.cash_drag_opportunities
+        .push(CashDragOpportunityCandidate {
+            cash_amount_base: dec!(100_000),
+            current_yield_pct: dec!(0.040),
+            alternative_yield_pct: dec!(0.050),
+            alternative_label: "Alt".into(),
+        });
+    assert!(evaluate(&i).is_empty());
+}
+
+#[test]
+fn cash_drag_opp_silent_below_min_cash() {
+    let mut i = base_input();
+    i.cash_drag_opportunities
+        .push(CashDragOpportunityCandidate {
+            cash_amount_base: dec!(1_000), // below $5K floor
+            current_yield_pct: dec!(0.005),
+            alternative_yield_pct: dec!(0.040),
+            alternative_label: "Alt".into(),
+        });
+    assert!(evaluate(&i).is_empty());
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.b — TaxOptimizationWindow rule
+// ─────────────────────────────────────────────────────────────────────
+
+fn cpf_sa_window(days: i64, savings: Option<Decimal>) -> TaxOptimizationWindow {
+    TaxOptimizationWindow {
+        kind: "cpf_sa_top_up".into(),
+        days_remaining: days,
+        label: "CPF SA top-up cutoff".into(),
+        potential_savings_base: savings,
+    }
+}
+
+#[test]
+fn tax_window_info_at_60_days() {
+    let mut i = base_input();
+    i.tax_optimization_windows
+        .push(cpf_sa_window(60, Some(dec!(8_000))));
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].kind, NotificationKind::TaxOptimizationWindow);
+    assert_eq!(out[0].severity, NotificationSeverity::Info);
+    assert!(out[0].title.contains("60"));
+    assert!(out[0].body.contains("8000") || out[0].body.contains("8,000"));
+}
+
+#[test]
+fn tax_window_warning_at_seven_days() {
+    let mut i = base_input();
+    i.tax_optimization_windows.push(cpf_sa_window(5, None));
+    let out = evaluate(&i);
+    assert_eq!(out[0].severity, NotificationSeverity::Warning);
+}
+
+#[test]
+fn tax_window_critical_at_one_day() {
+    let mut i = base_input();
+    i.tax_optimization_windows.push(cpf_sa_window(1, None));
+    let out = evaluate(&i);
+    assert_eq!(out[0].severity, NotificationSeverity::Critical);
+}
+
+#[test]
+fn tax_window_silent_past_horizon() {
+    let mut i = base_input();
+    i.tax_optimization_windows.push(cpf_sa_window(180, None));
+    assert!(evaluate(&i).is_empty());
+}
+
+#[test]
+fn tax_window_dedupe_key_per_kind_per_step() {
+    let mut i = base_input();
+    i.tax_optimization_windows.push(cpf_sa_window(60, None));
+    i.tax_optimization_windows.push(TaxOptimizationWindow {
+        kind: "ira_deadline".into(),
+        days_remaining: 20,
+        label: "IRA contribution deadline".into(),
+        potential_savings_base: None,
+    });
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 2);
+    assert_ne!(out[0].dedupe_key, out[1].dedupe_key);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PR-C5.b — Stable order regression guard for the FULL rule set
+// ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn evaluate_emits_pr5b_rules_after_pr5a_rules() {
+    // The bell-panel UI renders in evaluate() order. This pins the
+    // post-PR-C5.b sequence so a future PR inserting a rule earlier
+    // fires this test before silently re-arranging the user feed.
+    let mut i = base_input();
+    i.bond_maturity_candidates.push(BondMaturityCandidate {
+        holding_id: "h_x".into(),
+        symbol: "X".into(),
+        maturity_date: NaiveDate::from_ymd_opt(2026, 7, 13).unwrap(),
+        days_to_maturity: 47,
+        principal_returning_base: dec!(50_000),
+    });
+    i.hawl_anchors_approaching.push(cash_eq_cohort(20));
+    i.concentration_findings.push(ConcentrationRiskFinding {
+        dimension: "issuer".into(),
+        label: "Y".into(),
+        fraction_of_net_worth: dec!(0.30),
+        exposure_base: dec!(750_000),
+    });
+    i.cash_drag_opportunities
+        .push(CashDragOpportunityCandidate {
+            cash_amount_base: dec!(100_000),
+            current_yield_pct: dec!(0.005),
+            alternative_yield_pct: dec!(0.040),
+            alternative_label: "Alt".into(),
+        });
+    i.tax_optimization_windows.push(cpf_sa_window(60, None));
+    let out = evaluate(&i);
+    assert_eq!(out.len(), 5);
+    assert_eq!(out[0].kind, NotificationKind::BondMaturityApproaching);
+    assert_eq!(out[1].kind, NotificationKind::ZakatHawlApproaching);
+    assert_eq!(out[2].kind, NotificationKind::ConcentrationRisk);
+    assert_eq!(out[3].kind, NotificationKind::CashDragOpportunity);
+    assert_eq!(out[4].kind, NotificationKind::TaxOptimizationWindow);
 }

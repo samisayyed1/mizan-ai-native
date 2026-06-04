@@ -14,8 +14,9 @@ use rust_decimal::Decimal;
 use serde_json::json;
 
 use super::input::{
-    BondMaturityCandidate, DividendEvent, FxPairMove, GoalProgress, InsightsInput,
-    ShariaStatusChange, SyncFailureInput,
+    BondMaturityCandidate, CashDragOpportunityCandidate, ConcentrationRiskFinding, DividendEvent,
+    FxPairMove, GoalProgress, HawlAnchorCandidate, InsightsInput, ShariaStatusChange,
+    SyncFailureInput, TaxOptimizationWindow,
 };
 use mizan_core::notifications::{Notification, NotificationKind, NotificationSeverity};
 
@@ -73,6 +74,35 @@ const FX_MATERIAL_MOVE_PCT: f64 = 0.03;
 /// Minimum exposure (base currency) to qualify for an FX-moved-materially
 /// notification. A $50 FX exposure moving 10% isn't actionable.
 const FX_MIN_EXPOSURE_BASE: f64 = 5_000.0;
+
+/// Zakat-Hawl approach thresholds per Goal v3 §V step C5.b. Declared
+/// smallest-first so `iter().find(|t| days <= t)` returns the smallest
+/// crossed step (e.g. days=5 → 7, days=1 → 1).
+const HAWL_DAY_THRESHOLDS: &[i64] = &[1, 7, 30];
+
+/// Concentration-risk threshold: a single dimension's fraction of
+/// net worth above this triggers a notification. 25% is the
+/// "don't blow up on one issuer" calibration that maps to a Sharia-
+/// aware millionaire holding three to four core Sukuk issuers.
+const CONCENTRATION_THRESHOLD_PCT: f64 = 0.25;
+
+/// Concentration-risk min absolute exposure (base) — a 30% concentration
+/// in a $200 hobby account isn't actionable.
+const CONCENTRATION_MIN_EXPOSURE_BASE: f64 = 10_000.0;
+
+/// Cash-drag-opportunity yield gap threshold. If an alternative
+/// instrument yields > this much MORE than the user's current cash
+/// yield, surface the opportunity. 1.5% is the "noticeably better
+/// while staying low-risk" calibration.
+const CASH_DRAG_OPPORTUNITY_YIELD_GAP_PCT: f64 = 0.015;
+
+/// Cash-drag-opportunity minimum cash amount (base). Below this the
+/// yield gap × principal doesn't justify the notification noise.
+const CASH_DRAG_OPPORTUNITY_MIN_CASH_BASE: f64 = 5_000.0;
+
+/// Tax-window thresholds per Goal v3 §V step C5.b. Same smallest-first
+/// ordering as HAWL/BOND so iter().find returns the smallest crossed step.
+const TAX_WINDOW_DAY_THRESHOLDS: &[i64] = &[1, 7, 30, 90];
 
 fn dec_to_f64(d: Decimal) -> f64 {
     d.to_f64().unwrap_or(0.0)
@@ -592,11 +622,220 @@ fn eval_sharia_status_change(
     ))
 }
 
+/// Zakat-Hawl approaching rule per Goal v3 §V step C5.b.
+///
+/// Fires once per cohort per crossed threshold (30/7/1 day). Sourced
+/// from `hawl_anchors` (Track F PR-F1); caller computes days-to-
+/// completion against the user's local "today" so the engine stays
+/// pure.
+///
+/// Severity: 30=Info (plan), 7=Warning (act this week), 1=Critical (today).
+fn eval_hawl_approaching(
+    candidate: &HawlAnchorCandidate,
+    _input: &InsightsInput,
+) -> Option<Notification> {
+    let crossed = HAWL_DAY_THRESHOLDS
+        .iter()
+        .find(|t| candidate.days_to_completion <= **t)?;
+    let severity = match *crossed {
+        1 => NotificationSeverity::Critical,
+        7 => NotificationSeverity::Warning,
+        _ => NotificationSeverity::Info,
+    };
+    let title = format!(
+        "Zakat Hawl: {} completes in {} {}",
+        candidate.cohort_label,
+        candidate.days_to_completion,
+        if candidate.days_to_completion == 1 {
+            "day"
+        } else {
+            "days"
+        },
+    );
+    let body = format!(
+        "Qualifying balance ~{:.0} — preview your Zakat liability before the Hawl closes.",
+        dec_to_f64(candidate.qualifying_amount_base),
+    );
+    let payload = json!({
+        "cohortId": candidate.cohort_id,
+        "cohortLabel": candidate.cohort_label,
+        "daysToCompletion": candidate.days_to_completion,
+        "qualifyingAmountBase": candidate.qualifying_amount_base,
+        "thresholdDays": crossed,
+    });
+    let dedupe = format!("zakat_hawl:{}:{}", candidate.cohort_id, crossed);
+    Some(fresh(
+        NotificationKind::ZakatHawlApproaching,
+        severity,
+        title,
+        body,
+        Some(format!("mizan://zakat/cohort/{}", candidate.cohort_id)),
+        payload.to_string(),
+        dedupe,
+    ))
+}
+
+/// Concentration-risk rule per Goal v3 §V step C5.b.
+///
+/// Fires per (dimension, label) where the fraction-of-net-worth exceeds
+/// CONCENTRATION_THRESHOLD_PCT AND absolute exposure exceeds the min.
+/// Severity is Warning — concentration matters but the user often
+/// chose it deliberately (e.g. employer equity).
+fn eval_concentration_risk(
+    finding: &ConcentrationRiskFinding,
+    input: &InsightsInput,
+) -> Option<Notification> {
+    if dec_to_f64(finding.fraction_of_net_worth) < CONCENTRATION_THRESHOLD_PCT {
+        return None;
+    }
+    if dec_to_f64(finding.exposure_base) < CONCENTRATION_MIN_EXPOSURE_BASE {
+        return None;
+    }
+    let pct_display = (dec_to_f64(finding.fraction_of_net_worth) * 100.0).round();
+    let title = format!(
+        "Concentration risk: {} {} ({:.0}%)",
+        finding.label, finding.dimension, pct_display,
+    );
+    let body = format!(
+        "{} {} represents {:.0}% of net worth ({} {:.0}). Consider whether the concentration matches your intent.",
+        finding.label,
+        finding.dimension,
+        pct_display,
+        input.base_currency,
+        dec_to_f64(finding.exposure_base),
+    );
+    let payload = json!({
+        "dimension": finding.dimension,
+        "label": finding.label,
+        "fractionOfNetWorth": finding.fraction_of_net_worth,
+        "exposureBase": finding.exposure_base,
+    });
+    let dedupe = format!(
+        "concentration:{}:{}:{}",
+        finding.dimension,
+        finding.label,
+        today_str(input)
+    );
+    Some(fresh(
+        NotificationKind::ConcentrationRisk,
+        NotificationSeverity::Warning,
+        title,
+        body,
+        Some(format!(
+            "mizan://concentration/{}/{}",
+            finding.dimension, finding.label
+        )),
+        payload.to_string(),
+        dedupe,
+    ))
+}
+
+/// Cash-drag-opportunity rule per Goal v3 §V step C5.b.
+///
+/// Distinct from `CashDrag`: that rule fires on cash sitting too long
+/// (duration). This rule fires on the presence of a higher-yielding
+/// alternative AND a material yield gap AND a material cash amount.
+fn eval_cash_drag_opportunity(
+    candidate: &CashDragOpportunityCandidate,
+    input: &InsightsInput,
+) -> Option<Notification> {
+    if dec_to_f64(candidate.cash_amount_base) < CASH_DRAG_OPPORTUNITY_MIN_CASH_BASE {
+        return None;
+    }
+    let gap = dec_to_f64(candidate.alternative_yield_pct) - dec_to_f64(candidate.current_yield_pct);
+    if gap < CASH_DRAG_OPPORTUNITY_YIELD_GAP_PCT {
+        return None;
+    }
+    let cur_pct = dec_to_f64(candidate.current_yield_pct) * 100.0;
+    let alt_pct = dec_to_f64(candidate.alternative_yield_pct) * 100.0;
+    let title = format!("Cash drag: {:.1}% vs {:.1}% available", cur_pct, alt_pct);
+    let body = format!(
+        "Your {} {:.0} earning {:.1}% could move to {} earning {:.1}% — a {:.1}% improvement.",
+        input.base_currency,
+        dec_to_f64(candidate.cash_amount_base),
+        cur_pct,
+        candidate.alternative_label,
+        alt_pct,
+        gap * 100.0,
+    );
+    let payload = json!({
+        "cashAmountBase": candidate.cash_amount_base,
+        "currentYieldPct": candidate.current_yield_pct,
+        "alternativeYieldPct": candidate.alternative_yield_pct,
+        "alternativeLabel": candidate.alternative_label,
+    });
+    let dedupe = format!("cash_drag_opp:{}", today_str(input));
+    Some(fresh(
+        NotificationKind::CashDragOpportunity,
+        NotificationSeverity::Info,
+        title,
+        body,
+        Some("mizan://cash-drag-opportunity".into()),
+        payload.to_string(),
+        dedupe,
+    ))
+}
+
+/// Tax-optimization-window rule per Goal v3 §V step C5.b.
+///
+/// Fires per window per crossed threshold (90/30/7/1 day). Caller
+/// computes from the user's jurisdiction; engine compares against
+/// the threshold ladder.
+///
+/// Severity: 90/30=Info, 7=Warning, 1=Critical.
+fn eval_tax_window(window: &TaxOptimizationWindow, _input: &InsightsInput) -> Option<Notification> {
+    let crossed = TAX_WINDOW_DAY_THRESHOLDS
+        .iter()
+        .find(|t| window.days_remaining <= **t)?;
+    let severity = match *crossed {
+        1 => NotificationSeverity::Critical,
+        7 => NotificationSeverity::Warning,
+        _ => NotificationSeverity::Info,
+    };
+    let title = format!(
+        "{} — {} {} remaining",
+        window.label,
+        window.days_remaining,
+        if window.days_remaining == 1 {
+            "day"
+        } else {
+            "days"
+        },
+    );
+    let body = match window.potential_savings_base {
+        Some(savings) => format!(
+            "Window closes in {} days. Potential savings {:.0}.",
+            window.days_remaining,
+            dec_to_f64(savings),
+        ),
+        None => format!("Window closes in {} days.", window.days_remaining),
+    };
+    let payload = json!({
+        "kind": window.kind,
+        "daysRemaining": window.days_remaining,
+        "label": window.label,
+        "potentialSavingsBase": window.potential_savings_base,
+        "thresholdDays": crossed,
+    });
+    let dedupe = format!("tax_window:{}:{}", window.kind, crossed);
+    Some(fresh(
+        NotificationKind::TaxOptimizationWindow,
+        severity,
+        title,
+        body,
+        Some(format!("mizan://tax/{}", window.kind)),
+        payload.to_string(),
+        dedupe,
+    ))
+}
+
 /// Run every rule against the input and return the union, in a stable
 /// order (BigMove → GoalMilestone → ATH/Dip → CashDrag → DividendPosted
 /// → SyncFailure → BondMaturityApproaching → FxMovedMaterially →
-/// ShariaStatusChanged). Order matters because the bell panel renders
-/// the result list as-is for batches emitted in the same tick.
+/// ShariaStatusChanged → ZakatHawlApproaching → ConcentrationRisk →
+/// CashDragOpportunity → TaxOptimizationWindow). Order matters because
+/// the bell panel renders the result list as-is for batches emitted in
+/// the same tick.
 pub fn evaluate(input: &InsightsInput) -> Vec<Notification> {
     let mut out = Vec::new();
     if let Some(n) = eval_big_move(input) {
@@ -625,6 +864,28 @@ pub fn evaluate(input: &InsightsInput) -> Vec<Notification> {
     }
     for change in &input.sharia_status_changes {
         if let Some(n) = eval_sharia_status_change(change, input) {
+            out.push(n);
+        }
+    }
+    // Hawl / Concentration / CashDragOpportunity / TaxWindow rules
+    // added in Track C PR-C5.b — same per-item pattern as PR-C5.a.
+    for candidate in &input.hawl_anchors_approaching {
+        if let Some(n) = eval_hawl_approaching(candidate, input) {
+            out.push(n);
+        }
+    }
+    for finding in &input.concentration_findings {
+        if let Some(n) = eval_concentration_risk(finding, input) {
+            out.push(n);
+        }
+    }
+    for candidate in &input.cash_drag_opportunities {
+        if let Some(n) = eval_cash_drag_opportunity(candidate, input) {
+            out.push(n);
+        }
+    }
+    for window in &input.tax_optimization_windows {
+        if let Some(n) = eval_tax_window(window, input) {
             out.push(n);
         }
     }
