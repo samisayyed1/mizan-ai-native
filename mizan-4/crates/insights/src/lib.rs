@@ -38,8 +38,9 @@ mod rules;
 mod tests;
 
 pub use input::{
-    BondMaturityCandidate, DividendEvent, FxPairMove, GoalProgress, HoldingDayMove, InsightsInput,
-    NetWorthHistoryPoint, ShariaStatusChange, SyncFailureInput,
+    BondMaturityCandidate, CashDragOpportunityCandidate, ConcentrationRiskFinding, DividendEvent,
+    FxPairMove, GoalProgress, HawlAnchorCandidate, HoldingDayMove, InsightsInput,
+    NetWorthHistoryPoint, ShariaStatusChange, SyncFailureInput, TaxOptimizationWindow,
 };
 pub use rules::evaluate;
 

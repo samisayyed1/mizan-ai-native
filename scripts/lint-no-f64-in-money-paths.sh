@@ -110,6 +110,12 @@ for dir in "${MONEY_PATHS[@]}"; do
       # base. Comparison thresholds for rule firing, not money sums.
       *"BOND_MATURITY_MIN_PRINCIPAL_BASE"*) continue ;;
       *"FX_MATERIAL_MOVE_PCT"*|*"FX_MIN_EXPOSURE_BASE"*) continue ;;
+      # Track C PR-C5.b — same Finding 3.1.1 Informational class:
+      # concentration / cash-drag-opportunity threshold + floor constants.
+      *"CONCENTRATION_THRESHOLD_PCT"*) continue ;;
+      *"CONCENTRATION_MIN_EXPOSURE_BASE"*) continue ;;
+      *"CASH_DRAG_OPPORTUNITY_YIELD_GAP_PCT"*) continue ;;
+      *"CASH_DRAG_OPPORTUNITY_MIN_CASH_BASE"*) continue ;;
       # The dec_to_f64 conversion helper itself — declaring the boundary.
       *"fn dec_to_f64("*) continue ;;
       # FIRE projection rates (Finding 3.1.3 Minor — Monte-Carlo dominated
