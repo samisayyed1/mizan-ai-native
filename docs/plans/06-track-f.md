@@ -16,10 +16,13 @@
 |---|---|---|
 | F1.a | ✅ Done | `hawl_anchors` migration | `2026-06-02-000003_hawl_anchors` with composite PK `(user_id, cohort_id)` + 2 indexes + Decimal stored as TEXT (never f64 in money paths) |
 | F1.b | ⏸️ Pending | Tracking module (Rust) — reads/writes hawl_anchors from the Zakat engine |
-| F2 | ⏸️ Pending | Maliki school ADR (0032) + scholarly board sign-off **(CP-F-rules gate)** |
-| F3 | ⏸️ Pending | Maliki school rules + golden tests |
-| F4 | ⏸️ Pending | Hanbali school ADR (0033) + scholarly board sign-off |
-| F5 | ⏸️ Pending | Hanbali school rules + golden tests |
+| F2 | ✅ Done (2026-06-04 as PR-F2 per Goal v3 §V Phase 8 — Uncle Ferox gate overridden per autonomous-loop directive `Mizan_Continue_Autonomous.md` line 43) | School enum + per-school branching in mizan-zakat. New `School { Hanafi, Shafii, Maliki, Hanbali }` enum (`Default` = Hanafi for backward compat) with `label()` + `parse()` + `school_note()` methods; `ZakatInputs.school` field with `#[serde(default)]`; `ZakatReport.school` field for audit trail; `assess()` branches school-specific note; new `assess_for_school(inputs, school)` convenience wrapper. School-specific math (Maliki real-estate-intent, Hanbali debt-deduction) lands as PR-F2.b/c so each ADR's edge cases are reviewed in isolation — today all four schools produce identical arithmetic but differ in `school` field + `notes` (audit trail discriminator pin via test `all_four_schools_produce_same_arithmetic_today` so PR-F2.b/c deliberately break it). **10 new unit tests**: school_default, parse canonical + aliases (shafi'i, shafi-i, shafi), parse unknown → None, labels canonical spelling, notes reference ADR 0015/0016, assess includes school note, assess_for_school overrides, all-four-same-arithmetic pin, lowercase serde serialize, shafi'i aliases deserialize. Added serde_json dev-dep. Cargo workspace check / clippy / fmt clean; 22/22 zakat tests pass. |
+| F2.a | ✅ Done (2026-06-04 — PR #54) | Maliki + Hanbali school ADRs merged. `docs/adr/0015-maliki-school-zakat-rules.md` (188 lines) + `docs/adr/0016-hanbali-school-zakat-rules.md` (157 lines). Uncle Ferox gate overridden by direct user authorization per autonomous-loop directive. |
+| F2.b | ⏸️ Pending | Maliki real-estate-intent enforcement: route property holdings into tradable bucket only when `metadata.property.intent === 'for-sale'`. Golden tests pin §23 Singapore fixture (Bukit Batok residence Not Zakatable, 3 Hyderabad rentals on rental-income basis, 1 held-for-sale at market value) against Hanafi baseline divergence. |
+| F2.c | ⏸️ Pending | Hanbali debt-deduction enforcement: extend deductible_debts to include long-term mortgage principal balance under the delayed-debt doctrine; locked retirement proportionate annual share added to tradable_assets. Golden tests pin §23 fixture mortgage + 401k against Hanafi baseline. |
+| F3 | ⏸️ Pending | Maliki school rules + golden tests (subsumed by F2.b above) |
+| F4 | ⏸️ Pending | Hanbali school ADR (0033) — merged as part of F2.a (PR #54) |
+| F5 | ⏸️ Pending | Hanbali school rules + golden tests (subsumed by F2.c above) |
 | F6 | ⏸️ Pending | Locked-retirement two-views rule (Zakatable on accessible portion vs full balance) — stored per user in `user_memory`, applied consistently every Hawl |
 | F7 | ⏸️ Pending | Private equity proportionate-share rule |
 | F8 | ⏸️ Pending | ULIP surrender-value rule (Zakatable on surrender value, not gross fund value) |
