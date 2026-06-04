@@ -15,7 +15,7 @@
 | # | Status | Title |
 |---|---|---|
 | B0 | ⏸️ Pending | Universal asset class panel skeleton — spec §6 (header / chart / list / insights / actions / history) |
-| B1 | ⏸️ Pending | Equities panel — extends existing; adds sub-class donut + geographic bar |
+| B1 | ✅ Done (2026-06-04 as PR-B2 per Goal v3 §V Phase 5 step B2) | Equities panel. New `apps/frontend/src/pages/panels/equities/` with `rollup.ts` pure-math helpers (`isEquityHolding`, `rollupBySubclass`, `rollupByRegion`, `totalEquityExposure`) and `equities-panel.tsx` page composition. Donut by sub-class (Stocks / ETFs / Mutual Funds / Options) + bar by region (top-level geographic exposure, weighted-split per holding with re-normalisation when weights >100). Route `/panels/equities` registered; the dashboard's twelve-panel grid now points `equities` → `/panels/equities`. **23 unit tests** including the AAPL/SPUS/VFINX/AAPL_C fixture for the sub-class rollup, the 50/50 region split test, the weight-re-normalisation test (60+60→100/100), the Unspecified fallback test, and the cross-holding aggregation/sort test. Frontend vitest 933/933 (was 910; +23); lint 0 errors / 399 warnings unchanged; tsc clean. |
 | B2 | ⏸️ Pending | Brokerage Accounts panel — extends SnapTrade UI |
 | B3 | ⏸️ Pending | Bank/Cash: Setu provider in Mizan Connect + UI |
 | B4 | ⏸️ Pending | Bank/Cash: SGFinDex (Singpass OAuth flow with required redirect_uri) |

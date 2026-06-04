@@ -63,7 +63,8 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
     id: "equities",
     label: "Equities",
     iconKey: "TrendingUp",
-    holdingsHref: "/holdings?panel=equities",
+    // Track B PR-B2 — dedicated panel page (donut + region bar).
+    holdingsHref: "/panels/equities",
   },
   {
     id: "brokerage-accounts",
