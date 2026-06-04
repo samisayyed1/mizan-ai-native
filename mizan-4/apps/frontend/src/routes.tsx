@@ -21,6 +21,7 @@ import MonthlyReportsPage from "@/pages/reports/monthly-reports-page";
 import ReportsIndexPage from "@/pages/reports/reports-index-page";
 import ZakatPage from "@/pages/zakat/zakat-page";
 import HoldingsPage from "@/pages/holdings/holdings-page";
+import EquitiesPanelPage from "@/pages/panels/equities/equities-panel";
 import SukuksPanelPage from "@/pages/panels/sukuks/sukuks-panel";
 import IncomePage from "@/pages/income/income-page";
 import NewsPage from "@/pages/news/news-page";
@@ -104,6 +105,8 @@ export function AppRoutes() {
                   PR-B2..B7 add the rest of the twelve panels under
                   /panels/* as they ship. */}
               <Route path="panels/sukuks" element={<SukuksPanelPage />} />
+              {/* Track B PR-B2 — Equities panel (sub-class donut + region bar). */}
+              <Route path="panels/equities" element={<EquitiesPanelPage />} />
               <Route path="news" element={<NewsPage />} />
               <Route path="holdings-insights" element={<HoldingsInsightsPage />} />
               <Route path="holdings/:assetId" element={<AssetProfilePage />} />
