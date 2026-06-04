@@ -33,10 +33,12 @@
 #![forbid(unsafe_code)]
 
 mod model;
+mod property_intent;
 mod service;
 mod traits;
 
 pub use model::*;
+pub use property_intent::{route_property, sum_property_tradable, PropertyBucket, PropertyIntent};
 pub use service::*;
 pub use traits::*;
 
