@@ -41,6 +41,17 @@
   }
 }
 
+/* World-class polish (PR-POLISH-4) — universal tabular-numerals
+ * utility. Numeric spans use this so columns of numbers align
+ * across rows and digits don't shift width on update tick. Matches
+ * the "every number tabular" rule from the spec. */
+@utility tabular {
+  font-feature-settings:
+    "tnum" 1,
+    "lnum" 1;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
 @utility scrollbar-thin {
   scrollbar-width: thin;
   &::-webkit-scrollbar {
@@ -482,6 +493,34 @@
   --gold-primary-hsl: 31 49% 64%;
   --gold-deep-hsl: 31 32% 41%;
 
+  /* World-class polish (PR-POLISH-4) — explicit brand alias so any
+   * surface can lean on `--color-brand` without re-deriving which
+   * gold tone to use. The Mizan brand mark is the deep gold; the
+   * primary gold is for CTAs; the cream is for emphasis. */
+  --color-brand: var(--gold-primary);
+  --color-brand-hsl: var(--gold-primary-hsl);
+
+  /* World-class polish (PR-POLISH-4) — depth layer system.
+   *
+   * Four named tiers that surfaces can opt into for stronger visual
+   * hierarchy than the binary bg/card pair Flexoki ships:
+   *
+   *   depth-page       — deepest layer (the page background)
+   *   depth-container  — groups of cards (Net Worth + 12 panels region)
+   *   depth-card       — individual cards (panels, news cards, etc.)
+   *   depth-elevated   — popovers, dropdowns, hover state
+   *
+   * Light mode keeps the Flexoki paper feel; dark mode shifts to a
+   * pure-grayscale ladder (#0A → #11 → #16 → #1F) so cards read as
+   * physically raised vs the page. The Flexoki shadcn tokens
+   * (`--background`, `--card`) stay as the default; opt-in surfaces
+   * use `bg-[var(--depth-...)]`. */
+  --depth-page: hsl(var(--flexoki-bg));
+  --depth-container: hsl(var(--flexoki-bg));
+  --depth-card: hsl(var(--flexoki-bg-2));
+  --depth-elevated: hsl(var(--flexoki-bg-2));
+  --depth-border: hsl(var(--flexoki-ui));
+
   --inset-top: env(safe-area-inset-top, 0px);
   --inset-right: env(safe-area-inset-right, 0px);
   --inset-bottom: env(safe-area-inset-bottom, 0px);
@@ -579,6 +618,17 @@
   --primary-foreground: hsl(0 3% 6%);
   --ring: hsl(var(--gold-primary-hsl));
   --sidebar-primary: hsl(var(--gold-primary-hsl));
+
+  /* World-class polish (PR-POLISH-4) — dark depth ladder.
+   *
+   * Pure-grayscale tiers so cards visually pop from the page in
+   * dark mode. Mirrors the spec's #0A → #11 → #16 → #1F ladder but
+   * with HSL so the system flips cleanly to light-mode parity. */
+  --depth-page: hsl(0 0% 4.5%);       /* deepest — page bg */
+  --depth-container: hsl(0 0% 6.5%);  /* groups of cards */
+  --depth-card: hsl(0 0% 9%);         /* individual cards */
+  --depth-elevated: hsl(0 0% 12%);    /* popovers, dropdowns */
+  --depth-border: rgba(255, 255, 255, 0.06);
   --sidebar-primary-foreground: hsl(0 3% 6%);
   --sidebar-ring: hsl(var(--gold-primary-hsl));
 }

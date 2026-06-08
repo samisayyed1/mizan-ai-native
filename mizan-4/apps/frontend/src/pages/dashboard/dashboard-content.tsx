@@ -59,7 +59,13 @@ export function DashboardContent() {
   const baseCurrency = settings?.baseCurrency ?? "USD";
 
   return (
-    <div className="flex min-h-screen flex-col">
+    // PR-POLISH-4 — depth-page background ladder. Dark mode shifts to
+    // a pure-grayscale tier (#0A) so cards above visually rise off
+    // the page. Light mode stays on the Flexoki paper tone.
+    <div
+      className="flex min-h-screen flex-col"
+      style={{ background: "var(--depth-page)" }}
+    >
       <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-6 md:px-6 md:pb-6 md:pt-8 lg:px-10 lg:pb-8 lg:pt-10">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-12">
           <div className="space-y-6 lg:col-span-2">
