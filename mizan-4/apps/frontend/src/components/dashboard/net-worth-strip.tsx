@@ -240,8 +240,8 @@ export function NetWorthStrip({
     delta.noBaseline || delta.amount === 0
       ? "text-muted-foreground"
       : isPositive
-        ? "text-emerald-600 dark:text-emerald-400"
-        : "text-rose-600 dark:text-rose-400";
+        ? "text-success"
+        : "text-destructive";
 
   return (
     <section
