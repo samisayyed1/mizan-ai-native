@@ -24,7 +24,7 @@ export function PortfolioHealthCard() {
   if (locked) {
     return (
       <Card
-        className="border-primary/20 from-primary/5 to-card bg-linear-to-br flex cursor-pointer items-start gap-3 p-5 transition hover:shadow-sm"
+        className="bg-card hover:bg-muted/30 border-border/60 flex cursor-pointer items-start gap-3 rounded-xl border p-5 transition-colors"
         onClick={() => requestUpgrade("advanced_reports")}
         role="button"
         tabIndex={0}

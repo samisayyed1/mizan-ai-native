@@ -108,12 +108,20 @@ export function DashboardContent() {
             />
           </div>
 
-          <div className="space-y-6 lg:col-span-1">
+          {/* Right sidebar (lg+) — unified card language per
+              PR-POLISH-3. Same gap as the main column's cards, same
+              bg-card / rounded-xl / subtle border across all four
+              widgets so the sidebar reads as a cohesive companion
+              to the main dashboard, not a disconnected rail. */}
+          <aside
+            aria-label="Dashboard sidebar"
+            className="space-y-4 lg:col-span-1"
+          >
             <SavingGoals />
             <PortfolioHealthCard />
             <ZakatCard />
             <NewsHomeWidget />
-          </div>
+          </aside>
         </div>
       </div>
     </div>

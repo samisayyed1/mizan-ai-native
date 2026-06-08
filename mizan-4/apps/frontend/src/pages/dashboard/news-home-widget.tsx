@@ -28,7 +28,7 @@ export function NewsHomeWidget() {
 
   if (isLoading) {
     return (
-      <Card className="p-5">
+      <Card className="border-border/60 rounded-xl p-5">
         <Skeleton className="mb-3 h-4 w-24" />
         <div className="space-y-3">
           <Skeleton className="h-5 w-full" />
@@ -44,7 +44,7 @@ export function NewsHomeWidget() {
   }
 
   return (
-    <Card className="p-5">
+    <Card className="border-border/60 rounded-xl p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Icons.Newspaper className="text-muted-foreground h-4 w-4" />
