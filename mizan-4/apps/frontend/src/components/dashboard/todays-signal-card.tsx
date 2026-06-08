@@ -104,26 +104,26 @@ function severityStyles(severity: NotificationSeverity): {
   switch (severity) {
     case "critical":
       return {
-        ring: "border-rose-500/40",
-        bg: "bg-rose-500/10",
-        text: "text-rose-700 dark:text-rose-300",
-        icon: "text-rose-600 dark:text-rose-400",
+        ring: "border-destructive/40",
+        bg: "bg-destructive/10",
+        text: "text-destructive",
+        icon: "text-destructive",
         label: "Action",
       };
     case "warning":
       return {
-        ring: "border-amber-500/40",
-        bg: "bg-amber-500/10",
-        text: "text-amber-800 dark:text-amber-200",
-        icon: "text-amber-600 dark:text-amber-400",
+        ring: "border-warning/40",
+        bg: "bg-warning/10",
+        text: "text-warning",
+        icon: "text-warning",
         label: "Heads up",
       };
     case "success":
       return {
-        ring: "border-emerald-500/40",
-        bg: "bg-emerald-500/10",
-        text: "text-emerald-800 dark:text-emerald-200",
-        icon: "text-emerald-600 dark:text-emerald-400",
+        ring: "border-success/40",
+        bg: "bg-success/10",
+        text: "text-success",
+        icon: "text-success",
         label: "Milestone",
       };
     case "info":
