@@ -1,3 +1,4 @@
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useHoldings } from "@/hooks/use-holdings";
 import { useValuationHistory } from "@/hooks/use-valuation-history";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
@@ -39,6 +40,10 @@ import { QueryKeys } from "@/lib/query-keys";
  *   the Net Worth detail page; the dashboard auto-refreshes)
  */
 export function DashboardContent() {
+  // Brand presence in OS chrome — tab title reads "Mizan — Dashboard"
+  // so the dock / taskbar / overflow tab list keeps Mizan recognisable.
+  useDocumentTitle("Dashboard");
+
   const { holdings: allHoldings, isLoading: isHoldingsLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
 
   // Today's Signal feed — same source as the bell, capped at 25 newest.

@@ -1,4 +1,5 @@
 import { PageErrorBoundary } from "@/components/page-error-boundary";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useAddAsset } from "@/features/add-asset";
 import { useBalancePrivacy } from "@/hooks/use-balance-privacy";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -90,6 +91,7 @@ export default function GoalsDashboardPage() {
 }
 
 function GoalsDashboardContent() {
+  useDocumentTitle("Goals");
   const { active, atRisk, achieved, archived, isLoading } = useGoals();
   const [archivedOpen, setArchivedOpen] = useState(false);
   const addAsset = useAddAsset();
