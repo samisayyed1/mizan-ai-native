@@ -168,6 +168,16 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
           <div className="divide-border divide-y">
             {pageQuery.isLoading ? (
               <PanelSkeleton />
+            ) : pageQuery.error ? (
+              // Explicit error UI — silently falling back to EmptyState
+              // hides a real failure behind "You're all caught up", which
+              // is confusing when the badge says e.g. 23 unread. The
+              // user needs to know the panel couldn't load and have a
+              // retry path.
+              <ErrorState
+                error={pageQuery.error}
+                onRetry={() => void pageQuery.refetch()}
+              />
             ) : items.length === 0 ? (
               <EmptyState />
             ) : (
@@ -272,15 +282,20 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
 // ────────────────────────────────────────────────────────────────────
 // Helpers
 
+// Semantic palette mapping. Where Flexoki has a named token (success /
+// destructive / warning), we use it so dark + light mode flip cleanly
+// without explicit dark: variants. The two kinds without a semantic
+// match (allocation_drift, ai_digest) keep their Tailwind palettes but
+// pair light + dark variants so contrast is right in both themes.
 const KIND_PALETTE: Record<NotificationKind, { bg: string; fg: string }> = {
-  big_move: { bg: "bg-amber-500/10", fg: "text-amber-600 dark:text-amber-400" },
+  big_move: { bg: "bg-warning/10", fg: "text-warning" },
   allocation_drift: { bg: "bg-blue-500/10", fg: "text-blue-600 dark:text-blue-400" },
-  goal_milestone: { bg: "bg-emerald-500/10", fg: "text-emerald-600 dark:text-emerald-400" },
-  cash_drag: { bg: "bg-slate-500/10", fg: "text-slate-600 dark:text-slate-400" },
-  dividend_posted: { bg: "bg-emerald-500/10", fg: "text-emerald-600 dark:text-emerald-400" },
-  new_ath: { bg: "bg-emerald-500/10", fg: "text-emerald-600 dark:text-emerald-400" },
-  net_worth_dip: { bg: "bg-rose-500/10", fg: "text-rose-600 dark:text-rose-400" },
-  sync_failure: { bg: "bg-amber-500/10", fg: "text-amber-600 dark:text-amber-400" },
+  goal_milestone: { bg: "bg-success/10", fg: "text-success" },
+  cash_drag: { bg: "bg-muted", fg: "text-muted-foreground" },
+  dividend_posted: { bg: "bg-success/10", fg: "text-success" },
+  new_ath: { bg: "bg-success/10", fg: "text-success" },
+  net_worth_dip: { bg: "bg-destructive/10", fg: "text-destructive" },
+  sync_failure: { bg: "bg-warning/10", fg: "text-warning" },
   ai_digest: { bg: "bg-violet-500/10", fg: "text-violet-600 dark:text-violet-400" },
 };
 
@@ -318,6 +333,27 @@ function EmptyState() {
         Your AI assistant will let you know about big moves, goal milestones,
         and anything else worth your attention.
       </p>
+    </div>
+  );
+}
+
+function ErrorState({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 px-4 py-10 text-center">
+      <span className="bg-destructive/10 text-destructive flex h-10 w-10 items-center justify-center rounded-full">
+        <Icons.AlertTriangle className="h-5 w-5" />
+      </span>
+      <div>
+        <p className="text-foreground text-sm font-medium">
+          Couldn&apos;t load notifications
+        </p>
+        <p className="text-muted-foreground mt-1 max-w-[260px] text-xs leading-relaxed">
+          {error.message || "Something went wrong fetching your notifications."}
+        </p>
+      </div>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        Try again
+      </Button>
     </div>
   );
 }
