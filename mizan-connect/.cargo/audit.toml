@@ -27,4 +27,10 @@ ignore = [
     # bollard 0.18 (the maintained `rustls-pemfile` replacement is the
     # `rustls-pki-types` crate which bollard hasn't picked up yet).
     "RUSTSEC-2025-0134",
+    # RUSTSEC-2026-0173 — proc-macro-error2 2.0.x is unmaintained
+    # (declared 2026-06-07). Pulled in transitively by several derive-
+    # macro crates in the compile graph. Compile-time only, no runtime
+    # surface, no exposure to user input. Re-evaluate when our
+    # derive-macro dependencies migrate off the proc-macro-error family.
+    "RUSTSEC-2026-0173",
 ]
