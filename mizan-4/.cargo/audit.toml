@@ -55,4 +55,32 @@ ignore = [
     # in-process. Re-evaluate at Tauri 2's GTK4 migration (issue
     # tauri-apps/tauri#4663) or when upstream glib-rs ships a fix.
     "RUSTSEC-2024-0429",
+
+    # RUSTSEC-2026-0172 — diesel 2.3.x `SqliteConnection::deserialize_readonly_database`
+    # has an unsoundness: the API accepts a `&[u8]` slice but the underlying
+    # SQLite C call retains the pointer without lifetime tracking, so a
+    # caller can free the buffer while SQLite still holds the pointer →
+    # use-after-free.
+    #
+    # Mizan Desktop **never calls this API**. We open SQLite databases by
+    # filesystem path through `diesel::SqliteConnection::establish(path)`,
+    # not from in-memory serialized blobs. Grep confirms zero usages of
+    # `deserialize_readonly_database` or `SqliteConnection::deserialize`
+    # anywhere in the workspace (crates/, apps/).
+    #
+    # Re-evaluate when diesel ships a patched 2.3.x release (or 2.4.0) that
+    # fixes the lifetime contract on the deserialize API. Tracked at
+    # https://rustsec.org/advisories/RUSTSEC-2026-0172
+    "RUSTSEC-2026-0172",
+
+    # RUSTSEC-2026-0173 — proc-macro-error2 2.0.x declared unmaintained
+    # 2026-06-07. proc-macro-error2 is itself a maintained fork of the
+    # earlier proc-macro-error (RUSTSEC-2024-0370, ignored above for the
+    # same reason); both are pulled in transitively by several derive-
+    # macro crates in our compile graph. They run only at compile time —
+    # no runtime surface, no exposure to user input — and there is no
+    # drop-in replacement until the proc-macro ecosystem consolidates on
+    # syn 2.x span attributes. Re-evaluate when our derive-macro
+    # dependencies migrate off the proc-macro-error family.
+    "RUSTSEC-2026-0173",
 ]
