@@ -13,16 +13,20 @@
  *
  * The SnapTrade sync-status badge ships separately as PR-B8.a once
  * the `BrokerSyncState` is threaded into the accounts query.
+ *
+ * Track UI PR-UI-4 — uses the shared AssetClassPanelLayout so the
+ * page chrome matches every other panel detail view per Spec §6.
  */
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { AssetClassPanelLayout } from "@/components/panels/asset-class-panel-layout";
 import { Donut } from "@/components/charts";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
-import { Button, Icons } from "@mizan/ui";
+import { Icons } from "@mizan/ui";
 import { formatAmount } from "@mizan/ui/lib/utils";
 
 import {
@@ -55,82 +59,74 @@ export default function BrokerageAccountsPanelPage() {
     [allHoldings, accounts],
   );
 
+  const summary =
+    accountRows.length === 0 && !isLoading
+      ? "No brokerage accounts yet."
+      : `Total brokerage ${formatAmount(totalNav, baseCurrency)} across ${accountRows.length} ${accountRows.length === 1 ? "account" : "accounts"}.`;
+
+  const chart =
+    accountRows.length > 0 ? (
+      <section
+        aria-label="Brokerage NAV by broker"
+        className="bg-card rounded-2xl border p-4"
+      >
+        <div className="mb-3 text-sm font-medium">By broker</div>
+        <div className="h-64">
+          <Donut
+            data={brokerRows.map((r) => ({
+              label: r.broker,
+              value: r.totalValueBase,
+            }))}
+            ariaLabel="Brokerage NAV by broker"
+            palette="categorical"
+          />
+        </div>
+      </section>
+    ) : null;
+
+  const list =
+    accountRows.length > 0 ? (
+      <section
+        aria-label="Brokerage accounts list"
+        className="bg-card rounded-2xl border"
+      >
+        <header className="border-b px-4 py-3">
+          <h2 className="text-sm font-medium">Accounts</h2>
+        </header>
+        <ul role="list" className="divide-y">
+          {accountRows.map((row) => (
+            <li
+              key={row.accountId}
+              className="hover:bg-muted/40 flex items-center justify-between px-4 py-3 transition-colors"
+            >
+              <button
+                type="button"
+                onClick={() => navigate(`/accounts/${row.accountId}`)}
+                className="text-foreground flex-1 text-left text-sm font-medium"
+              >
+                <div>{row.accountName}</div>
+                <div className="text-muted-foreground text-xs">
+                  {row.broker} · {row.positionCount}{" "}
+                  {row.positionCount === 1 ? "position" : "positions"} ·{" "}
+                  {row.currency}
+                </div>
+              </button>
+              <div className="text-foreground text-sm font-semibold tabular-nums">
+                {formatAmount(row.totalValueBase, baseCurrency)}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : null;
+
   return (
-    <div className="space-y-6 px-4 py-6 md:px-6 lg:px-10">
-      <header className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Icons.Briefcase className="text-muted-foreground h-5 w-5" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Brokerage Accounts
-          </h1>
-        </div>
-        <div className="text-muted-foreground text-sm">
-          {accountRows.length === 0 && !isLoading
-            ? "No brokerage accounts yet."
-            : `Total brokerage ${formatAmount(totalNav, baseCurrency)} across ${accountRows.length} ${accountRows.length === 1 ? "account" : "accounts"}.`}
-        </div>
-      </header>
-
-      {accountRows.length > 0 && (
-        <>
-          <section
-            aria-label="Brokerage NAV by broker"
-            className="bg-card rounded-2xl border p-4"
-          >
-            <div className="mb-3 text-sm font-medium">By broker</div>
-            <div className="h-64">
-              <Donut
-                data={brokerRows.map((r) => ({
-                  label: r.broker,
-                  value: r.totalValueBase,
-                }))}
-                ariaLabel="Brokerage NAV by broker"
-                palette="categorical"
-              />
-            </div>
-          </section>
-
-          <section
-            aria-label="Brokerage accounts list"
-            className="bg-card rounded-2xl border"
-          >
-            <header className="border-b px-4 py-3">
-              <h2 className="text-sm font-medium">Accounts</h2>
-            </header>
-            <ul role="list" className="divide-y">
-              {accountRows.map((row) => (
-                <li
-                  key={row.accountId}
-                  className="hover:bg-muted/40 flex items-center justify-between px-4 py-3 transition-colors"
-                >
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/accounts/${row.accountId}`)}
-                    className="text-foreground flex-1 text-left text-sm font-medium"
-                  >
-                    <div>{row.accountName}</div>
-                    <div className="text-muted-foreground text-xs">
-                      {row.broker} · {row.positionCount}{" "}
-                      {row.positionCount === 1 ? "position" : "positions"} ·{" "}
-                      {row.currency}
-                    </div>
-                  </button>
-                  <div className="text-foreground text-sm font-semibold tabular-nums">
-                    {formatAmount(row.totalValueBase, baseCurrency)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </>
-      )}
-
-      <div className="pt-2">
-        <Button variant="outline" size="sm" onClick={() => navigate("/")}>
-          <Icons.ArrowLeft className="mr-2 h-4 w-4" />
-          Back to dashboard
-        </Button>
-      </div>
-    </div>
+    <AssetClassPanelLayout
+      title="Brokerage Accounts"
+      IconComponent={Icons.Briefcase}
+      summary={summary}
+      chart={chart}
+      list={list}
+    />
   );
 }
