@@ -1,10 +1,34 @@
 # Mizan E2E — Playwright
 
-Track E2E PR-1 / Goal v3 §V Phase 9.
+Track E2E PR-1 / Goal v3 §V Phase 9 + Track UI PR-UI-8.
 
-End-to-end tests of the Mizan desktop frontend. The marquee scenario is
-`s23-ramadan-zakat.spec.ts` — the Singapore Sharia-aware millionaire's
-Ramadan Zakat flow.
+End-to-end tests of the Mizan desktop frontend.
+
+- `s23-ramadan-zakat.spec.ts` — the Singapore Sharia-aware millionaire's
+  Ramadan Zakat scenario (Track E2E PR-1)
+- `visual-regression.spec.ts` — pixel-diff screenshot tests for the
+  surfaces that define the §13 visual bar (Track UI PR-UI-8)
+
+## Visual regression snapshots
+
+`visual-regression.spec.ts` uses Playwright's `toHaveScreenshot()` to
+gate UI changes against committed baseline PNGs. The diff threshold
+is 0.5% (`maxDiffPixelRatio: 0.005`) — high enough to absorb
+font-rendering jitter, low enough to catch real layout shifts.
+
+```bash
+# Run visual regression
+pnpm exec playwright test e2e/visual-regression.spec.ts
+
+# Update baselines (after an intentional visual change)
+pnpm exec playwright test e2e/visual-regression.spec.ts -u
+
+# Inspect a diff after failure
+pnpm exec playwright show-report
+```
+
+Most tests are `test.skip` pending the §23 fixture-seed wiring
+(PR-E2E.b). The runnable smoke covers the empty-state dashboard.
 
 ## Running locally
 
