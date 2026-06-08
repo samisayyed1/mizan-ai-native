@@ -21,6 +21,7 @@ import { Badge } from "@mizan/ui/components/ui/badge";
 import { useState, useMemo, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ActionPalette, type ActionPaletteGroup } from "@/components/action-palette";
+import { PageErrorBoundary } from "@/components/page-error-boundary";
 import {
   useGoalDetail,
   useGoalPlanMutations,
@@ -52,6 +53,14 @@ const GOAL_TYPE_LABELS: Record<string, string> = {
 };
 
 export default function GoalDetailPage() {
+  return (
+    <PageErrorBoundary pageName="Goal detail">
+      <GoalDetailContent />
+    </PageErrorBoundary>
+  );
+}
+
+function GoalDetailContent() {
   const { goalId } = useParams<{ goalId: string }>();
   const navigate = useNavigate();
 

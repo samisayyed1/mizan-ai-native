@@ -97,8 +97,41 @@ export function useGoalPlanMutations(goalId: string) {
 export function useRetirementOverview(goalId: string | undefined) {
   return useQuery<RetirementOverview, Error>({
     queryKey: QueryKeys.retirementOverview(goalId ?? ""),
-    queryFn: () => getRetirementOverview(goalId!),
+    queryFn: async () => {
+      // 15s soft timeout. The backend computes a Monte Carlo glidepath
+      // which should land in well under a second on the reference machine;
+      // 15s of silence means the dispatcher hung. Throwing here flips the
+      // query into an error state so the page renders an actionable card
+      // instead of the infinite skeleton it would otherwise show.
+      const TIMEOUT_MS = 15_000;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          getRetirementOverview(goalId!),
+          new Promise<RetirementOverview>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "Retirement projection timed out after 15 seconds. The backend may be busy or disconnected.",
+                  ),
+                ),
+              TIMEOUT_MS,
+            );
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    },
     enabled: !!goalId,
+    // Retry once for transient backend hiccups; after that, surface the
+    // error so the user sees the "Failed to load retirement projection"
+    // card instead of an infinite skeleton.
+    retry: 1,
+    retryDelay: 500,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 }
 
