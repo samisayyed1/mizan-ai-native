@@ -91,7 +91,7 @@ describe("<HoldingsHeatmap />", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText(/Add a stock to see your portfolio heatmap/),
+      screen.getByText(/No holdings to chart/),
     ).toBeInTheDocument();
   });
 
@@ -110,7 +110,7 @@ describe("<HoldingsHeatmap />", () => {
     );
     // Only cash → renders the empty state, not the chart
     expect(
-      screen.getByText(/Add a stock to see your portfolio heatmap/),
+      screen.getByText(/No holdings to chart/),
     ).toBeInTheDocument();
   });
 
@@ -126,7 +126,7 @@ describe("<HoldingsHeatmap />", () => {
       </MemoryRouter>,
     );
     expect(
-      screen.getByText(/Add a stock to see your portfolio heatmap/),
+      screen.getByText(/No holdings to chart/),
     ).toBeInTheDocument();
   });
 
