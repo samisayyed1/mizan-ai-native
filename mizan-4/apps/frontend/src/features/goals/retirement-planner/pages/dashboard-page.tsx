@@ -462,10 +462,26 @@ export default function DashboardPage({
   const heroGuidance = readiness.body;
 
   if (!retirementOverview) {
+    // If the query has finished fetching but returned no data AND no
+    // explicit error, surface a synthetic error so the user sees an
+    // actionable card instead of an infinite skeleton. This protects
+    // against the backend returning `undefined` / `null` for any reason
+    // (missing settings_json, dispatcher crash, schema drift).
+    const settledWithoutData =
+      !retirementOverviewIsFetching && !retirementOverviewError && !error;
+    const effectiveError =
+      retirementOverviewError ??
+      error ??
+      (settledWithoutData
+        ? new Error(
+            "Retirement projection unavailable. The backend returned no data.",
+          )
+        : null);
+
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <RetirementAnalysisPendingColumn error={retirementOverviewError ?? error} />
+          <RetirementAnalysisPendingColumn error={effectiveError} />
           <div className="space-y-4 lg:col-span-1 lg:self-start">
             <SidebarConfigurator
               key={sidebarKey}

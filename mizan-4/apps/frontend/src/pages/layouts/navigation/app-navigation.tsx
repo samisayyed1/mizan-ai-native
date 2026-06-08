@@ -43,13 +43,6 @@ const staticNavigation: NavigationProps = {
       label: "Home",
     },
     {
-      icon: <Icons.Briefcase className="size-6" />,
-      title: "Portfolio",
-      href: "/portfolio",
-      keywords: ["portfolio", "portfolios", "holdings", "assets", "positions"],
-      label: "Portfolio",
-    },
-    {
       icon: <Icons.Target className="size-6" />,
       title: "Goals",
       href: "/goals",

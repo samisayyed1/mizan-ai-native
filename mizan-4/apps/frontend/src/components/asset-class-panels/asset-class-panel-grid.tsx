@@ -49,7 +49,7 @@ export function AssetClassPanelGrid({
   return (
     <section
       aria-label="Asset class panels"
-      className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3"
+      className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3"
     >
       {rollups.map((rollup) => {
         const descriptor = getPanelDescriptor(rollup.panelId);

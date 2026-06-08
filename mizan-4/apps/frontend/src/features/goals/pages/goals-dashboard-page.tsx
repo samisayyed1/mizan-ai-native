@@ -1,3 +1,4 @@
+import { PageErrorBoundary } from "@/components/page-error-boundary";
 import { useAddAsset } from "@/features/add-asset";
 import { useBalancePrivacy } from "@/hooks/use-balance-privacy";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -31,10 +32,27 @@ function StatBlock({ label, value }: { label: string; value: React.ReactNode }) 
 function SummaryStats({ goals }: { goals: Goal[] }) {
   const { isBalanceHidden } = useBalancePrivacy();
   const { settings } = useSettingsContext();
+  // Defensive null guards: goals[0] may be undefined if the array is
+  // empty; settings can be loading; currency falls back to USD so
+  // formatCompactAmount never receives undefined.
   const currency = settings?.baseCurrency ?? goals[0]?.currency ?? "USD";
 
-  const saved = goals.reduce((s, g) => s + (g.summaryCurrentValue ?? 0), 0);
-  const target = goals.reduce((s, g) => s + (g.summaryTargetAmount ?? g.targetAmount ?? 0), 0);
+  // Coerce each summary field through Number() with a NaN-safe fallback.
+  // A malformed goal row in the database (string in a number column,
+  // missing field, null where 0 expected) would otherwise propagate
+  // NaN through the reduce and render "$NaN" / "NaN%" — both of which
+  // are worse than 0.
+  const toFinite = (v: unknown): number => {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const saved = goals.reduce((s, g) => s + toFinite(g.summaryCurrentValue), 0);
+  const target = goals.reduce(
+    (s, g) => s + toFinite(g.summaryTargetAmount ?? g.targetAmount),
+    0,
+  );
+  // Guard against 0/0 = NaN; render 0% instead.
   const overall = target > 0 ? saved / target : 0;
   const onTrackCount = goals.filter(
     (g) => g.statusHealth === "on_track" || g.statusLifecycle === "achieved",
@@ -64,6 +82,14 @@ function GoalGrid({ goals }: { goals: Goal[] }) {
 }
 
 export default function GoalsDashboardPage() {
+  return (
+    <PageErrorBoundary pageName="Goals">
+      <GoalsDashboardContent />
+    </PageErrorBoundary>
+  );
+}
+
+function GoalsDashboardContent() {
   const { active, atRisk, achieved, archived, isLoading } = useGoals();
   const [archivedOpen, setArchivedOpen] = useState(false);
   const addAsset = useAddAsset();
