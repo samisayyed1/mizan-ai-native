@@ -82,7 +82,7 @@ export function AssetClassPanelCard({
   return (
     <Link
       to={descriptor.holdingsHref}
-      className="group bg-card hover:bg-muted/40 border-border/60 focus-visible:ring-ring relative flex h-[104px] flex-col justify-between rounded-xl border px-4 py-3.5 transition-colors focus-visible:outline-none focus-visible:ring-2"
+      className="group bg-card hover:bg-muted/40 border-border/60 focus-visible:ring-ring relative flex h-[104px] flex-col justify-between rounded-xl border px-4 py-3.5 transition-[background-color,transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 active:translate-y-0 active:scale-[0.99] motion-reduce:transition-colors motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none motion-reduce:active:scale-100"
       aria-label={`Open ${descriptor.label} panel`}
       data-panel-id={descriptor.id}
     >
