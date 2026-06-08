@@ -10,10 +10,15 @@
  * This is the §23 step "He taps the Sukuks panel" surface — the tap target
  * is wired even before the Track B dedicated panel pages land; the route
  * upgrades panel-by-panel as PR-B1..B7 ship.
+ *
+ * PR-POLISH-5 — staggered entry on dashboard load (fade-in + 8px
+ * translateY, 30ms each). Honors `prefers-reduced-motion`.
  */
 import { useMemo } from "react";
+import { motion, useReducedMotion } from "motion/react";
 
 import type { Holding } from "@/lib/types";
+import { fadeInUp, staggerContainer } from "@/lib/motion";
 
 import { AssetClassPanelCard } from "./asset-class-panel-card";
 import {
@@ -46,17 +51,26 @@ export function AssetClassPanelGrid({
     [holdings, baseCurrency],
   );
 
+  // Respect OS-level "reduce motion" — when on, the staggered entry
+  // collapses to a no-op so tiles render instantly without
+  // translation or fade.
+  const shouldReduceMotion = useReducedMotion();
+
   return (
-    <section
+    <motion.section
       aria-label="Asset class panels"
       className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3"
+      variants={shouldReduceMotion ? undefined : staggerContainer}
+      initial="initial"
+      animate="animate"
     >
       {rollups.map((rollup) => {
         const descriptor = getPanelDescriptor(rollup.panelId);
         const dimmed = dimEmptyPanels && rollup.holdingsCount === 0;
         return (
-          <div
+          <motion.div
             key={descriptor.id}
+            variants={shouldReduceMotion ? undefined : fadeInUp}
             className={dimmed ? "opacity-50 transition-opacity" : "transition-opacity"}
           >
             <AssetClassPanelCard
@@ -64,10 +78,10 @@ export function AssetClassPanelGrid({
               rollup={rollup}
               isPrivacyMode={isPrivacyMode}
             />
-          </div>
+          </motion.div>
         );
       })}
-    </section>
+    </motion.section>
   );
 }
 
