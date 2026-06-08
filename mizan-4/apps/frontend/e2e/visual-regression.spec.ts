@@ -204,3 +204,103 @@ test.skip("AI command bar focused + voice button matches snapshot", async ({
     },
   );
 });
+
+// ─── 8. Empty states (PR-POLISH-7) ───────────────────────────────────
+
+test.describe("Empty states visual regression", () => {
+  test.skip("Dashboard empty state — no holdings", async ({ page }) => {
+    // TODO(PR-E2E.b): seed an empty-portfolio fixture so the panel
+    // grid renders the "+ Add" affordances on every tile and the
+    // heatmap shows the line-art glyph + descriptive body shipped
+    // in PR-POLISH-2.
+    await page.goto("/?fixture=empty");
+    await expect(page).toHaveScreenshot(
+      "dashboard-empty.png",
+      SCREENSHOT_OPTS,
+    );
+  });
+
+  test.skip("Goals page empty state", async ({ page }) => {
+    await page.goto("/goals?fixture=empty");
+    await expect(page).toHaveScreenshot("goals-empty.png", SCREENSHOT_OPTS);
+  });
+
+  test.skip("Notifications panel empty state", async ({ page }) => {
+    await page.goto("/?fixture=empty-notifications");
+    const bell = page.getByRole("button", { name: /notifications/i });
+    await bell.click();
+    await expect(
+      page.getByText(/no notifications/i),
+    ).toBeVisible({ timeout: 3_000 });
+    await expect(page).toHaveScreenshot(
+      "notifications-empty.png",
+      SCREENSHOT_OPTS,
+    );
+  });
+});
+
+// ─── 9. Loading states (PR-POLISH-7) ─────────────────────────────────
+
+test.describe("Loading states visual regression", () => {
+  test.skip("Heatmap shimmer skeleton (PR-POLISH-2)", async ({ page }) => {
+    // TODO(PR-E2E.b): wire a `delay=` query param that the dev server
+    // honors to keep the heatmap query in flight long enough to
+    // capture the shimmer.
+    await page.goto("/?delay=heatmap");
+    await expect(
+      page.locator("[data-testid='todays-signal-loading']").or(
+        page.locator(".animate-pulse"),
+      ),
+    ).toBeVisible({ timeout: 3_000 });
+    await expect(page).toHaveScreenshot(
+      "heatmap-loading.png",
+      SCREENSHOT_OPTS,
+    );
+  });
+
+  test.skip("Retire-at-65 dashboard skeleton", async ({ page }) => {
+    await page.goto("/goals/retire-at-65?delay=overview");
+    await expect(page).toHaveScreenshot(
+      "retire-loading.png",
+      SCREENSHOT_OPTS,
+    );
+  });
+});
+
+// ─── 10. Dark + light mode parity (PR-POLISH-4) ──────────────────────
+
+test.describe("Theme parity visual regression", () => {
+  // The `.dark` class on <html> drives all Flexoki + depth tokens.
+  // Toggle it explicitly so we get a clean theme snapshot regardless
+  // of OS dark-mode setting on the CI runner.
+
+  test.skip("Dashboard — dark theme", async ({ page }) => {
+    await seedReferenceFixture(page);
+    await page.addInitScript(() => {
+      document.documentElement.classList.add("dark");
+    });
+    await page.goto("/");
+    await expect(
+      page.getByRole("button", { name: /ask mizan/i }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page).toHaveScreenshot(
+      "dashboard-dark.png",
+      SCREENSHOT_OPTS,
+    );
+  });
+
+  test.skip("Dashboard — light theme", async ({ page }) => {
+    await seedReferenceFixture(page);
+    await page.addInitScript(() => {
+      document.documentElement.classList.remove("dark");
+    });
+    await page.goto("/");
+    await expect(
+      page.getByRole("button", { name: /ask mizan/i }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page).toHaveScreenshot(
+      "dashboard-light.png",
+      SCREENSHOT_OPTS,
+    );
+  });
+});
