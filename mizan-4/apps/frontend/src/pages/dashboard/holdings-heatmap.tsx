@@ -80,36 +80,50 @@ export function holdingDetailRouteFromNode(node: unknown): string | null {
 }
 
 /**
- * Refined colour ramp. The previous palette was straight Tailwind green-
- * 400..emerald-800 / red-500..red-900 — saturated, "industrial". Tuned
- * down for premium feel:
- *   - Five magnitude buckets so adjacent positions stay visually distinct
- *     instead of bleeding into one wash when ranges are tight.
- *   - Slightly more luminous than the previous palette so tile text stays
- *     legible at all sizes.
- *   - Neutral is a true mid-grey, not a green-tinted one — so a flat
- *     holding reads as honest "no change" rather than washed-out winner.
+ * Smooth divergent gradient — Finviz / Bloomberg Terminal HEAT bar.
+ *
+ * Replaces the previous 5-bucket palette with a continuous HSL
+ * interpolation keyed on |changePct|. Magnitude controls saturation +
+ * lightness; sign picks the hue. The result:
+ *
+ *   - 0%        → desaturated slate-blue (honest "flat", reads as
+ *                  no change, never confused with a small gain)
+ *   - 0–2%      → softly tinted, desaturated; small moves whisper
+ *   - 2–5%      → richer saturation; mid-range positions shout
+ *   - 5–10%+    → deep, fully-saturated; tail-end positions dominate
+ *                  the chart
+ *
+ * Magnitude is clamped at 10% (0.10) so a 50% mover doesn't blow
+ * past the palette — Finviz uses the same convention so the eye
+ * can compare across days without recalibrating.
+ *
+ * Reference: open Finviz.com on a Friday afternoon. That's the bar.
  */
 function tileColor(changePct: number): string {
   const abs = Math.abs(changePct);
-  if (abs < 0.001) return "#3f4754"; // neutral slate
-  const sign = changePct > 0 ? "pos" : "neg";
-  const bucket = abs < 0.005 ? 0 : abs < 0.01 ? 1 : abs < 0.025 ? 2 : abs < 0.05 ? 3 : 4;
-  const greens = [
-    "#1f5236",
-    "#1f6a3f",
-    "#1f8546",
-    "#1ea34c",
-    "#19bf57",
-  ];
-  const reds = [
-    "#5a1f25",
-    "#7a2027",
-    "#9c2229",
-    "#c0252b",
-    "#dc2a31",
-  ];
-  return sign === "pos" ? greens[bucket] : reds[bucket];
+
+  // True neutral for sub-0.1% — slate-blue, not green-tinted.
+  if (abs < 0.001) return "hsl(218, 12%, 28%)";
+
+  // Normalize magnitude into [0, 1] capped at 10%. Square-root the
+  // ramp so small moves get visibly more saturated quickly, then the
+  // top end saturates more gradually — matches human magnitude
+  // perception and the Finviz / Bloomberg palette shape.
+  const tFactor = Math.min(1, abs / 0.1);
+  const t = Math.sqrt(tFactor);
+
+  // Saturation rises from 22% → 70%, lightness drops from 40% → 30%.
+  // Empirically the most legible white-text contrast across both
+  // hues lands in this band; sat above 75% reads as Tailwind-cartoon.
+  const saturation = 22 + Math.round(t * 48);
+  const lightness = 40 - Math.round(t * 10);
+
+  // Hue: 142 = forest green, 358 = deep red (both well below
+  // primary-color saturation so they don't clash with the brand
+  // accent in dark mode).
+  const hue = changePct > 0 ? 142 : 358;
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
 
 /**
@@ -171,7 +185,7 @@ function TreemapTile(props: TreemapTileProps) {
       : `${changePct >= 0 ? "+" : ""}${(changePct * 100).toFixed(1)}%`;
 
   return (
-    <g>
+    <g className="mizan-heatmap-tile" style={{ cursor: "pointer" }}>
       <rect
         x={x + 1}
         y={y + 1}
@@ -181,8 +195,9 @@ function TreemapTile(props: TreemapTileProps) {
         ry={4}
         style={{
           fill,
-          stroke: "rgba(255, 255, 255, 0.04)",
+          stroke: "rgba(255, 255, 255, 0.05)",
           strokeWidth: 1,
+          transition: "stroke 150ms ease, filter 150ms ease",
         }}
       />
       {showSymbol && (
@@ -314,7 +329,30 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
           <CardTitle className="text-md font-semibold tracking-tight">Heatmap</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
-          <Skeleton className="h-[260px] w-full rounded-xl" />
+          {/* Shimmer skeleton — sweeps a soft highlight across a
+              treemap-shaped grid so the loading state previews the
+              final composition instead of an opaque block. */}
+          <div className="relative h-[260px] w-full overflow-hidden rounded-xl">
+            <div className="grid h-full w-full grid-cols-4 grid-rows-3 gap-1">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <Skeleton key={i} className="h-full w-full rounded-md" />
+              ))}
+            </div>
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.06) 50%, transparent 70%)",
+                animation: "mizan-heatmap-shimmer 1.6s linear infinite",
+              }}
+            />
+            <style>{`
+              @keyframes mizan-heatmap-shimmer {
+                0%   { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
+              }
+            `}</style>
+          </div>
         </CardContent>
       </Card>
     );
@@ -328,8 +366,31 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
           <CardTitle className="text-md font-semibold tracking-tight">Heatmap</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
-          <div className="text-muted-foreground flex h-[200px] items-center justify-center text-xs">
-            Add a stock to see your portfolio heatmap.
+          <div className="flex h-[200px] flex-col items-center justify-center gap-3 text-center">
+            {/* Subtle line-art tile grid — monochrome, evokes the
+                heatmap shape without claiming any specific data. */}
+            <svg
+              width="64"
+              height="48"
+              viewBox="0 0 64 48"
+              fill="none"
+              className="text-muted-foreground/40"
+              aria-hidden="true"
+            >
+              <rect x="1" y="1" width="36" height="28" rx="3" stroke="currentColor" strokeWidth="1" />
+              <rect x="39" y="1" width="24" height="14" rx="3" stroke="currentColor" strokeWidth="1" />
+              <rect x="39" y="17" width="24" height="12" rx="3" stroke="currentColor" strokeWidth="1" />
+              <rect x="1" y="31" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1" />
+              <rect x="23" y="31" width="14" height="16" rx="3" stroke="currentColor" strokeWidth="1" />
+              <rect x="39" y="31" width="24" height="16" rx="3" stroke="currentColor" strokeWidth="1" />
+            </svg>
+            <div>
+              <p className="text-foreground text-sm font-medium">No holdings to chart</p>
+              <p className="text-muted-foreground mt-1 max-w-[280px] text-xs leading-relaxed">
+                Add a stock, ETF, or sukuk to see your portfolio at a glance — every tile is one
+                position, sized by value, colored by performance.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -368,6 +429,12 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
         </div>
       </CardHeader>
       <CardContent className="px-2 pb-3 pt-1">
+        <style>{`
+          .mizan-heatmap-tile:hover rect {
+            stroke: rgba(255, 255, 255, 0.25) !important;
+            filter: brightness(1.12) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+          }
+        `}</style>
         <div className="relative h-[260px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <Treemap
