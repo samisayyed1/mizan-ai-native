@@ -80,11 +80,26 @@ pub async fn initialize_context(
     // auto-rollback path that triggers on self-test failure when an
     // upgrade boot caused the failure. Both fail-soft: a failed
     // rollback (restore I/O error etc.) still lets the desktop launch.
-    run_post_install_self_test_and_maybe_rollback(
-        app_data_dir,
-        pool.as_ref(),
-        previous_version_for_rollback.as_deref(),
-    );
+    //
+    // First-boot skip: when `previous_version_for_rollback` is None the
+    // user just installed Mizan for the first time. There is no prior
+    // snapshot to roll back to and the network-heartbeat probes inside
+    // the self-test use `reqwest::blocking::Client`, which constructs
+    // and drops a throwaway Tokio runtime per call. That drop is
+    // illegal inside macOS's `applicationDidFinishLaunching` app
+    // delegate (already an async context), so it panics with
+    // "Cannot drop a runtime in a context where blocking is not
+    // allowed." Skipping on first boot is both safer (no panic) and
+    // semantically correct (no upgrade happened, nothing to verify).
+    if previous_version_for_rollback.is_some() {
+        run_post_install_self_test_and_maybe_rollback(
+            app_data_dir,
+            pool.as_ref(),
+            previous_version_for_rollback.as_deref(),
+        );
+    } else {
+        log::info!("self_test: first boot — skipping post-install self-test");
+    }
 
     let (sync_outbox_wake_sender, sync_outbox_wake_receiver) = mpsc::channel(128);
     let writer = write_actor::spawn_writer_with_outbox_observer(
