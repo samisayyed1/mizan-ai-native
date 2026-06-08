@@ -32,6 +32,7 @@ export * from "./components/ui/input";
 export * from "./components/ui/input-group";
 export * from "./components/ui/label";
 export * from "./components/ui/page";
+export * from "./components/ui/page-empty-state";
 export * from "./components/ui/panel-skeleton";
 export * from "./components/ui/popover";
 export * from "./components/ui/progress";
