@@ -119,15 +119,21 @@ export function DashboardContent() {
             />
           </div>
 
-          {/* Right sidebar (lg+) — unified card language per
-              PR-POLISH-3. Same gap as the main column's cards, same
-              bg-card / rounded-xl / subtle border across all four
-              widgets so the sidebar reads as a cohesive companion
-              to the main dashboard, not a disconnected rail. */}
+          {/* Right sidebar (lg+) — PR-DENSITY-5 composition.
+              Unified card language from PR-POLISH-3 + an explicit
+              "Today" section header that anchors the column to the
+              main flow + sticky scroll behavior so the sidebar
+              stays in view as the user scrolls the panel grid.
+              On narrow viewports (<lg) the sidebar reflows inline
+              below the panel grid; the section header acts as a
+              natural separator. */}
           <aside
             aria-label="Dashboard sidebar"
-            className="space-y-4 lg:col-span-1"
+            className="space-y-3 lg:col-span-1 lg:sticky lg:top-4 lg:self-start"
           >
+            <h2 className="text-muted-foreground px-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
+              Today
+            </h2>
             <SavingGoals />
             <PortfolioHealthCard />
             <ZakatCard />
