@@ -51,12 +51,38 @@ export interface AssetClassPanelCardProps {
   isPrivacyMode?: boolean;
 }
 
+/**
+ * Visual hierarchy tier — PR-DENSITY-3.
+ *
+ * Three tiers across the 12 tile grid so the eye finds the funded
+ * positions first and the empties recede:
+ *
+ *   primary    — |total| ≥ $10k → full opacity, full color contrast
+ *   secondary  — total > 0 but |total| < $10k → full opacity, value 0.85
+ *   empty      — no holdings → 0.6 opacity card, em-dash, "+ Add" CTA
+ *
+ * The $10k threshold is intentionally crude: it captures the §23
+ * reference user's "empty / starter / serious" distinction without
+ * needing a per-user threshold (which would require user prefs
+ * plumbing for a purely visual signal).
+ */
+type TileTier = "primary" | "secondary" | "empty";
+
+const SECONDARY_THRESHOLD_BASE = 10_000;
+
+function classifyTier(rollup: AssetClassPanelRollup): TileTier {
+  if (rollup.holdingsCount === 0) return "empty";
+  if (Math.abs(rollup.totalValue) >= SECONDARY_THRESHOLD_BASE) return "primary";
+  return "secondary";
+}
+
 export function AssetClassPanelCard({
   descriptor,
   rollup,
   isPrivacyMode = false,
 }: AssetClassPanelCardProps) {
   const Icon = resolveIcon(descriptor.iconKey);
+  const tier = classifyTier(rollup);
   const hasHoldings = rollup.holdingsCount > 0;
   const isValueNegative = rollup.totalValue < 0;
   const isDeltaPositive = rollup.dayChange > 0;
@@ -83,9 +109,12 @@ export function AssetClassPanelCard({
   return (
     <Link
       to={descriptor.holdingsHref}
-      className="group bg-card hover:bg-muted/40 hover:border-border border-border/60 focus-visible:ring-ring relative flex h-[72px] flex-col justify-between rounded-[10px] border px-3 py-3 transition-[background-color,border-color,transform,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 active:translate-y-0 active:scale-[0.99] motion-reduce:transition-colors motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none motion-reduce:active:scale-100"
+      className={`group bg-card hover:bg-muted/40 hover:border-border border-border/60 focus-visible:ring-ring relative flex h-[72px] flex-col justify-between rounded-[10px] border px-3 py-3 transition-[background-color,border-color,transform,box-shadow,opacity] duration-150 ease-out hover:-translate-y-0.5 hover:shadow-md hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 active:translate-y-0 active:scale-[0.99] motion-reduce:transition-colors motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-none motion-reduce:active:scale-100 ${
+        tier === "empty" ? "opacity-60" : "opacity-100"
+      }`}
       aria-label={`Open ${descriptor.label} panel`}
       data-panel-id={descriptor.id}
+      data-tier={tier}
     >
       {/* Row 1 — icon + label (left) / value (right) */}
       <div className="flex items-center justify-between gap-2">
@@ -97,11 +126,13 @@ export function AssetClassPanelCard({
         </div>
         <span
           className={`shrink-0 text-sm font-bold leading-none tabular-nums ${
-            hasHoldings && isValueNegative
-              ? "text-destructive"
-              : hasHoldings
-                ? "text-foreground"
-                : "text-muted-foreground"
+            !hasHoldings
+              ? "text-muted-foreground"
+              : isValueNegative
+                ? "text-destructive"
+                : tier === "primary"
+                  ? "text-foreground"
+                  : "text-foreground/85"
           }`}
         >
           {valueDisplay}
