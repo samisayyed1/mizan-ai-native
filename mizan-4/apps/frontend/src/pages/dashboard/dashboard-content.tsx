@@ -71,9 +71,19 @@ export function DashboardContent() {
       className="flex min-h-screen flex-col"
       style={{ background: "var(--depth-page)" }}
     >
-      <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-6 md:px-6 md:pb-6 md:pt-8 lg:px-10 lg:pb-8 lg:pt-10">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-12">
-          <div className="space-y-6 lg:col-span-2">
+      {/* PR-DENSITY-2 / PR-DENSITY-7 — strict 8-pt rhythm:
+       *   page edge padding: 16 mobile / 24 desktop
+       *   main↔sidebar gap: 24 (was 32-48 — sidebar shouldn't feel like
+       *       a separate page, it's a companion column)
+       *   between-card gap on main column: 16 (was 24)
+       *
+       * The tightened rhythm + the 72px tiles means the hero strip
+       * (AI bar + Net Worth + Heatmap + first row of tiles) fits in
+       * a ~720px viewport without scroll — the user sees the
+       * Singapore-millionaire dashboard in one glance. */}
+      <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-4 md:px-6 md:pb-6 md:pt-6 lg:px-8 lg:pb-8 lg:pt-8">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-6">
+          <div className="space-y-4 lg:col-span-2">
             {/* ADR 0018 (a) — AI Command Bar.
                 Pinned full-width input. Submit → /assistant with the
                 prompt pre-seeded. Voice button routes to dictation. */}
