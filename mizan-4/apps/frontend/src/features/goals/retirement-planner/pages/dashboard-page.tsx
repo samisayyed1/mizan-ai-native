@@ -1055,7 +1055,7 @@ export default function DashboardPage({
                         {reached && (
                           <Badge
                             variant="default"
-                            className="h-[14px] bg-green-600 px-1.5 text-[9px] font-semibold tracking-wider hover:bg-green-600"
+                            className="h-4 bg-green-600 px-1.5 text-[9px] font-semibold tracking-wider hover:bg-green-600"
                           >
                             DONE
                           </Badge>

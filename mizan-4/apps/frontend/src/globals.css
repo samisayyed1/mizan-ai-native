@@ -52,6 +52,40 @@
   font-variant-numeric: tabular-nums lining-nums;
 }
 
+/* Polish v3 PR-DENSITY-7 — strict 8-point spacing grid.
+ *
+ * The ONLY valid spacing values across Mizan, in pixels:
+ *
+ *     4, 8, 12, 16, 20, 24, 32, 40, 48, 64
+ *
+ * Tailwind class mapping (`1` = 4px in Tailwind's default scale):
+ *
+ *     1   →  4    8   → 32
+ *     2   →  8    10  → 40
+ *     3   → 12    12  → 48
+ *     4   → 16    16  → 64
+ *     5   → 20
+ *     6   → 24
+ *
+ * No `h-[14px]`, no `gap-[18px]`, no `p-[22px]`. Hand-rolled
+ * arbitrary values that don't land on the grid create the visual
+ * "off by one" feel that distinguishes utility-grade fintech UI
+ * from top-5% fintech UI.
+ *
+ * Specific rules:
+ *
+ *   Inside a card .................. p-4 (or p-3 for dense cards)
+ *   Between cards in a group ....... gap-2 (8px) — dense tile grid
+ *                                    gap-3 (12px) — sidebar widgets
+ *                                    gap-4 (16px) — main dashboard
+ *   Between groups of cards ........ gap-6 (24px)
+ *   Section header → its content ... mt-3 (12px)
+ *   Sidebar internal gap ........... space-y-3 (12px)
+ *   Page edge padding .............. p-4 mobile / p-6 desktop
+ *
+ * CI: `apps/frontend/scripts/lint-spacing.sh` greps for off-grid
+ * arbitrary values and fails if any are found. */
+
 @utility scrollbar-thin {
   scrollbar-width: thin;
   &::-webkit-scrollbar {

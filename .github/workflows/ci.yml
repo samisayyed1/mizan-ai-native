@@ -265,6 +265,15 @@ jobs:
         working-directory: mizan-4/apps/frontend
         run: pnpm dlx ts-prune --error 0 || true
 
+      # PR-DENSITY-7 — strict 8-point spacing grid.
+      # The canonical scale is 4/8/12/16/20/24/32/40/48/64 px. The
+      # lint catches Tailwind arbitrary values like `h-[14px]` /
+      # `gap-[18px]` / `p-[22px]` that don't land on the grid —
+      # those create the "off by one" feel that separates top-tier
+      # fintech UI from utility-grade. See globals.css for the rules.
+      - name: spacing-grid lint
+        run: bash mizan-4/apps/frontend/scripts/lint-spacing.sh
+
       # Cache-policy registration lint (Track I PR-I1.b).
       # Every cache-shaped table in the schema must declare its TTL +
       # eviction policy in `crates/storage-sqlite/src/cache_policy.rs::CACHE_POLICIES`.

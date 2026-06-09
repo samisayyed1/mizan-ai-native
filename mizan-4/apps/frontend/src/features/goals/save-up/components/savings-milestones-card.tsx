@@ -128,9 +128,9 @@ export function SavingsMilestonesCard({
         {/* ── Mobile: vertical timeline ── */}
         <div className="md:hidden">
           <ol className="relative space-y-4">
-            <span className="bg-muted absolute bottom-2 left-[15px] top-2 w-[2px] -translate-x-1/2 rounded-full" />
+            <span className="bg-muted absolute bottom-2 left-4 top-2 w-[2px] -translate-x-1/2 rounded-full" />
             <span
-              className="bg-success absolute left-[15px] top-2 w-[2px] -translate-x-1/2 rounded-full transition-[height] duration-500 ease-out"
+              className="bg-success absolute left-4 top-2 w-[2px] -translate-x-1/2 rounded-full transition-[height] duration-500 ease-out"
               style={{ height: `calc((100% - 1rem) * ${railFillPct / 100})` }}
             />
             {milestones.map((m) => (
