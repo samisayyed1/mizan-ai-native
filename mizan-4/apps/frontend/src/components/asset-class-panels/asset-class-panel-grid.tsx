@@ -57,9 +57,17 @@ export function AssetClassPanelGrid({
   const shouldReduceMotion = useReducedMotion();
 
   return (
+    // PR-DENSITY-1 — auto-fill columns (min 240px / max 320px) so
+    // wide displays pack 5 columns, standard 4, medium 3, narrow 2,
+    // mobile 1. Fixed `grid-cols-*` breakpoints would either feel
+    // cramped at one width or sparse at the next.
+    //
+    // Gap 8px (was 12) so 12 tiles read as one dense composition
+    // rather than 12 separate cards.
     <motion.section
       aria-label="Asset class panels"
-      className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3"
+      className="grid gap-2"
+      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}
       variants={shouldReduceMotion ? undefined : staggerContainer}
       initial="initial"
       animate="animate"

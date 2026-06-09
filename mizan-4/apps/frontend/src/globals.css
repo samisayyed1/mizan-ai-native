@@ -86,6 +86,66 @@
  * CI: `apps/frontend/scripts/lint-spacing.sh` greps for off-grid
  * arbitrary values and fails if any are found. */
 
+/* Polish v3 PR-DENSITY-6 — typography scale.
+ *
+ * Seven named tiers. Use these utility classes anywhere instead of
+ * hand-rolling `text-[XXpx] font-XXX leading-XX` per surface.
+ * Driven by the Adjacent-Text Contrast rule: any two adjacent text
+ * elements must differ in either size (≥2px), weight (≥100), or
+ * color opacity (≥0.20). This forces visual hierarchy at every
+ * boundary so the eye always has an anchor.
+ *
+ *   t-hero        32 / 36 / 700  net-worth hero numbers
+ *   t-title-lg    22 / 26 / 700  asset class detail page title
+ *   t-title       18 / 22 / 600  section headers ("Today" etc)
+ *   t-body-bold   14 / 20 / 600  tile labels + important UI text
+ *   t-body        14 / 20 / 400  default body
+ *   t-caption     12 / 16 / 500  holdings count, metadata
+ *   t-micro       11 / 14 / 500  timestamps, badges (uppercase
+ *                                 + 0.08em tracking)
+ *
+ * Existing call-sites using ad-hoc Tailwind classes keep working.
+ * New surfaces should adopt these utilities; the mechanical
+ * migration of existing surfaces lands in PR-DENSITY-6.b. */
+@utility t-hero {
+  font-size: 32px;
+  line-height: 36px;
+  font-weight: 700;
+}
+@utility t-title-lg {
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+@utility t-title {
+  font-size: 18px;
+  line-height: 22px;
+  font-weight: 600;
+}
+@utility t-body-bold {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+@utility t-body {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+}
+@utility t-caption {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+@utility t-micro {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 @utility scrollbar-thin {
   scrollbar-width: thin;
   &::-webkit-scrollbar {

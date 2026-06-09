@@ -71,9 +71,19 @@ export function DashboardContent() {
       className="flex min-h-screen flex-col"
       style={{ background: "var(--depth-page)" }}
     >
-      <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-6 md:px-6 md:pb-6 md:pt-8 lg:px-10 lg:pb-8 lg:pt-10">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-12">
-          <div className="space-y-6 lg:col-span-2">
+      {/* PR-DENSITY-2 / PR-DENSITY-7 — strict 8-pt rhythm:
+       *   page edge padding: 16 mobile / 24 desktop
+       *   main↔sidebar gap: 24 (was 32-48 — sidebar shouldn't feel like
+       *       a separate page, it's a companion column)
+       *   between-card gap on main column: 16 (was 24)
+       *
+       * The tightened rhythm + the 72px tiles means the hero strip
+       * (AI bar + Net Worth + Heatmap + first row of tiles) fits in
+       * a ~720px viewport without scroll — the user sees the
+       * Singapore-millionaire dashboard in one glance. */}
+      <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-4 md:px-6 md:pb-6 md:pt-6 lg:px-8 lg:pb-8 lg:pt-8">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-6">
+          <div className="space-y-4 lg:col-span-2">
             {/* ADR 0018 (a) — AI Command Bar.
                 Pinned full-width input. Submit → /assistant with the
                 prompt pre-seeded. Voice button routes to dictation. */}
@@ -119,15 +129,21 @@ export function DashboardContent() {
             />
           </div>
 
-          {/* Right sidebar (lg+) — unified card language per
-              PR-POLISH-3. Same gap as the main column's cards, same
-              bg-card / rounded-xl / subtle border across all four
-              widgets so the sidebar reads as a cohesive companion
-              to the main dashboard, not a disconnected rail. */}
+          {/* Right sidebar (lg+) — PR-DENSITY-5 composition.
+              Unified card language from PR-POLISH-3 + an explicit
+              "Today" section header that anchors the column to the
+              main flow + sticky scroll behavior so the sidebar
+              stays in view as the user scrolls the panel grid.
+              On narrow viewports (<lg) the sidebar reflows inline
+              below the panel grid; the section header acts as a
+              natural separator. */}
           <aside
             aria-label="Dashboard sidebar"
-            className="space-y-4 lg:col-span-1"
+            className="space-y-3 lg:col-span-1 lg:sticky lg:top-4 lg:self-start"
           >
+            <h2 className="text-muted-foreground px-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
+              Today
+            </h2>
             <SavingGoals />
             <PortfolioHealthCard />
             <ZakatCard />
