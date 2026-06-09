@@ -1294,7 +1294,7 @@ function DeviceCard({
         {/* Device icon with online indicator */}
         <div className="relative shrink-0">
           <div className="bg-muted/60 flex h-10 w-10 items-center justify-center rounded-full">
-            <Icon className="text-foreground/70 h-[18px] w-[18px]" />
+            <Icon className="text-foreground/70 h-5 w-5" />
           </div>
           {lastSeenText === "Online" && (
             <span className="border-background absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 bg-green-500" />

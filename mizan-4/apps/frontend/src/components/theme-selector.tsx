@@ -86,38 +86,38 @@ export function ThemeSelector({ value, onChange, className }: ThemeSelectorProps
               <div className="w-1/2 space-y-1 bg-[hsl(51_59%_95%)] p-1 sm:space-y-2 sm:p-2">
                 <div className="space-y-1 rounded-md bg-[hsl(48_100%_97%)] p-1 sm:p-2">
                   <div className="h-1 w-[20px] rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-[40px]" />
-                  <div className="h-1 w-[25px] rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-[50px]" />
+                  <div className="h-1 w-6 rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-12" />
                 </div>
                 <div className="flex items-center space-x-1 rounded-md bg-[hsl(48_100%_97%)] p-1 sm:p-2">
                   <div className="h-2 w-2 rounded-full bg-[hsl(50_14%_83%)] sm:h-4 sm:w-4" />
-                  <div className="h-1 w-[25px] rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-[50px]" />
+                  <div className="h-1 w-6 rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-12" />
                 </div>
                 <div className="flex items-center space-x-1 rounded-md bg-[hsl(48_100%_97%)] p-1 sm:p-2">
                   <div className="h-2 w-2 rounded-full bg-[hsl(50_14%_83%)] sm:h-4 sm:w-4" />
-                  <div className="h-1 w-[25px] rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-[50px]" />
+                  <div className="h-1 w-6 rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-12" />
                 </div>
                 <div className="flex items-center space-x-1 rounded-md bg-[hsl(48_100%_97%)] p-1 sm:p-2">
                   <div className="h-2 w-2 rounded-full bg-[hsl(50_14%_83%)] sm:h-4 sm:w-4" />
-                  <div className="h-1 w-[25px] rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-[50px]" />
+                  <div className="h-1 w-6 rounded-lg bg-[hsl(50_14%_83%)] sm:h-2 sm:w-12" />
                 </div>
               </div>
               {/* Dark half - right side */}
               <div className="dark w-1/2 space-y-1 bg-[hsl(var(--flexoki-bg))] p-1 sm:space-y-2 sm:p-2">
                 <div className="space-y-1 rounded-md bg-[hsl(var(--flexoki-bg-2))] p-1 sm:p-2">
                   <div className="h-1 w-[20px] rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-[40px]" />
-                  <div className="h-1 w-[25px] rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-[50px]" />
+                  <div className="h-1 w-6 rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-12" />
                 </div>
                 <div className="flex items-center space-x-1 rounded-md bg-[hsl(var(--flexoki-bg-2))] p-1 sm:p-2">
                   <div className="h-2 w-2 rounded-full bg-[hsl(var(--flexoki-ui-2))] sm:h-4 sm:w-4" />
-                  <div className="h-1 w-[25px] rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-[50px]" />
+                  <div className="h-1 w-6 rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-12" />
                 </div>
                 <div className="flex items-center space-x-1 rounded-md bg-[hsl(var(--flexoki-bg-2))] p-1 sm:p-2">
                   <div className="h-2 w-2 rounded-full bg-[hsl(var(--flexoki-ui-2))] sm:h-4 sm:w-4" />
-                  <div className="h-1 w-[25px] rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-[50px]" />
+                  <div className="h-1 w-6 rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-12" />
                 </div>
                 <div className="flex items-center space-x-1 rounded-md bg-[hsl(var(--flexoki-bg-2))] p-1 sm:p-2">
                   <div className="h-2 w-2 rounded-full bg-[hsl(var(--flexoki-ui-2))] sm:h-4 sm:w-4" />
-                  <div className="h-1 w-[25px] rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-[50px]" />
+                  <div className="h-1 w-6 rounded-lg bg-[hsl(var(--flexoki-ui-2))] sm:h-2 sm:w-12" />
                 </div>
               </div>
             </div>
