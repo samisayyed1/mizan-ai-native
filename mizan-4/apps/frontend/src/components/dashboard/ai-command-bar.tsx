@@ -93,7 +93,7 @@ export function AiCommandBar({
   return (
     <section
       aria-label={ariaLabel}
-      className="bg-card sticky top-0 z-30 flex flex-col gap-2 rounded-2xl border p-3 shadow-sm"
+      className="bg-card sticky top-0 z-30 flex flex-col gap-1.5 rounded-xl border px-3 py-2 shadow-sm"
       data-testid="ai-command-bar"
     >
       <form onSubmit={handleSubmit} className="flex items-center gap-2">
