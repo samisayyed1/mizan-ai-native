@@ -16,6 +16,7 @@ jobs:
     outputs:
       mizan4: ${{ steps.filter.outputs.mizan4 }}
       connect: ${{ steps.filter.outputs.connect }}
+      landing: ${{ steps.filter.outputs.landing }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -27,6 +28,9 @@ jobs:
               - '.github/workflows/ci.yml'
             connect:
               - 'mizan-connect/**'
+              - '.github/workflows/ci.yml'
+            landing:
+              - 'mizan-landing/**'
               - '.github/workflows/ci.yml'
 
   frontend:
@@ -302,3 +306,35 @@ jobs:
       # must carry a `-- caches-evicted:` manifest comment.
       - name: migration cache-manifest lint
         run: ./scripts/lint-migration-cache-manifest.sh
+
+  landing:
+    name: mizan-landing
+    needs: detect-changes
+    if: needs.detect-changes.outputs.landing == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mizan-landing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: mizan-landing/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm type-check
+      - run: pnpm build
+      # Playwright + Lighthouse are heavier: only run if the build passed.
+      - name: install playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:visual
+      - run: pnpm exec lhci autorun
+        env:
+          # LHCI uploads to temporary-public-storage; safe for previews,
+          # public review URL printed in the job log.
+          LHCI_BUILD_CONTEXT__CURRENT_BRANCH: ${{ github.ref_name }}

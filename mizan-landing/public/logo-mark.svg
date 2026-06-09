@@ -1,0 +1,9 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <text x="32" y="32"
+        font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+        font-size="56"
+        font-weight="700"
+        fill="currentColor"
+        text-anchor="middle"
+        dominant-baseline="central">M</text>
+</svg>
