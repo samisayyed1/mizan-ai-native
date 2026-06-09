@@ -66,7 +66,7 @@ export function ZakatCard() {
       to="/zakat"
       className="focus:ring-primary block rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2"
     >
-      <Card className="border-primary/20 flex items-start gap-3 p-5 transition hover:shadow-sm">
+      <Card className="bg-card hover:bg-muted/30 border-border/60 flex cursor-pointer items-start gap-3 rounded-xl border p-5 transition-colors">
         {Body}
       </Card>
     </Link>
