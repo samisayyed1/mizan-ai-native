@@ -202,10 +202,12 @@ function OverviewScreen() {
   return (
     <div className="space-y-4">
       {/* Net worth + sparkline */}
-      <div className="rounded-xl border border-depth-border bg-depth-card p-5">
+      <div className="rounded-xl border border-depth-border bg-depth-card p-4 sm:p-5">
         <div className="flex items-center justify-between">
           <p className="t-micro text-gold-deep">NET WORTH · 30 DAYS</p>
-          <div className="flex gap-1">
+          {/* Range pills are desktop-only — on mobile they'd crowd the
+              label, and "30 DAYS" already states the range. */}
+          <div className="hidden gap-1 sm:flex">
             {["24h", "7d", "30d", "YTD", "All"].map((l, i) => (
               <span
                 key={l}
@@ -220,11 +222,13 @@ function OverviewScreen() {
             ))}
           </div>
         </div>
-        <div className="mt-2 flex items-baseline gap-3">
-          <span className="font-serif text-4xl font-bold tabular-nums text-gold-cream">
+        {/* Number + delta stack on mobile so the big figure never
+            collides with the change pill. */}
+        <div className="mt-2 flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+          <span className="font-serif text-3xl font-bold tabular-nums leading-none text-gold-cream sm:text-4xl">
             $1,712,394
           </span>
-          <span className="t-caption text-success inline-flex items-center gap-1">
+          <span className="t-caption inline-flex items-center gap-1 text-success">
             <ArrowUpRight className="h-3.5 w-3.5" /> +$4,820 · +0.28%
           </span>
         </div>
