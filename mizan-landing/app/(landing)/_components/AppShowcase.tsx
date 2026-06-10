@@ -131,20 +131,6 @@ export function AppShowcase() {
         })}
       </div>
 
-      {/* Dwell progress — animates transform: scaleX (GPU-composited,
-          no per-frame layout) instead of width. */}
-      {!reduce ? (
-        <div className="relative h-[2px] w-full overflow-hidden bg-depth-border/40">
-          <motion.div
-            key={`${active}-${paused}`}
-            className="h-full w-full origin-left bg-gold-primary/70"
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: paused ? 0 : 1 }}
-            transition={{ duration: paused ? 0 : DWELL / 1000, ease: "linear" }}
-          />
-        </div>
-      ) : null}
-
       {/* Screen */}
       <div className="relative min-h-[560px] p-5 md:min-h-[620px] md:p-6">
         <AnimatePresence mode="wait">
@@ -242,18 +228,20 @@ function OverviewScreen() {
         </svg>
       </div>
 
-      {/* Allocation donut + legend */}
-      <div className="grid gap-4 rounded-xl border border-depth-border bg-depth-card p-5 sm:grid-cols-[130px_1fr]">
-        <div className="relative mx-auto aspect-square w-28 sm:w-full">
+      {/* Allocation donut + legend. The donut is a fixed, generous size
+          on mobile (so the centre label always clears the ring) and
+          fills its 130px column on desktop. */}
+      <div className="grid gap-5 rounded-xl border border-depth-border bg-depth-card p-5 sm:grid-cols-[130px_1fr] sm:gap-4">
+        <div className="relative mx-auto aspect-square w-[168px] sm:w-full">
           <svg viewBox="0 0 128 128" className="block h-full w-full -rotate-90" aria-hidden="true">
             <circle cx="64" cy="64" r={R} fill="none" stroke="hsl(0 0% 12%)" strokeWidth="13" />
             {segs.map((s) => (
               <circle key={s.label} cx="64" cy="64" r={R} fill="none" stroke={s.color} strokeWidth="13" strokeDasharray={`${s.len} ${C}`} strokeDashoffset={s.off} />
             ))}
           </svg>
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="font-serif text-lg font-bold text-gold-cream">$1.71M</span>
-            <span className="t-micro text-foreground/45">6 classes</span>
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center leading-none">
+            <span className="font-serif text-xl font-bold text-gold-cream sm:text-lg">$1.71M</span>
+            <span className="mt-1 t-micro text-foreground/45">6 classes</span>
           </div>
         </div>
         <ul className="grid grid-cols-2 gap-x-4 gap-y-2 self-center sm:grid-cols-3">
