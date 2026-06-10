@@ -10,10 +10,12 @@ import "@fontsource-variable/inter";
 import "@fontsource/merriweather/400.css";
 import "@fontsource/merriweather/400-italic.css";
 import "@fontsource/merriweather/700.css";
-import "@fontsource/ibm-plex-mono/400.css";
+// Mono is only used for tiny uppercase labels (t-micro / eyebrows) at
+// weight 500, plus the rarely-shown skip-link at 600. Loading just
+// these two weights instead of four cuts two font requests — a real
+// mobile load win.
 import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
-import "@fontsource/ibm-plex-mono/700.css";
 import "./globals.css";
 
 const SITE_URL = (

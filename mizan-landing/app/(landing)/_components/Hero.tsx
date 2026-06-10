@@ -21,7 +21,7 @@ export function Hero() {
           a UI element. */}
       <div
         aria-hidden="true"
-        className="absolute -top-32 right-[-12%] h-[700px] w-[700px] rounded-full opacity-30 blur-3xl pointer-events-none animate-orb"
+        className="absolute -top-32 right-[-12%] h-[420px] w-[420px] md:h-[700px] md:w-[700px] rounded-full opacity-30 blur-3xl pointer-events-none animate-orb"
         style={{
           background:
             "radial-gradient(circle at center, hsl(31 49% 64% / 0.85) 0%, transparent 60%)",
@@ -36,8 +36,10 @@ export function Hero() {
       <Container as="header" className="relative z-10 flex h-16 items-center justify-between pt-4">
         <Wordmark size="sm" />
         <div className="flex items-center gap-3">
+          {/* Badge is desktop-only — on phones the header is just
+              wordmark + one CTA, so it never feels cramped. */}
           <Badge
-            className="border-gold-primary/25 bg-gold-primary/[0.06]"
+            className="hidden border-gold-primary/25 bg-gold-primary/[0.06] sm:inline-flex"
             icon={
               <span className="relative grid h-2 w-2 place-items-center">
                 <span className="absolute h-2 w-2 rounded-full bg-success/70 animate-ping" />
@@ -105,14 +107,10 @@ export function Hero() {
           50%      { transform: translate(12px, 32px); }
           75%      { transform: translate(28px, 4px); }
         }
-        .animate-orb {
-          animation: orb-drift 20s ease-in-out infinite;
-          will-change: transform;
-        }
 
-        /* Headline sweep — a gold-cream gradient passes across the
-           first line of the H1 on a 6s loop, giving the eye something
-           to lock onto without screaming for attention. */
+        /* Headline gradient — static gold-cream fill by default. The
+           animated sweep is layered on at desktop only (see media query
+           below) so phones never run a continuous repaint. */
         .hero-headline-sweep {
           background: linear-gradient(
             100deg,
@@ -123,14 +121,11 @@ export function Hero() {
             hsl(40 67% 87%) 100%
           );
           background-size: 250% 100%;
-          background-position: 100% 0;
+          background-position: 50% 0;
           -webkit-background-clip: text;
           background-clip: text;
           -webkit-text-fill-color: transparent;
           color: transparent;
-          animation: hero-sweep 6s linear infinite;
-          /* Give descenders (g, y, p) breathing room so the clip box
-             never crops them. */
           line-height: 1.18;
           padding-bottom: 0.08em;
         }
@@ -138,27 +133,33 @@ export function Hero() {
           0%   { background-position: 100% 0; }
           100% { background-position: -150% 0; }
         }
-
-        /* CTA glow — soft gold aura that pulses on the primary
-           button. Subtle, not casino. */
-        .cta-glow {
-          box-shadow: 0 0 0 0 hsl(31 49% 64% / 0.0);
-          animation: cta-pulse 2.6s ease-in-out infinite;
-        }
         @keyframes cta-pulse {
           0%, 100% { box-shadow: 0 0 0 0 hsl(31 49% 64% / 0.0), 0 8px 32px -8px hsl(31 49% 64% / 0.25); }
           50%      { box-shadow: 0 0 0 6px hsl(31 49% 64% / 0.08), 0 12px 40px -8px hsl(31 49% 64% / 0.45); }
         }
 
-        /* Urgency pill — tiny lift on hover */
-        .urgency-pill:hover { transform: translateY(-1px); }
-        .urgency-pill { transition: transform 150ms ease-out; }
+        /* Continuous animations run on pointer-capable, larger screens
+           only — keeps phones smooth + saves battery. */
+        @media (min-width: 768px) {
+          .animate-orb {
+            animation: orb-drift 20s ease-in-out infinite;
+            will-change: transform;
+          }
+          .hero-headline-sweep {
+            animation: hero-sweep 6s linear infinite;
+          }
+          .cta-glow {
+            animation: cta-pulse 2.6s ease-in-out infinite;
+          }
+          .urgency-pill { transition: transform 150ms ease-out; }
+          .urgency-pill:hover { transform: translateY(-1px); }
+        }
 
         @media (prefers-reduced-motion: reduce) {
           .animate-orb,
           .hero-headline-sweep,
           .cta-glow,
-          .urgency-pill { animation: none; transition: none; }
+          .urgency-pill { animation: none !important; transition: none !important; }
           .hero-headline-sweep { color: hsl(40 67% 87%); -webkit-text-fill-color: hsl(40 67% 87%); }
         }
       `}</style>

@@ -45,8 +45,25 @@ const TABS = [
 export function AppShowcase() {
   const reduce = useReducedMotion();
   const [active, setActive] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [onScreen, setOnScreen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Pause when not on screen so the carousel never burns CPU/battery
+  // while scrolled away — the single biggest mobile-perf win here.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setOnScreen(entry.isIntersecting),
+      { threshold: 0.2 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const paused = hovered || !onScreen;
 
   const go = useCallback(
     (i: number) => setActive(((i % TABS.length) + TABS.length) % TABS.length),
@@ -63,9 +80,10 @@ export function AppShowcase() {
 
   return (
     <div
+      ref={rootRef}
       className="app-showcase relative w-full overflow-hidden rounded-2xl border border-depth-border bg-[hsl(0_0%_5%)] shadow-[0_50px_140px_-30px_rgba(212,165,116,0.28)]"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {/* Ambient gold glow inside the panel — premium depth cue. */}
       <div
@@ -113,14 +131,15 @@ export function AppShowcase() {
         })}
       </div>
 
-      {/* Dwell progress */}
+      {/* Dwell progress — animates transform: scaleX (GPU-composited,
+          no per-frame layout) instead of width. */}
       {!reduce ? (
-        <div className="relative h-[2px] w-full bg-depth-border/40">
+        <div className="relative h-[2px] w-full overflow-hidden bg-depth-border/40">
           <motion.div
             key={`${active}-${paused}`}
-            className="h-full bg-gold-primary/70"
-            initial={{ width: "0%" }}
-            animate={{ width: paused ? "0%" : "100%" }}
+            className="h-full w-full origin-left bg-gold-primary/70"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: paused ? 0 : 1 }}
             transition={{ duration: paused ? 0 : DWELL / 1000, ease: "linear" }}
           />
         </div>
