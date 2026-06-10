@@ -179,6 +179,18 @@ const ALLOC = [
 const R = 46;
 const C = 2 * Math.PI * R;
 
+// Curated holdings for the mobile heatmap — a clean 2-column grid of
+// six larger tiles that breathe, instead of the desktop treemap's nine
+// (which gets cramped on a narrow phone). Same gradient language.
+const MOBILE_HOLDINGS = [
+  { name: "INDOSUK", sub: "Sukuk · $487K", delta: "+2.4%", grad: "135deg, hsl(120 58% 24%) 0%, hsl(140 52% 16%) 100%", border: "hsl(120 58% 38%)" },
+  { name: "EMAAR", sub: "Sukuk · $312K", delta: "+1.1%", grad: "135deg, hsl(118 50% 20%) 0%, hsl(135 44% 13%) 100%", border: "hsl(118 50% 32%)" },
+  { name: "AAPL", sub: "Equity · $168K", delta: "+0.42%", grad: "135deg, hsl(110 38% 17%) 0%, hsl(125 32% 11%) 100%", border: "hsl(110 38% 28%)" },
+  { name: "XAU/USD", sub: "Gold · $137K", delta: "+0.6%", grad: "135deg, hsl(40 67% 38%) 0%, hsl(35 55% 24%) 100%", border: "hsl(40 67% 52%)" },
+  { name: "BTC", sub: "Crypto · $92K", delta: "-1.8%", grad: "135deg, hsl(5 65% 26%) 0%, hsl(0 55% 16%) 100%", border: "hsl(5 65% 38%)" },
+  { name: "ETH", sub: "Crypto · $45K", delta: "-0.9%", grad: "135deg, hsl(5 55% 22%) 0%, hsl(0 45% 13%) 100%", border: "hsl(5 55% 32%)" },
+] as const;
+
 function OverviewScreen() {
   let cum = 0;
   const segs = ALLOC.map((s) => {
@@ -261,7 +273,8 @@ function OverviewScreen() {
           <p className="t-micro text-gold-deep">HOLDINGS · TODAY</p>
           <span className="t-micro text-success/75">+0.42% net</span>
         </div>
-        <div className="grid h-48 grid-cols-12 grid-rows-4 gap-1 md:h-52">
+        {/* Desktop: rich Finviz-style treemap (wide enough to breathe). */}
+        <div className="hidden h-52 grid-cols-12 grid-rows-4 gap-1 sm:grid">
           <Tile cls="col-span-5 row-span-3" grad="135deg, hsl(120 58% 24%) 0%, hsl(140 52% 16%) 100%" border="hsl(120 58% 38%)" name="INDOSUK" sub="Sukuk · $487K" big="+2.4%" extra="$11,728" />
           <Tile cls="col-span-4 row-span-2" grad="135deg, hsl(118 50% 20%) 0%, hsl(135 44% 13%) 100%" border="hsl(118 50% 32%)" name="EMAAR" sub="Sukuk · $312K" big="+1.1%" />
           <Tile cls="col-span-3 row-span-2" grad="135deg, hsl(110 38% 17%) 0%, hsl(125 32% 11%) 100%" border="hsl(110 38% 28%)" name="AAPL" sub="Equity · $168K" big="+0.42%" />
@@ -271,6 +284,28 @@ function OverviewScreen() {
           <Tile cls="col-span-2" grad="135deg, hsl(5 55% 22%) 0%, hsl(0 45% 13%) 100%" border="hsl(5 55% 32%)" name="ETH" small="-0.9%" />
           <Tile cls="col-span-2" grad="none" border="hsl(0 0% 22%)" flat name="DBSPH" small="+0.02%" />
           <Tile cls="col-span-3" grad="135deg, hsl(40 67% 38%) 0%, hsl(35 55% 24%) 100%" border="hsl(40 67% 52%)" name="XAU/USD" small="+0.6%" />
+        </div>
+
+        {/* Mobile: clean 2-column grid of six larger tiles. */}
+        <div className="grid grid-cols-2 gap-2 sm:hidden">
+          {MOBILE_HOLDINGS.map((h) => (
+            <article
+              key={h.name}
+              className="flex min-h-[76px] flex-col justify-between rounded-lg p-3"
+              style={{
+                background: `linear-gradient(${h.grad})`,
+                border: `1px solid ${h.border}`,
+              }}
+            >
+              <div>
+                <p className="t-body-bold text-sm text-white/95">{h.name}</p>
+                <p className="t-micro text-white/55">{h.sub}</p>
+              </div>
+              <span className="font-serif text-base font-bold tabular-nums text-white">
+                {h.delta}
+              </span>
+            </article>
+          ))}
         </div>
       </div>
     </div>
