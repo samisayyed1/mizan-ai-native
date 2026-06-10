@@ -1,0 +1,14 @@
+import { chromium } from "@playwright/test";
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 390, height: 1100 }, deviceScaleFactor: 3, isMobile: true });
+const p = await ctx.newPage();
+await p.goto("https://getmizan.net/", { waitUntil: "networkidle" });
+await p.evaluate(() => document.fonts.ready);
+const sc = p.locator(".app-showcase").first();
+await sc.scrollIntoViewIfNeeded();
+await p.waitForTimeout(500);
+await sc.locator('button[aria-pressed]').first().click();
+await p.waitForTimeout(500);
+await sc.screenshot({ path: "screenshots/live-final-overview.png" });
+await b.close();
+console.log("done");

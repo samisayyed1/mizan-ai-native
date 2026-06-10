@@ -6,7 +6,6 @@
  * offer) → human (Founder) → close (Footer).
  */
 import { AILayer } from "./_components/AILayer";
-import { FAQ } from "./_components/FAQ";
 import { Footer } from "./_components/Footer";
 import { FounderNote } from "./_components/FounderNote";
 import { FoundingOffer } from "./_components/FoundingOffer";
@@ -14,6 +13,10 @@ import { Hero } from "./_components/Hero";
 import { Problem } from "./_components/Problem";
 import { Product } from "./_components/Product";
 import { TrustStrip } from "./_components/TrustStrip";
+
+// NOTE: The FAQ section is intentionally removed for now but its
+// component is preserved at ./_components/FAQ.tsx. To restore it, import
+// { FAQ } and drop <FAQ /> back between <AILayer /> and <FoundingOffer />.
 
 export default function LandingPage() {
   return (
@@ -23,7 +26,6 @@ export default function LandingPage() {
       <Problem />
       <Product />
       <AILayer />
-      <FAQ />
       <FoundingOffer />
       <FounderNote />
       <Footer />
