@@ -23,6 +23,16 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# SEO: force the canonical host. Redirect the *.netlify.app deploy URL
+# (301) to getmizan.net so search engines only ever index one domain —
+# no duplicate-content split. The Next app also emits canonical tags,
+# but a hard redirect is the strongest signal.
+[[redirects]]
+  from = "https://mizan-landing-802.netlify.app/*"
+  to = "https://getmizan.net/:splat"
+  status = 301
+  force = true
+
 # Global security headers — every response from the site.
 [[headers]]
   for = "/*"

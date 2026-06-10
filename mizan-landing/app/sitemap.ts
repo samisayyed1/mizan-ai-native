@@ -1,22 +1,41 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-  "https://getmizan.net";
+const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://getmizan.net"
+).replace(/\/$/, "");
 
 /**
- * Single-route sitemap — landing page only. The waitlist API + OG
- * routes are intentionally not listed. `lastModified` is fixed at
- * build time (workflow restriction prevents Date.now() in scripts;
- * fine for a sitemap because deploys are infrequent).
+ * Sitemap — homepage + the three info pages. `lastModified` is fixed at
+ * build time (deploys are infrequent and a fixed date is stable for
+ * crawlers; bump it when content changes meaningfully).
  */
+const LAST_MODIFIED = new Date("2026-06-10");
+
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
       url: `${SITE_URL}/`,
-      lastModified: new Date("2026-06-10"),
+      lastModified: LAST_MODIFIED,
       changeFrequency: "weekly",
       priority: 1,
+    },
+    {
+      url: `${SITE_URL}/security`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+    {
+      url: `${SITE_URL}/privacy`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: "yearly",
+      priority: 0.3,
+    },
+    {
+      url: `${SITE_URL}/terms`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: "yearly",
+      priority: 0.3,
     },
   ];
 }

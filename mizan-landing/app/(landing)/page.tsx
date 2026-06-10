@@ -6,6 +6,7 @@
  * offer) → human (Founder) → close (Footer).
  */
 import { AILayer } from "./_components/AILayer";
+import { FAQ } from "./_components/FAQ";
 import { Footer } from "./_components/Footer";
 import { FounderNote } from "./_components/FounderNote";
 import { FoundingOffer } from "./_components/FoundingOffer";
@@ -22,6 +23,7 @@ export default function LandingPage() {
       <Problem />
       <Product />
       <AILayer />
+      <FAQ />
       <FoundingOffer />
       <FounderNote />
       <Footer />
