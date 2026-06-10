@@ -7,7 +7,6 @@ import { Eyebrow } from "@/app/(landing)/_primitives/Eyebrow";
 import { Wordmark } from "@/app/(landing)/_primitives/Wordmark";
 import { RevealOnScroll } from "./RevealOnScroll";
 import { ScrollIndicator } from "./ScrollIndicator";
-import { SocialProofCounter } from "./SocialProofCounter";
 
 /**
  * Hero — single 100vh focal viewport. One motion element (the gold
@@ -33,45 +32,65 @@ export function Hero() {
         className="absolute inset-0 noise-texture opacity-[0.04] pointer-events-none"
       />
 
-      {/* Sticky top bar (transparent until 120px scroll). The
-          scroll-tracked variant lives in a tiny client component
-          inline below. */}
+      {/* Sticky top bar */}
       <Container as="header" className="relative z-10 flex h-16 items-center justify-between pt-4">
         <Wordmark size="sm" />
         <div className="flex items-center gap-3">
-          <Badge>📍 Coming August 2026</Badge>
-          <Button variant="ghost" size="sm" href="#waitlist">
-            Reserve your seat
+          <Badge
+            className="border-gold-primary/25 bg-gold-primary/[0.06]"
+            icon={
+              <span className="relative grid h-2 w-2 place-items-center">
+                <span className="absolute h-2 w-2 rounded-full bg-success/70 animate-ping" />
+                <span className="relative h-1.5 w-1.5 rounded-full bg-success" />
+              </span>
+            }
+          >
+            <span className="text-foreground/90">Private beta · Aug 2026</span>
+          </Badge>
+          <Button variant="primary" size="sm" href="#waitlist">
+            Reserve my spot
           </Button>
         </div>
       </Container>
 
       {/* Hero copy */}
-      <Container className="relative z-10 flex flex-1 flex-col items-center justify-center text-center py-16">
+      <Container className="relative z-10 flex flex-1 flex-col items-center justify-center text-center py-12">
         <RevealOnScroll className="space-y-6 max-w-3xl">
-          <Eyebrow>PRIVATE WEALTH · BUILT FOR THE MUSLIM AFFLUENT</Eyebrow>
+          <Eyebrow>AI-NATIVE WEALTH PLATFORM</Eyebrow>
           <h1
             className="font-serif font-bold tracking-tight"
             style={{
               fontSize: "clamp(40px, 6vw, 72px)",
-              lineHeight: 1.05,
+              lineHeight: 1.12,
             }}
           >
-            <span className="block text-gold-cream">Your wealth, accounted for.</span>
-            <span className="block text-foreground/90">Down to the dirham.</span>
+            <span className="block text-foreground/95">Know your net worth.</span>
+            {/* pb so the descender never clips against the clip-box. */}
+            <span className="block hero-headline-sweep pb-[0.12em]">
+              Down to the cent.
+            </span>
           </h1>
-          <p className="text-foreground/75 mx-auto max-w-xl text-base md:text-lg leading-relaxed">
-            Twelve asset classes. Nine jurisdictions. Zakat calculated correctly across all four schools. One audit-grade ledger you can prove.
+          <p className="text-foreground/85 mx-auto max-w-2xl text-lg md:text-xl leading-relaxed">
+            Right now, your net worth is a guess.{" "}
+            <span className="text-gold-cream">Mizan turns it into a fact.</span>
+          </p>
+          <p className="text-foreground/70 mx-auto max-w-2xl text-base leading-relaxed">
+            Bank Accounts, Stocks, ETFs, Mutual Funds, REITs, Cryptos, Properties, Gold, Pension Funds, Sukuks — and that spreadsheet you keep updating — all in one audit-grade ledger, accurate to the cent and current to the second.
           </p>
           <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row">
-            <Button variant="primary" size="lg" href="#waitlist">
-              Reserve your seat <ArrowRight className="h-4 w-4" />
+            <Button variant="primary" size="lg" href="#waitlist" className="cta-glow">
+              Reserve my spot <ArrowRight className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="lg" href="#product">
               See how it works
             </Button>
           </div>
-          <SocialProofCounter />
+          <p className="t-caption text-foreground/55">
+            No more scattered logins. No more stale numbers. No more guesswork.
+          </p>
+          <p className="t-micro text-foreground/40">
+            Backed by angel investors &amp; fintech professionals
+          </p>
         </RevealOnScroll>
       </Container>
 
@@ -90,8 +109,57 @@ export function Hero() {
           animation: orb-drift 20s ease-in-out infinite;
           will-change: transform;
         }
+
+        /* Headline sweep — a gold-cream gradient passes across the
+           first line of the H1 on a 6s loop, giving the eye something
+           to lock onto without screaming for attention. */
+        .hero-headline-sweep {
+          background: linear-gradient(
+            100deg,
+            hsl(40 67% 87%) 0%,
+            hsl(40 67% 87%) 35%,
+            hsl(45 95% 78%) 50%,
+            hsl(40 67% 87%) 65%,
+            hsl(40 67% 87%) 100%
+          );
+          background-size: 250% 100%;
+          background-position: 100% 0;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          color: transparent;
+          animation: hero-sweep 6s linear infinite;
+          /* Give descenders (g, y, p) breathing room so the clip box
+             never crops them. */
+          line-height: 1.18;
+          padding-bottom: 0.08em;
+        }
+        @keyframes hero-sweep {
+          0%   { background-position: 100% 0; }
+          100% { background-position: -150% 0; }
+        }
+
+        /* CTA glow — soft gold aura that pulses on the primary
+           button. Subtle, not casino. */
+        .cta-glow {
+          box-shadow: 0 0 0 0 hsl(31 49% 64% / 0.0);
+          animation: cta-pulse 2.6s ease-in-out infinite;
+        }
+        @keyframes cta-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 hsl(31 49% 64% / 0.0), 0 8px 32px -8px hsl(31 49% 64% / 0.25); }
+          50%      { box-shadow: 0 0 0 6px hsl(31 49% 64% / 0.08), 0 12px 40px -8px hsl(31 49% 64% / 0.45); }
+        }
+
+        /* Urgency pill — tiny lift on hover */
+        .urgency-pill:hover { transform: translateY(-1px); }
+        .urgency-pill { transition: transform 150ms ease-out; }
+
         @media (prefers-reduced-motion: reduce) {
-          .animate-orb { animation: none; }
+          .animate-orb,
+          .hero-headline-sweep,
+          .cta-glow,
+          .urgency-pill { animation: none; transition: none; }
+          .hero-headline-sweep { color: hsl(40 67% 87%); -webkit-text-fill-color: hsl(40 67% 87%); }
         }
       `}</style>
     </header>

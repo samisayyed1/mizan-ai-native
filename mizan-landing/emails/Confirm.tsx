@@ -9,12 +9,11 @@
 import type { ReactElement } from "react";
 
 interface Props {
-  position: number;
   refCode: string;
   siteUrl: string;
 }
 
-export function ConfirmEmail({ position, refCode, siteUrl }: Props): ReactElement {
+export function ConfirmEmail({ refCode, siteUrl }: Props): ReactElement {
   const inviteUrl = `${siteUrl}/i/${refCode}`;
   return (
     <html lang="en">
@@ -58,7 +57,17 @@ export function ConfirmEmail({ position, refCode, siteUrl }: Props): ReactElemen
                             letterSpacing: "-0.02em",
                           }}
                         >
-                          Mi<span style={{ color: "#D4A574" }}>·</span>zan
+                          Mi
+                          <span
+                            style={{
+                              color: "#D4A574",
+                              margin: "0 1px",
+                              display: "inline",
+                            }}
+                          >
+                            ·
+                          </span>
+                          zan
                         </span>
                       </td>
                     </tr>
@@ -87,8 +96,7 @@ export function ConfirmEmail({ position, refCode, siteUrl }: Props): ReactElemen
                             color: "#F5E6C8",
                           }}
                         >
-                          Welcome, founding member{" "}
-                          <span style={{ color: "#D4A574" }}>#{position}</span>
+                          You&apos;re on the list.
                         </h1>
                         <p
                           style={{
@@ -98,7 +106,7 @@ export function ConfirmEmail({ position, refCode, siteUrl }: Props): ReactElemen
                             color: "#CBC9BC",
                           }}
                         >
-                          When Mizan launches in August, you&apos;ll get the founding price for life. Direct line to me during beta. First access to new sync providers as they open.
+                          When Mizan launches, you&apos;ll get founding-member pricing locked in for life, priority access, and early influence on what we build next. We&apos;ll email you the moment it&apos;s ready.
                         </p>
                       </td>
                     </tr>
@@ -166,7 +174,7 @@ export function ConfirmEmail({ position, refCode, siteUrl }: Props): ReactElemen
                             fontStyle: "italic",
                           }}
                         >
-                          — Sami
+                          — The Mizan team
                         </p>
                       </td>
                     </tr>
@@ -187,7 +195,7 @@ export function ConfirmEmail({ position, refCode, siteUrl }: Props): ReactElemen
                             letterSpacing: "0.05em",
                           }}
                         >
-                          © 2026 Maeve Models Ltd · Built in London
+                          © 2026 Mizan · Made in Singapore
                         </p>
                       </td>
                     </tr>

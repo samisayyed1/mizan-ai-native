@@ -22,8 +22,12 @@ export function Badge({
         className,
       )}
     >
-      {icon ? <span aria-hidden="true">{icon}</span> : null}
-      <span>{children}</span>
+      {icon ? (
+        <span aria-hidden="true" className="inline-flex items-center">
+          {icon}
+        </span>
+      ) : null}
+      <span className="leading-none">{children}</span>
     </span>
   );
 }

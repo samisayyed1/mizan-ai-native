@@ -42,7 +42,6 @@ export function WaitlistForm() {
     const payload = {
       email: String(formData.get("email") ?? ""),
       country: String(formData.get("country") ?? "Other"),
-      painPoint: String(formData.get("painPoint") ?? "") || undefined,
       ref: refFromUrl,
     };
 
@@ -111,12 +110,6 @@ export function WaitlistForm() {
               ariaLabel="Country"
             />
           </div>
-          <Field
-            name="painPoint"
-            placeholder="What's your biggest wealth-tracking headache? (optional)"
-            ariaLabel="Pain point"
-            maxLength={280}
-          />
           <Button
             type="submit"
             variant="primary"
@@ -130,7 +123,7 @@ export function WaitlistForm() {
                 Reserving…
               </>
             ) : (
-              <>Reserve my seat →</>
+              <>Reserve my spot →</>
             )}
           </Button>
           {error ? (
@@ -143,9 +136,6 @@ export function WaitlistForm() {
               {error}
             </p>
           ) : null}
-          <p className="t-micro text-foreground/55">
-            No newsletter. One email when we launch. Easy unsubscribe.
-          </p>
         </motion.form>
       )}
     </AnimatePresence>
@@ -253,7 +243,7 @@ function ConfirmationCard({
       if (navigator.share) {
         await navigator.share({
           title: "Mizan",
-          text: "I just reserved my seat for Mizan — AI-native wealth, built for the Muslim affluent.",
+          text: "I just joined the Mizan waitlist — an AI-native platform that puts every account you own in one ledger.",
           url: inviteUrl,
         });
         window.plausible?.("referral_share", { props: { channel: "native" } });
@@ -264,7 +254,7 @@ function ConfirmationCard({
   }
 
   const shareText = encodeURIComponent(
-    "Just reserved my seat for Mizan — AI-native wealth tracking, Zakat across all four schools, audit-grade provenance. ",
+    "Just joined the Mizan waitlist — an AI-native platform that puts every account you own in one audit-grade ledger. ",
   );
 
   return (
@@ -272,13 +262,10 @@ function ConfirmationCard({
       <div className="space-y-2">
         <p className="t-micro text-gold-primary">YOU&apos;RE IN</p>
         <h3 className="font-serif text-2xl font-bold text-gold-cream md:text-3xl">
-          Welcome, founding member{" "}
-          <span className="tabular-nums text-gold-primary">
-            #{result.position}
-          </span>
+          You&apos;re on the list.
         </h3>
         <p className="t-body text-foreground/75">
-          When we launch in August, you&apos;ll get the founding price for life.
+          When we launch, you&apos;ll get founding-member pricing locked in for life. We&apos;ll email you the moment it&apos;s ready.
         </p>
       </div>
 

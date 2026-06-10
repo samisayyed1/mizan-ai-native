@@ -13,7 +13,6 @@ import { Hero } from "./_components/Hero";
 import { Problem } from "./_components/Problem";
 import { Product } from "./_components/Product";
 import { TrustStrip } from "./_components/TrustStrip";
-import { ZakatEngine } from "./_components/ZakatEngine";
 
 export default function LandingPage() {
   return (
@@ -23,7 +22,6 @@ export default function LandingPage() {
       <Problem />
       <Product />
       <AILayer />
-      <ZakatEngine />
       <FoundingOffer />
       <FounderNote />
       <Footer />

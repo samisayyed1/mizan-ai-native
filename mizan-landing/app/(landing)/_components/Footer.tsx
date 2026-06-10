@@ -13,46 +13,47 @@ export function Footer() {
   return (
     <footer className="border-t border-depth-border bg-depth-page">
       <Container className="py-10 md:py-12">
-        <div className="grid gap-8 md:grid-cols-3 md:items-start">
+        {/* Top: brand + nav + contact */}
+        <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
             <Wordmark size="sm" />
             <p className="t-micro text-gold-deep">
-              AI-native personal wealth
-            </p>
-            <p className="t-micro text-foreground/40">
-              © 2026 Maeve Models Ltd · Built in London
+              Your AI-native Chief Financial Officer
             </p>
           </div>
-          <nav
-            aria-label="Policies"
-            className="flex gap-6 md:justify-center"
-          >
-            {POLICY_LINKS.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className="t-caption text-foreground/70 hover:text-foreground transition-colors"
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
-          <div className="flex flex-col gap-2 md:items-end">
+          <div className="flex flex-col gap-4 md:items-end">
+            <nav aria-label="Policies" className="flex gap-6">
+              {POLICY_LINKS.map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="t-caption text-foreground/70 transition-colors hover:text-foreground"
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
             <a
-              href="https://twitter.com/Sami_Sayyed1"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="t-caption text-foreground/70 hover:text-foreground transition-colors"
+              href="mailto:info@getmizan.net"
+              className="t-caption text-foreground/70 transition-colors hover:text-foreground"
             >
-              X · @Sami_Sayyed1
-            </a>
-            <a
-              href="mailto:hello@getmizan.net"
-              className="t-caption text-foreground/70 hover:text-foreground transition-colors"
-            >
-              hello@getmizan.net
+              info@getmizan.net
             </a>
           </div>
+        </div>
+
+        {/* Bottom bar: endorsement + copyright on one aligned line */}
+        <div className="mt-10 flex flex-col gap-3 border-t border-depth-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="t-micro inline-flex items-center gap-2 text-foreground/55">
+            <span
+              aria-hidden="true"
+              className="inline-block h-1 w-1 shrink-0 rounded-full bg-gold-primary"
+            />
+            Backed by angel investors &amp; fintech professionals
+          </p>
+          <p className="t-micro text-foreground/40">
+            © 2026 Mizan · Made in Singapore
+          </p>
         </div>
       </Container>
     </footer>

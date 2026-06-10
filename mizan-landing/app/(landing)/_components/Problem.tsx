@@ -8,18 +8,18 @@ import { RevealItem, RevealOnScroll } from "./RevealOnScroll";
 const PROBLEMS = [
   {
     icon: Layers,
-    title: "Spreadsheets break across borders.",
-    body: "Nine tax regimes, twelve asset classes, one fragile sheet. Reconciliation eats your weekend.",
-  },
-  {
-    icon: Calculator,
-    title: "Wealth apps ignore Zakat.",
-    body: "Or worse — hardcode one school and call it done. Multi-jurisdiction Hawl tracking? Nowhere.",
+    title: "Your wealth lives in 14 places.",
+    body: "Banks, brokerages, crypto exchanges, pension portals, gold receipts, property deeds, a spreadsheet from 2019. You don't have a number you trust.",
   },
   {
     icon: ShieldQuestion,
-    title: "Robo-advisors aren't Sharia-aware.",
-    body: "Sukuk, gold, equities — screened by what standard? Most apps can't tell you. Yours can't tell you.",
+    title: "Your numbers are always stale.",
+    body: "FX rates drift. Crypto moves overnight. Your last \"real\" snapshot is from when you remembered to update the sheet — three months ago.",
+  },
+  {
+    icon: Calculator,
+    title: "Every report is manual.",
+    body: "Year-end taxes. Zakat. Estate planning. Each one means hours of copying numbers between tabs — and quietly hoping nothing's wrong.",
   },
 ] as const;
 
@@ -30,10 +30,10 @@ export function Problem() {
         <RevealOnScroll className="mx-auto max-w-2xl space-y-3 text-center">
           <Eyebrow>THE GAP</Eyebrow>
           <h2 className="t-title-lg text-foreground/95 md:text-3xl md:leading-tight">
-            Wealth apps weren&apos;t built for you.
+            You don&apos;t have a wealth problem. You have a visibility problem.
           </h2>
           <p className="t-body text-foreground/70 text-base md:text-lg leading-relaxed">
-            You have eight of them. None of them talk to each other. And none of them understand your portfolio.
+            The money is there. The clarity isn&apos;t. Mizan fixes that.
           </p>
         </RevealOnScroll>
 

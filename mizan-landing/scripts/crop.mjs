@@ -1,0 +1,11 @@
+import { chromium } from "@playwright/test";
+const b = await chromium.launch();
+const p = await (await b.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 })).newPage();
+await p.goto(process.env.BASE_URL ?? "http://localhost:3127", { waitUntil: "networkidle" });
+await p.evaluate(() => document.fonts.ready);
+const product = await p.$("#product");
+if (product) await product.screenshot({ path: "screenshots/crop-product.png" });
+const footer = await p.$("footer");
+if (footer) await footer.screenshot({ path: "screenshots/crop-footer.png" });
+await b.close();
+console.log("done");

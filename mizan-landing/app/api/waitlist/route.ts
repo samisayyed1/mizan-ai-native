@@ -140,12 +140,18 @@ export async function POST(req: NextRequest): Promise<NextResponse<WaitlistRespo
   //    needed in the future. Resend client returns `{skipped:true}`
   //    when RESEND_API_KEY isn't set.
   const resend = getResend();
-  await resend.emails.send({
-    from: RESEND_FROM,
-    to: email,
-    subject: `Welcome to Mizan — you're founding member #${position}`,
-    react: ConfirmEmail({ position, refCode, siteUrl: SITE_URL }),
-  });
+  // Add to the Resend Audience (the mailing list we broadcast to at
+  // launch) + send the confirmation. Both no-op cleanly without keys.
+  // Run concurrently; neither blocks the success response on failure.
+  await Promise.allSettled([
+    resend.addContact(email),
+    resend.emails.send({
+      from: RESEND_FROM,
+      to: email,
+      subject: "You're on the Mizan waitlist",
+      react: ConfirmEmail({ refCode, siteUrl: SITE_URL }),
+    }),
+  ]);
 
   // 5) Server-side analytics, fire-and-forget.
   void fireServerPlausible(req);

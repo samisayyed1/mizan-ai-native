@@ -1,17 +1,26 @@
-import { FileCheck2, Lock, Scale, ShieldCheck } from "lucide-react";
+import { FileCheck2, Globe2, Layers, ShieldCheck } from "lucide-react";
 
 import { Container } from "@/app/(landing)/_primitives/Container";
 import { RevealOnScroll } from "./RevealOnScroll";
 
 /**
- * Trust strip — sits between Hero and Problem. Surfaces the four
- * concrete claims that flip "marketing fluff" → "real product":
- * encryption, audit ledger, all four madhāhib, AAOIFI screening.
+ * Trust strip — sits between Hero and Problem. Four concrete claims
+ * that flip "marketing fluff" → "real product".
  *
  * Pattern researched from Stripe / Vercel: trust signals belong
  * immediately after hero, above the fold on standard laptop widths.
  */
 const TRUST = [
+  {
+    icon: Layers,
+    title: "12 asset classes",
+    sub: "Equities, crypto, sukuks, gold, property & more",
+  },
+  {
+    icon: Globe2,
+    title: "9 jurisdictions",
+    sub: "US · UK · EU · GCC · SG · MY · IN · CA · AU",
+  },
   {
     icon: ShieldCheck,
     title: "AES-256-GCM encryption",
@@ -21,16 +30,6 @@ const TRUST = [
     icon: FileCheck2,
     title: "Hash-chained ledger",
     sub: "Every figure verifiable",
-  },
-  {
-    icon: Scale,
-    title: "All four madhāhib",
-    sub: "Hanafi · Shafi'i · Maliki · Hanbali",
-  },
-  {
-    icon: Lock,
-    title: "AAOIFI-graded screening",
-    sub: "Compliance per ADR 0012",
   },
 ] as const;
 

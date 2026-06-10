@@ -1,22 +1,36 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="mizanGold" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="goldStroke" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#F5E6C8"/>
-      <stop offset="50%" stop-color="#D4A574"/>
+      <stop offset="55%" stop-color="#D4A574"/>
       <stop offset="100%" stop-color="#8B6F47"/>
     </linearGradient>
-    <radialGradient id="mizanGlow" cx="50%" cy="50%" r="50%">
+    <radialGradient id="bg" cx="50%" cy="50%" r="60%">
       <stop offset="0%" stop-color="#1a1a1a"/>
       <stop offset="100%" stop-color="#0a0a0a"/>
     </radialGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="96" fill="url(#mizanGlow)"/>
-  <circle cx="256" cy="256" r="180" fill="none" stroke="url(#mizanGold)" stroke-width="2" opacity="0.3"/>
-  <text x="256" y="256"
-        font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
-        font-size="280"
-        font-weight="700"
-        fill="url(#mizanGold)"
-        text-anchor="middle"
-        dominant-baseline="central">M</text>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Ambient ring -->
+  <circle cx="256" cy="256" r="200" fill="none" stroke="url(#goldStroke)" stroke-width="1.5" opacity="0.18"/>
+  <!-- Balance beam composition, scaled to 512 -->
+  <g filter="url(#glow)">
+    <!-- Vertical fulcrum -->
+    <line x1="256" y1="120" x2="256" y2="392" stroke="url(#goldStroke)" stroke-width="14" stroke-linecap="round"/>
+    <!-- Horizontal beam -->
+    <line x1="120" y1="234" x2="392" y2="234" stroke="url(#goldStroke)" stroke-width="14" stroke-linecap="round"/>
+    <!-- Left pan -->
+    <circle cx="120" cy="234" r="34" fill="url(#goldStroke)"/>
+    <!-- Right pan -->
+    <circle cx="392" cy="234" r="34" fill="url(#goldStroke)"/>
+    <!-- Centre fulcrum highlight -->
+    <circle cx="256" cy="234" r="20" fill="#F5E6C8"/>
+  </g>
 </svg>

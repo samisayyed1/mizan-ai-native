@@ -44,20 +44,41 @@ export async function GET(): Promise<ImageResponse> {
             display: "flex",
           }}
         />
-        {/* Wordmark */}
+        {/* Wordmark — balance mark + "Mizan" */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
+            gap: 14,
             position: "relative",
             zIndex: 1,
           }}
         >
+          {/* Mizan M-mark — rendered as an SVG so the brand reads
+              identically on social previews and in the in-page wordmark. */}
+          <svg
+            width={56}
+            height={56}
+            viewBox="0 0 64 64"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ display: "flex" }}
+          >
+            <defs>
+              <linearGradient id="og-g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor={GOLD_CREAM} />
+                <stop offset="55%" stopColor={GOLD_PRIMARY} />
+                <stop offset="100%" stopColor={GOLD_DEEP} />
+              </linearGradient>
+            </defs>
+            <rect x="1" y="1" width="62" height="62" rx="14" fill="#171717" stroke={GOLD_DEEP} strokeOpacity="0.35" strokeWidth="0.5" />
+            <circle cx="32" cy="32" r="22" fill="none" stroke="url(#og-g)" strokeWidth="0.6" opacity="0.4" />
+            <path d="M 18 46 L 18 18 L 24 18 L 32 32 L 40 18 L 46 18 L 46 46 L 41 46 L 41 27 L 34 39 L 30 39 L 23 27 L 23 46 Z" fill="url(#og-g)" />
+          </svg>
           <span
             style={{
               fontFamily: "Georgia, 'Times New Roman', serif",
               fontWeight: 700,
-              fontSize: 40,
+              fontSize: 44,
               color: GOLD_CREAM,
               letterSpacing: "-0.02em",
               display: "flex",
@@ -65,17 +86,6 @@ export async function GET(): Promise<ImageResponse> {
           >
             Mizan
           </span>
-          <div
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 9999,
-              background: GOLD_PRIMARY,
-              marginLeft: 6,
-              marginTop: -22,
-              display: "flex",
-            }}
-          />
         </div>
 
         {/* Headline + sub */}
@@ -99,23 +109,23 @@ export async function GET(): Promise<ImageResponse> {
               display: "flex",
             }}
           >
-            Coming August 2026
+            AI-Native Wealth Platform
           </div>
           <div
             style={{
               fontFamily: "Georgia, 'Times New Roman', serif",
               fontWeight: 700,
               fontSize: 78,
-              lineHeight: 1.05,
+              lineHeight: 1.08,
               color: GOLD_CREAM,
               letterSpacing: "-0.025em",
               display: "flex",
               flexDirection: "column",
             }}
           >
-            <span style={{ display: "flex" }}>Your wealth,</span>
+            <span style={{ display: "flex" }}>Know your net worth.</span>
             <span style={{ display: "flex", color: FOREGROUND }}>
-              accounted for.
+              Down to the cent.
             </span>
           </div>
           <div
@@ -128,7 +138,7 @@ export async function GET(): Promise<ImageResponse> {
               display: "flex",
             }}
           >
-            12 asset classes · 9 jurisdictions · Zakat across all four schools
+            Every account you own · one audit-grade ledger
           </div>
         </div>
 
@@ -147,7 +157,7 @@ export async function GET(): Promise<ImageResponse> {
           }}
         >
           <span style={{ display: "flex" }}>getmizan.net</span>
-          <span style={{ display: "flex" }}>Founding members open</span>
+          <span style={{ display: "flex" }}>Join the waitlist</span>
         </div>
       </div>
     ),

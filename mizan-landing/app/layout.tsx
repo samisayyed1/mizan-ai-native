@@ -21,44 +21,44 @@ const SITE_URL =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "Mizan — Wealth, accounted for.",
+  title: "Mizan — Know your net worth, down to the cent.",
   description:
-    "AI-native personal wealth for the Muslim affluent. Twelve asset classes. Nine jurisdictions. Zakat across all four schools. Launching August 2026.",
+    "Bank accounts, stocks, ETFs, crypto, property, gold, pensions, sukuks — every account you own, reconciled in one audit-grade ledger. Accurate to the cent, current to the second. AI-native. Launching August 2026.",
   applicationName: "Mizan",
-  authors: [{ name: "Sami Sayyed" }],
+  authors: [{ name: "Mizan" }],
   generator: "Next.js",
   keywords: [
     "Mizan",
-    "Islamic finance",
-    "Muslim wealth",
+    "personal wealth management",
+    "net worth tracker",
+    "AI financial assistant",
+    "multi-currency portfolio",
+    "crypto and equities tracker",
+    "audit-grade ledger",
     "Zakat calculator",
-    "Sukuk tracker",
-    "Sharia-compliant investing",
-    "AI personal finance",
-    "Halal wealth management",
   ],
   openGraph: {
     type: "website",
     url: SITE_URL,
-    title: "Mizan — Wealth, accounted for.",
+    title: "Mizan — Know your net worth, down to the cent.",
     description:
-      "Twelve asset classes. Nine jurisdictions. Zakat across all four schools. Audit-grade provenance.",
+      "Bank accounts, stocks, ETFs, crypto, property, gold, pensions, sukuks — every account you own, reconciled in one audit-grade ledger. AI-native, end-to-end encrypted.",
     siteName: "Mizan",
     images: [
       {
         url: "/api/og",
         width: 1200,
         height: 630,
-        alt: "Mizan — Wealth, accounted for.",
+        alt: "Mizan — Know your net worth, down to the cent.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Mizan — Wealth, accounted for.",
+    title: "Mizan — Know your net worth, down to the cent.",
     description:
-      "AI-native personal wealth for the Muslim affluent. Launching August 2026.",
-    creator: "@Sami_Sayyed1",
+      "Every account you own, reconciled in one audit-grade ledger. Accurate to the cent, current to the second. Launching August 2026.",
+    creator: "@getmizan",
     images: ["/api/og"],
   },
   icons: {
@@ -80,11 +80,9 @@ const orgJsonLd = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "Mizan",
-  legalName: "Maeve Models Ltd",
   url: SITE_URL,
   logo: `${SITE_URL}/logo-mark.svg`,
-  sameAs: ["https://twitter.com/Sami_Sayyed1"],
-  founder: { "@type": "Person", name: "Sami Sayyed" },
+  foundingLocation: "Singapore",
 } as const;
 
 const productJsonLd = {

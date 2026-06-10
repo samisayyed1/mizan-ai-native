@@ -1,0 +1,11 @@
+import { chromium } from "@playwright/test";
+const b = await chromium.launch();
+const p = await (await b.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 })).newPage();
+await p.goto("http://localhost:3127", { waitUntil: "networkidle" });
+await p.evaluate(() => document.fonts.ready);
+const ts = p.locator('section[aria-label="Trust signals"]');
+await ts.scrollIntoViewIfNeeded();
+await p.waitForTimeout(300);
+await ts.screenshot({ path: "screenshots/crop-trust.png" });
+await b.close();
+console.log("done");

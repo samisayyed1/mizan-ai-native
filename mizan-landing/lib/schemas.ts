@@ -7,7 +7,7 @@ import { z } from "zod";
  */
 export const COUNTRIES = [
   "UK",
-  "US",
+  "USA",
   "UAE",
   "KSA",
   "Malaysia",
