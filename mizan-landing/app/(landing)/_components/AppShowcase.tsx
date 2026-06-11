@@ -246,8 +246,9 @@ function OverviewScreen() {
 
       {/* Allocation donut + legend. The donut is a fixed, generous size
           on mobile (so the centre label always clears the ring) and
-          fills its 130px column on desktop. */}
-      <div className="grid gap-5 rounded-xl border border-depth-border bg-depth-card p-5 sm:grid-cols-[130px_1fr] sm:gap-4">
+          fills a wider 160px column on desktop so "$1.71M / 6 classes"
+          gets the same breathing room inside the ring. */}
+      <div className="grid gap-5 rounded-xl border border-depth-border bg-depth-card p-5 sm:grid-cols-[160px_1fr] sm:gap-5">
         <div className="relative mx-auto aspect-square w-[168px] sm:w-full">
           <svg viewBox="0 0 128 128" className="block h-full w-full -rotate-90" aria-hidden="true">
             <circle cx="64" cy="64" r={R} fill="none" stroke="hsl(0 0% 12%)" strokeWidth="13" />
@@ -260,11 +261,11 @@ function OverviewScreen() {
             <span className="mt-1 t-micro text-foreground/45">6 classes</span>
           </div>
         </div>
-        <ul className="grid grid-cols-2 gap-x-4 gap-y-2 self-center sm:grid-cols-3">
+        <ul className="grid grid-cols-2 gap-x-5 gap-y-2.5 self-center">
           {ALLOC.map((s) => (
             <li key={s.label} className="flex items-center gap-2">
               <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: s.color }} />
-              <span className="t-caption truncate text-foreground/80">{s.label}</span>
+              <span className="t-caption whitespace-nowrap text-foreground/80">{s.label}</span>
               <span className="t-caption tabular-nums text-foreground/55">{s.pct}%</span>
             </li>
           ))}
