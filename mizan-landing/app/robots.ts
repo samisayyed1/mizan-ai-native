@@ -20,8 +20,10 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        // Block the API endpoints + the private insider stats page.
-        disallow: ["/api/", "/stats"],
+        // Block the API endpoints, the private insider stats page, and
+        // per-user invite links (they're share-only redirects, not
+        // content pages — no value to Google).
+        disallow: ["/api/", "/stats", "/i/"],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,
