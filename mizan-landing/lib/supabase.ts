@@ -28,6 +28,13 @@ export function getSupabase(): SupabaseClient {
 
   cached = createClient(url, serviceRole, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      // Next.js patches global fetch and caches by default — which made
+      // the /stats count freeze at its first value. Force every Supabase
+      // request to be uncached so reads are always live.
+      fetch: (input, init) =>
+        fetch(input, { ...init, cache: "no-store" }),
+    },
   });
   return cached;
 }

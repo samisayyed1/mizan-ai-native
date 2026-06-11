@@ -10,6 +10,8 @@ import { getWaitlistStats } from "@/lib/stats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
