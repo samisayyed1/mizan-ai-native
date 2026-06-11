@@ -20,16 +20,20 @@ export function RevealOnScroll({
   className,
   as: As = "div",
   stagger = false,
+  immediate = false,
 }: {
   children: ReactNode;
   delay?: number;
   className?: string;
   as?: "div" | "section" | "ul" | "ol";
   stagger?: boolean;
+  // Render content visible immediately (no fade). Use for above-the-fold
+  // content like the hero so the LCP element paints instantly.
+  immediate?: boolean;
 }) {
   const reduce = useReducedMotion();
 
-  if (reduce) {
+  if (reduce || immediate) {
     return <As className={className}>{children}</As>;
   }
 
@@ -44,12 +48,12 @@ export function RevealOnScroll({
 
   return (
     <Component
-      // Reveal is a transform-only lift — content starts at opacity 1
-      // so any failure mode (JS off, slow hydration, IntersectionObserver
-      // not firing fast enough during programmatic scroll) still shows
-      // text. The y-translate is a small bit of polish, not a gate.
-      initial={{ opacity: 1, y: 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      // Opacity-only reveal. No transform → zero layout shift, so anchor
+      // jumps (#product / #waitlist) never "jerk" or shake on landing,
+      // and the reveal never fights a smooth scroll. Opacity is fully
+      // GPU-composited, so the first scroll-through stays buttery.
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
       viewport={{ once: true, amount: 0.05 }}
       transition={{
         duration: MOTION_DURATIONS.enter,
@@ -77,8 +81,8 @@ export function RevealItem({
   return (
     <motion.div
       variants={{
-        initial: { opacity: 1, y: 8 },
-        animate: { opacity: 1, y: 0 },
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
       }}
       className={className}
     >

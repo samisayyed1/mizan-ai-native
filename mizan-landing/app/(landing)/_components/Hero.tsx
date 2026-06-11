@@ -57,7 +57,7 @@ export function Hero() {
 
       {/* Hero copy */}
       <Container className="relative z-10 flex flex-1 flex-col items-center justify-center text-center py-12">
-        <RevealOnScroll className="space-y-6 max-w-3xl">
+        <RevealOnScroll immediate className="space-y-6 max-w-3xl">
           <Eyebrow>AI-NATIVE WEALTH PLATFORM</Eyebrow>
           <h1
             className="font-serif font-bold tracking-tight"
