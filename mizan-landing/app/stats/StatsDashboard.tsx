@@ -171,6 +171,72 @@ export function StatsDashboard({
           </ul>
         </section>
 
+        {/* Live signups table */}
+        <section className="mt-4 rounded-2xl border border-depth-border bg-depth-card">
+          <div className="flex items-center justify-between border-b border-depth-border px-6 py-4">
+            <p className="t-micro text-gold-deep">EVERY SIGNUP · NEWEST FIRST</p>
+            <span className="t-micro tabular-nums text-foreground/40">
+              {stats?.signups.length ?? 0} total
+            </span>
+          </div>
+
+          {/* Header row */}
+          <div className="hidden grid-cols-[44px_1fr_120px_120px] gap-4 border-b border-depth-border/70 px-6 py-3 t-micro text-foreground/40 sm:grid">
+            <span>#</span>
+            <span>Email</span>
+            <span>Country</span>
+            <span className="text-right">Joined</span>
+          </div>
+
+          {stats && stats.signups.length > 0 ? (
+            <ul className="divide-y divide-depth-border/60">
+              {stats.signups.map((s, i) => (
+                <li
+                  key={`${s.position}-${s.email}`}
+                  className={`grid grid-cols-[44px_1fr] gap-x-3 gap-y-1 px-6 py-3 transition-colors sm:grid-cols-[44px_1fr_120px_120px] sm:gap-4 sm:py-3.5 ${
+                    i === 0 ? "bg-gold-primary/[0.04]" : "hover:bg-depth-elevated/40"
+                  }`}
+                >
+                  {/* Position */}
+                  <span className="font-serif text-sm font-bold tabular-nums text-gold-cream sm:text-base">
+                    {s.position}
+                  </span>
+                  {/* Email + meta (referred-by + mobile country/time) */}
+                  <div className="min-w-0">
+                    <p className="t-body break-all font-mono text-[13px] text-foreground/90 sm:truncate sm:font-sans sm:text-sm">
+                      {s.email}
+                    </p>
+                    {s.referredBy ? (
+                      <p className="mt-0.5 inline-flex items-center gap-1 t-micro text-gold-deep">
+                        <span>↗</span>
+                        <span>via {s.referredBy}</span>
+                      </p>
+                    ) : null}
+                    {/* mobile-only inline country + time */}
+                    <p className="mt-1 t-micro text-foreground/45 sm:hidden">
+                      {s.country} · {relative(s.createdAt)}
+                    </p>
+                  </div>
+                  {/* Country (desktop) */}
+                  <span className="hidden items-center sm:flex">
+                    <span className="rounded-md border border-depth-border bg-depth-elevated px-2 py-0.5 t-micro text-foreground/75">
+                      {s.country}
+                    </span>
+                  </span>
+                  {/* Time (desktop) */}
+                  <span className="hidden items-center justify-end t-caption text-foreground/55 sm:flex">
+                    {relative(s.createdAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-6 py-8 text-center t-caption text-foreground/40">
+              No signups yet.
+            </p>
+          )}
+        </section>
+
         <p className="mt-8 text-center t-micro text-foreground/30">
           Private · for Mizan eyes only · auto-refreshes every 12s
         </p>
