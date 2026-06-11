@@ -20,9 +20,8 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        // No private routes today; block the API + OG endpoints from
-        // indexing since they aren't pages.
-        disallow: ["/api/"],
+        // Block the API endpoints + the private insider stats page.
+        disallow: ["/api/", "/stats"],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

@@ -1,0 +1,44 @@
+import type { Metadata } from "next";
+
+import { getWaitlistStats } from "@/lib/stats";
+import { StatsDashboard } from "./StatsDashboard";
+import { StatsLock } from "./StatsLock";
+
+// Never index this page, and never cache it.
+export const metadata: Metadata = {
+  title: "Insider",
+  robots: { index: false, follow: false, nocache: true },
+};
+export const dynamic = "force-dynamic";
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+
+export default async function StatsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ key?: string }>;
+}) {
+  const { key = "" } = await searchParams;
+  const token = process.env.STATS_TOKEN;
+  const authed = !!token && timingSafeEqual(key, token);
+
+  if (!authed) {
+    return <StatsLock />;
+  }
+
+  // Seed the dashboard with server-fetched data so it's instant; the
+  // client island then polls for live updates.
+  let initial = null;
+  try {
+    initial = await getWaitlistStats();
+  } catch {
+    initial = null;
+  }
+
+  return <StatsDashboard token={key} initial={initial} />;
+}
