@@ -39,43 +39,60 @@ export function NewsHomeWidget() {
     );
   }
 
-  if (articles.length === 0) {
-    return null;
-  }
+  // ADR 0018b: the sidebar's News widget now lives at the top of the
+  // column, so an empty array can NOT silently `return null` — the
+  // first visible slot would just be a hole. Render the header + a
+  // quiet empty state instead so the user always sees the surface
+  // exists and where to go for more.
+
+  // Shared header — same chrome for loading / empty / populated.
+  const header = (
+    <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <Icons.Newspaper className="text-muted-foreground h-4 w-4" />
+        <h2 className="text-sm font-semibold tracking-tight">
+          {fallbackEnabled ? "Markets" : "For you"}
+        </h2>
+      </div>
+      <Link
+        to="/news"
+        className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+      >
+        See all →
+      </Link>
+    </div>
+  );
 
   return (
     <Card className="border-border/60 rounded-xl p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Icons.Newspaper className="text-muted-foreground h-4 w-4" />
-          <h2 className="text-sm font-semibold tracking-tight">{fallbackEnabled ? "Markets" : "For you"}</h2>
-        </div>
-        <Link
-          to="/news"
-          className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-        >
-          See all →
-        </Link>
-      </div>
-      <ul className="divide-border divide-y">
-        {articles.map((article) => {
-          const time = relativeNewsTime(article.published);
-          return (
-            <li key={article.id} className="py-2.5 first:pt-0 last:pb-0">
-              <ExternalLink href={article.url} className="group block" rel="noopener noreferrer">
-                <p className="text-sm font-medium leading-snug group-hover:underline">
-                  {article.title}
-                </p>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {article.source && <span className="font-medium">{article.source}</span>}
-                  {article.source && time && <span> · </span>}
-                  {time}
-                </p>
-              </ExternalLink>
-            </li>
-          );
-        })}
-      </ul>
+      {header}
+      {articles.length === 0 ? (
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          {hasSymbols
+            ? "No headlines on your holdings today."
+            : "Connect an account to see news tailored to what you own."}
+        </p>
+      ) : (
+        <ul className="divide-border divide-y">
+          {articles.map((article) => {
+            const time = relativeNewsTime(article.published);
+            return (
+              <li key={article.id} className="py-2.5 first:pt-0 last:pb-0">
+                <ExternalLink href={article.url} className="group block" rel="noopener noreferrer">
+                  <p className="text-sm font-medium leading-snug group-hover:underline">
+                    {article.title}
+                  </p>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    {article.source && <span className="font-medium">{article.source}</span>}
+                    {article.source && time && <span> · </span>}
+                    {time}
+                  </p>
+                </ExternalLink>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </Card>
   );
 }
