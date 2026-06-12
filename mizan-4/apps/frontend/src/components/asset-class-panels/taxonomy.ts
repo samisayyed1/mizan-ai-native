@@ -68,9 +68,11 @@ export const ASSET_CLASS_PANELS: readonly AssetClassPanelDescriptor[] = [
   },
   {
     id: "brokerage-accounts",
-    label: "Brokerage Accounts",
+    label: "Brokerage",
     iconKey: "Briefcase",
     // Track B PR-B8 — dedicated panel page (donut by broker + accounts list).
+    // Label shortened from "Brokerage Accounts" → "Brokerage" so it
+    // never truncates inside the 72px tile (ADR 0018b).
     holdingsHref: "/panels/brokerage-accounts",
   },
   {

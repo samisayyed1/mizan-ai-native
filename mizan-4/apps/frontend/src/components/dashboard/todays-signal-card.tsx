@@ -95,33 +95,35 @@ export function pickTodaysSignal(
 }
 
 function severityStyles(severity: NotificationSeverity): {
-  ring: string;
-  bg: string;
+  /** Background colour of the 4px accent rail on the left edge. */
+  rail: string;
+  /** Icon tint + label colour. */
   text: string;
   icon: string;
   label: string;
 } {
+  // ADR 0018b: the signal card now uses a 4px left-edge rail instead of
+  // a full-card outline + tinted background. Draws the eye without
+  // screaming, and the card sits in line with the other dashboard
+  // surfaces (which all share the same neutral border).
   switch (severity) {
     case "critical":
       return {
-        ring: "border-destructive/40",
-        bg: "bg-destructive/10",
+        rail: "bg-destructive",
         text: "text-destructive",
         icon: "text-destructive",
         label: "Action",
       };
     case "warning":
       return {
-        ring: "border-warning/40",
-        bg: "bg-warning/10",
+        rail: "bg-warning",
         text: "text-warning",
         icon: "text-warning",
         label: "Heads up",
       };
     case "success":
       return {
-        ring: "border-success/40",
-        bg: "bg-success/10",
+        rail: "bg-success",
         text: "text-success",
         icon: "text-success",
         label: "Milestone",
@@ -129,8 +131,7 @@ function severityStyles(severity: NotificationSeverity): {
     case "info":
     default:
       return {
-        ring: "border-sky-500/40",
-        bg: "bg-sky-500/10",
+        rail: "bg-sky-500",
         text: "text-sky-800 dark:text-sky-200",
         icon: "text-sky-600 dark:text-sky-400",
         label: "Today's Signal",
@@ -210,10 +211,15 @@ export function TodaysSignalCard({
   return (
     <section
       aria-label="Today's Signal"
-      className={`relative rounded-2xl border ${styles.ring} ${styles.bg} p-4`}
+      className="bg-card relative overflow-hidden rounded-2xl border p-4 pl-5"
       data-testid="todays-signal-card"
       data-severity={signal.severity}
     >
+      {/* 4px accent rail on the left — colour follows severity. */}
+      <span
+        aria-hidden="true"
+        className={`absolute inset-y-0 left-0 w-1 ${styles.rail}`}
+      />
       <button
         type="button"
         onClick={handleTap}
@@ -223,7 +229,7 @@ export function TodaysSignalCard({
       >
         <div className="flex items-start gap-3">
           <div
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${styles.bg} ${styles.icon}`}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted ${styles.icon}`}
           >
             <Icons.Sparkles className="h-4 w-4" />
           </div>

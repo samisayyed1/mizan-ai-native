@@ -6,7 +6,6 @@ import { Button, Icons } from "@mizan/ui";
 import { Card, CardContent, CardHeader } from "@mizan/ui/components/ui/card";
 import { Skeleton } from "@mizan/ui/components/ui/skeleton";
 import { Suspense, useCallback, useMemo } from "react";
-import { NetWorthContent } from "../net-worth/net-worth-content";
 import { DashboardActions } from "./dashboard-actions";
 import { DashboardContent } from "./dashboard-content";
 
@@ -76,17 +75,11 @@ export default function PortfolioPage() {
     [isFocusMode, toggleFocusMode],
   );
 
+  // ADR 0018b: the dashboard absorbed the Net Worth tab, so the
+  // Add Asset / Add Liability affordances live here too — the dropdown
+  // routes both through the inline AddAssetDialog (UX-1) so users never
+  // get yanked to a separate page.
   const investmentActions = useMemo(
-    () => (
-      <>
-        {commonActions}
-        <DashboardActions />
-      </>
-    ),
-    [commonActions],
-  );
-
-  const netWorthActions = useMemo(
     () => (
       <>
         {commonActions}
@@ -96,6 +89,11 @@ export default function PortfolioPage() {
     [commonActions, handleAddAsset, handleAddLiability],
   );
 
+  // ADR 0018b: the dashboard is a single composed surface — Investments
+  // and Net Worth are no longer split into top-level tabs. Net Worth
+  // detail is now a tap-through from the Net Worth strip inside the
+  // dashboard (/net-worth route remains accessible directly). This
+  // collapses the IA so the user lands on one canonical view.
   const views: SwipablePageView[] = useMemo(
     () => [
       {
@@ -109,19 +107,8 @@ export default function PortfolioPage() {
         ),
         actions: investmentActions,
       },
-      {
-        value: "net-worth",
-        label: "Net Worth",
-        icon: Icons.Wallet,
-        content: (
-          <Suspense fallback={<PageLoader />}>
-            <NetWorthContent onAddAsset={handleAddAsset} onAddLiability={handleAddLiability} />
-          </Suspense>
-        ),
-        actions: netWorthActions,
-      },
     ],
-    [investmentActions, netWorthActions, handleAddAsset, handleAddLiability],
+    [investmentActions],
   );
 
   return <SwipablePage className="pt-0" views={views} defaultView="investments" withPadding={false} />;

@@ -17,16 +17,18 @@ import { listNotifications } from "@/adapters";
 import { QueryKeys } from "@/lib/query-keys";
 
 /**
- * Dashboard composition per ADR 0018 (Dashboard Information Architecture).
+ * Dashboard composition per ADR 0018 / 0018b (Dashboard Information Architecture).
  *
- * Top-to-bottom order on the main column:
+ * Top-to-bottom order on the main column (per ADR 0018b mental-flow
+ * spec — *ask → total → where it sits → how it's performing → what to act on*):
  *   (a) AI command bar — pinned, full-width, persistent input
  *   (b) Net Worth strip — single big number + toggleable deltas + sparkline
- *   (c) Heatmap — every holding as a tile sized by USD value, colored by perf
- *   (d) Asset class panel grid — 12 panels in fixed order from taxonomy.ts
+ *   (c) Asset class panel grid — 12 panels in fixed order from taxonomy.ts
+ *   (d) Heatmap — every holding as a tile sized by USD value, colored by perf
  *   (e) Today's Signal card — highest-signal AI insight for today
  *
- * Right sidebar (lg+ only): Goals, Portfolio Health, Zakat, News.
+ * Right sidebar (lg+ only), top to bottom (ADR 0018b — time-sensitivity
+ * descends): News → Zakat → Portfolio Health → Goals.
  *
  * What this composition deliberately removes vs the prior shipped layout:
  * - TickerConveyor (was at the very top — too noisy, distracts from totals)
@@ -100,22 +102,24 @@ export function DashboardContent() {
               defaultWindow="30d"
             />
 
-            {/* ADR 0018 (c) — Heatmap.
-                Every holding as a treemap tile, sized by USD value,
-                colored by 24h performance. Tap → asset detail. */}
-            <HoldingsHeatmap
+            {/* ADR 0018b (c) — Asset class panel grid.
+                Twelve panels in fixed order from
+                `@/components/asset-class-panels/taxonomy.ts`. Tiles
+                surface BEFORE the heatmap so the user's eye scans
+                "where is my money?" right after the headline number,
+                then drops into the heatmap reward. */}
+            <AssetClassPanelGrid
               holdings={allHoldings ?? []}
-              isLoading={isHoldingsLoading}
               baseCurrency={baseCurrency}
             />
 
-            {/* ADR 0018 (d) — Asset class panel grid.
-                Twelve panels in fixed order from
-                `@/components/asset-class-panels/taxonomy.ts`.
-                Each tile: name, total value, 24h/30d delta, sparkline,
-                chevron. Tap → /panels/{panelId} detail view. */}
-            <AssetClassPanelGrid
+            {/* ADR 0018b (d) — Heatmap.
+                Every holding as a treemap tile, sized by USD value,
+                colored by 24h performance. Now lives BELOW the tile
+                grid as the visual reward / scroll-anchor. */}
+            <HoldingsHeatmap
               holdings={allHoldings ?? []}
+              isLoading={isHoldingsLoading}
               baseCurrency={baseCurrency}
             />
 
@@ -129,25 +133,24 @@ export function DashboardContent() {
             />
           </div>
 
-          {/* Right sidebar (lg+) — PR-DENSITY-5 composition.
-              Unified card language from PR-POLISH-3 + an explicit
-              "Today" section header that anchors the column to the
-              main flow + sticky scroll behavior so the sidebar
-              stays in view as the user scrolls the panel grid.
-              On narrow viewports (<lg) the sidebar reflows inline
-              below the panel grid; the section header acts as a
-              natural separator. */}
+          {/* Right sidebar (lg+) — ADR 0018b composition.
+              Order is descending time-sensitivity:
+                1. News    — daily-fresh, pulls the eye to the column
+                2. Zakat   — Mizan's unique value, daily reminder
+                3. Health  — actionable insight
+                4. Goals   — monthly/yearly checkpoints, fine at bottom
+
+              No section header — the sidebar IS today by implication.
+              On narrow viewports (<lg) it reflows inline below the
+              panel grid. */}
           <aside
             aria-label="Dashboard sidebar"
             className="space-y-3 lg:col-span-1 lg:sticky lg:top-4 lg:self-start"
           >
-            <h2 className="text-muted-foreground px-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
-              Today
-            </h2>
-            <SavingGoals />
-            <PortfolioHealthCard />
-            <ZakatCard />
             <NewsHomeWidget />
+            <ZakatCard />
+            <PortfolioHealthCard />
+            <SavingGoals />
           </aside>
         </div>
       </div>
