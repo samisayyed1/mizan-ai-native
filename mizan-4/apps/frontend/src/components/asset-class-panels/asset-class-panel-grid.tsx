@@ -57,6 +57,12 @@ export function AssetClassPanelGrid({
   const shouldReduceMotion = useReducedMotion();
 
   return (
+    // ADR 0018b·v5 — wrap the grid in a labelled Card so it matches
+    // the Net Worth and Heatmap boxes (each surface has its name as
+    // an eyebrow inside a card). The outer card uses the same chrome
+    // as NetWorthStrip's section (bg-card rounded-2xl border p-4) so
+    // all three dashboard boxes read as one consistent family.
+    //
     // PR-DENSITY-1 — auto-fill columns (min 240px / max 320px) so
     // wide displays pack 5 columns, standard 4, medium 3, narrow 2,
     // mobile 1. Fixed `grid-cols-*` breakpoints would either feel
@@ -64,32 +70,39 @@ export function AssetClassPanelGrid({
     //
     // Gap 8px (was 12) so 12 tiles read as one dense composition
     // rather than 12 separate cards.
-    <motion.section
-      aria-label="Asset class panels"
-      className="grid gap-2"
-      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}
-      variants={shouldReduceMotion ? undefined : staggerContainer}
-      initial="initial"
-      animate="animate"
+    <section
+      aria-label="Asset classes"
+      className="bg-card flex flex-col gap-3 rounded-2xl border p-4"
     >
-      {rollups.map((rollup) => {
-        const descriptor = getPanelDescriptor(rollup.panelId);
-        const dimmed = dimEmptyPanels && rollup.holdingsCount === 0;
-        return (
-          <motion.div
-            key={descriptor.id}
-            variants={shouldReduceMotion ? undefined : fadeInUp}
-            className={dimmed ? "opacity-50 transition-opacity" : "transition-opacity"}
-          >
-            <AssetClassPanelCard
-              descriptor={descriptor}
-              rollup={rollup}
-              isPrivacyMode={isPrivacyMode}
-            />
-          </motion.div>
-        );
-      })}
-    </motion.section>
+      <h2 className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
+        Asset Classes
+      </h2>
+      <motion.div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}
+        variants={shouldReduceMotion ? undefined : staggerContainer}
+        initial="initial"
+        animate="animate"
+      >
+        {rollups.map((rollup) => {
+          const descriptor = getPanelDescriptor(rollup.panelId);
+          const dimmed = dimEmptyPanels && rollup.holdingsCount === 0;
+          return (
+            <motion.div
+              key={descriptor.id}
+              variants={shouldReduceMotion ? undefined : fadeInUp}
+              className={dimmed ? "opacity-50 transition-opacity" : "transition-opacity"}
+            >
+              <AssetClassPanelCard
+                descriptor={descriptor}
+                rollup={rollup}
+                isPrivacyMode={isPrivacyMode}
+              />
+            </motion.div>
+          );
+        })}
+      </motion.div>
+    </section>
   );
 }
 
