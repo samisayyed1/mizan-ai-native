@@ -1,10 +1,15 @@
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useHoldings } from "@/hooks/use-holdings";
-import { usePortfolioAllocations } from "@/hooks/use-portfolio-allocations";
 import { useValuationHistory } from "@/hooks/use-valuation-history";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import {
+  getPanelDescriptor,
+  rollupHoldingsByPanel,
+} from "@/components/asset-class-panels/taxonomy";
+import type { CategoryAllocation } from "@/lib/types";
 import { HoldingsHeatmap } from "./holdings-heatmap";
 import { NewsHomeWidget } from "./news-home-widget";
 import { PortfolioHealthCard } from "./portfolio-health-card";
@@ -67,15 +72,35 @@ export function DashboardContent() {
   // the full extent; the strip computes window deltas client-side.
   const { valuationHistory, isLoading: isHistoryLoading } = useValuationHistory(undefined);
 
-  // Asset-class allocations power the donut nested inside the Net Worth
-  // strip (ADR 0018b·v4). One cached query keyed by account id; the
-  // strip ignores undefined gracefully so the donut just won't render
-  // while it loads.
-  const { allocations, isLoading: isAllocationsLoading } =
-    usePortfolioAllocations(PORTFOLIO_ACCOUNT_ID);
-
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+
+  // Asset-class allocations power the donut nested inside the Net Worth
+  // strip. We derive them from the SAME `rollupHoldingsByPanel` source
+  // the asset-class tile grid uses, so the donut and the tiles can
+  // never disagree on which classes the user holds or in what
+  // proportion. Negative-value classes (e.g. an overdrawn cash sleeve)
+  // are excluded — a donut can't render a negative slice — but they
+  // still show up in the tile grid below, which can.
+  const allocationCategories = useMemo<CategoryAllocation[]>(() => {
+    if (!allHoldings || allHoldings.length === 0) return [];
+    const rollups = rollupHoldingsByPanel(allHoldings, baseCurrency);
+    const positive = rollups.filter((r) => r.totalValue > 0);
+    const total = positive.reduce((s, r) => s + r.totalValue, 0);
+    if (total <= 0) return [];
+    return positive.map((r) => {
+      const desc = getPanelDescriptor(r.panelId);
+      return {
+        categoryId: desc.id,
+        categoryName: desc.label,
+        // The donut overrides colour via its built-in gold ladder; this
+        // field is part of CategoryAllocation's contract so we keep it.
+        color: "",
+        value: r.totalValue,
+        percentage: (r.totalValue / total) * 100,
+      };
+    });
+  }, [allHoldings, baseCurrency]);
 
   return (
     // PR-POLISH-4 — depth-page background ladder. Dark mode shifts to
@@ -109,8 +134,8 @@ export function DashboardContent() {
               baseCurrency={baseCurrency}
               isLoading={isHistoryLoading}
               defaultWindow="30d"
-              allocationCategories={allocations?.assetClasses.categories ?? null}
-              isAllocationLoading={isAllocationsLoading}
+              allocationCategories={allocationCategories}
+              isAllocationLoading={isHoldingsLoading}
             />
 
             {/* ADR 0018b·v2 (c) — Heatmap.
