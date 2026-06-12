@@ -29,7 +29,6 @@ import {
 } from "@mizan/ui/components/ui/popover";
 import { ScrollArea } from "@mizan/ui/components/ui/scroll-area";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNowStrict } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -143,25 +142,32 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
         sideOffset={12}
         className="w-96 p-0"
       >
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div>
-            <h3 className="text-sm font-semibold tracking-tight">Notifications</h3>
-            <p className="text-muted-foreground text-xs">
-              {unread === 0
-                ? "You're all caught up."
-                : `${unread} unread`}
-            </p>
+        <div className="flex items-center justify-between border-b px-4 py-3.5">
+          <div className="flex items-center gap-2">
+            <h3 className="text-[15px] font-semibold tracking-tight">
+              Notifications
+            </h3>
+            {unread > 0 && (
+              <span
+                className="bg-muted text-foreground/80 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none tabular-nums"
+                aria-label={`${unread} unread`}
+              >
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
           </div>
-          {unread > 0 && (
+          {unread > 0 ? (
             <Button
               variant="ghost"
               size="sm"
-              className="text-xs"
+              className="text-muted-foreground hover:text-foreground h-7 text-xs"
               onClick={() => markAllMutation.mutate()}
               disabled={markAllMutation.isPending}
             >
               Mark all read
             </Button>
+          ) : (
+            <span className="text-muted-foreground text-xs">All caught up</span>
           )}
         </div>
         <ScrollArea className="max-h-[60vh]">
@@ -220,13 +226,11 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
       onSelect();
     }
   };
-  const relative = useMemo(
-    () =>
-      formatDistanceToNowStrict(new Date(notification.createdAtMs), {
-        addSuffix: true,
-      }),
+  const compactTime = useMemo(
+    () => compactRelativeTime(notification.createdAtMs, Date.now()),
     [notification.createdAtMs],
   );
+  const { rail } = appearanceFor(notification.kind, notification.severity);
   return (
     <div
       role="button"
@@ -239,28 +243,42 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
         }
       }}
       className={cn(
-        "group focus-visible:bg-muted/70 hover:bg-muted/50 flex w-full cursor-pointer items-start gap-3 px-4 py-3 outline-none transition-colors",
-        isUnread && "bg-muted/30",
+        "group focus-visible:bg-muted/70 hover:bg-muted/50 relative flex w-full cursor-pointer items-start gap-3 px-4 py-3.5 outline-none transition-colors",
+        // Subtle unread tint — premium iOS/Linear-style "the eye lands
+        // here first" cue. The severity-coloured rail (3px, absolutely
+        // positioned on the left edge) makes the unread state legible
+        // even without colour, since rail width is the signal.
+        isUnread && "bg-muted/25",
       )}
     >
+      {/* Severity rail — only renders on unread rows. Hairline width
+          (3px) so it accents without screaming. */}
+      {isUnread && (
+        <span
+          aria-hidden="true"
+          className={cn("absolute inset-y-1.5 left-0 w-[3px] rounded-full", rail)}
+        />
+      )}
       <KindIcon kind={notification.kind} severity={notification.severity} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <p className="truncate text-sm font-medium tracking-tight">
+        <div className="flex items-start gap-2">
+          <p
+            className={cn(
+              "min-w-0 flex-1 line-clamp-2 text-[13px] leading-snug tracking-tight",
+              isUnread ? "font-semibold text-foreground" : "font-medium text-foreground/90",
+            )}
+          >
             {notification.title}
           </p>
-          {isUnread && (
-            <span
-              className="bg-primary inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-              aria-label="Unread"
-            />
-          )}
+          <span
+            className="text-muted-foreground/70 mt-px shrink-0 text-[11px] tabular-nums"
+            title={new Date(notification.createdAtMs).toLocaleString()}
+          >
+            {compactTime}
+          </span>
         </div>
-        <p className="text-muted-foreground line-clamp-2 text-xs">
+        <p className="text-muted-foreground mt-1 line-clamp-2 text-[12px] leading-snug">
           {notification.body}
-        </p>
-        <p className="text-muted-foreground/70 mt-1 text-[10px] uppercase tracking-wide">
-          {relative}
         </p>
       </div>
       <button
@@ -269,7 +287,7 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
           e.stopPropagation();
           onDismiss(notification.id);
         }}
-        className="text-muted-foreground/60 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100"
+        className="text-muted-foreground/50 hover:text-foreground hover:bg-muted/70 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
         aria-label="Dismiss"
         title="Dismiss"
       >
@@ -279,65 +297,139 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
   );
 }
 
+/**
+ * "now" / "5m" / "3h" / "2d" / "3w" / "Jun 12" — compact relative time
+ * for a tight notification row. Falls back to a localised short date
+ * when the event is older than 4 weeks, so the user always sees
+ * something concrete (not "2 months ago").
+ */
+function compactRelativeTime(createdAtMs: number, nowMs: number): string {
+  const diff = Math.max(0, nowMs - createdAtMs);
+  const sec = Math.floor(diff / 1000);
+  if (sec < 45) return "now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d`;
+  const wk = Math.floor(day / 7);
+  if (wk < 4) return `${wk}w`;
+  return new Date(createdAtMs).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Helpers
 
-// Semantic palette mapping. Where Flexoki has a named token (success /
-// destructive / warning), we use it so dark + light mode flip cleanly
-// without explicit dark: variants. Allocation drift + AI digest keep
-// neutral muted tones — they aren't success / warning / failure events.
+// Per-kind appearance: a semantic icon (no more identical bells) plus
+// a tone (`success | warning | destructive | gold | neutral`) that
+// drives both the icon tint and the row's unread accent rail.
 //
 // MUST cover every variant in `NotificationKind` (see
 // adapters/types-notifications.ts) — but `KindIcon` also falls back to
-// the muted palette at runtime so a backend-only addition can never
-// crash the bell again.
-const NEUTRAL_PALETTE = {
-  bg: "bg-muted",
-  fg: "text-muted-foreground",
-} as const;
+// a neutral icon + tone at runtime so a backend-only addition can
+// never crash the bell again.
+type IconComp = typeof Icons.Bell;
+type Tone = "success" | "warning" | "destructive" | "gold" | "neutral";
 
-const KIND_PALETTE: Record<NotificationKind, { bg: string; fg: string }> = {
-  big_move: { bg: "bg-warning/10", fg: "text-warning" },
-  allocation_drift: NEUTRAL_PALETTE,
-  goal_milestone: { bg: "bg-success/10", fg: "text-success" },
-  cash_drag: NEUTRAL_PALETTE,
-  dividend_posted: { bg: "bg-success/10", fg: "text-success" },
-  new_ath: { bg: "bg-success/10", fg: "text-success" },
-  net_worth_dip: { bg: "bg-destructive/10", fg: "text-destructive" },
-  sync_failure: { bg: "bg-warning/10", fg: "text-warning" },
-  ai_digest: NEUTRAL_PALETTE,
-  bond_maturity_approaching: { bg: "bg-warning/10", fg: "text-warning" },
-  fx_moved_materially: { bg: "bg-warning/10", fg: "text-warning" },
-  sharia_status_changed: { bg: "bg-warning/10", fg: "text-warning" },
-  // Zakat is Mizan's flagship signal — gold to honour it visually.
-  zakat_hawl_approaching: { bg: "bg-amber-500/10", fg: "text-amber-600 dark:text-amber-400" },
-  concentration_risk: { bg: "bg-warning/10", fg: "text-warning" },
-  cash_drag_opportunity: { bg: "bg-success/10", fg: "text-success" },
-  tax_optimization_window: { bg: "bg-success/10", fg: "text-success" },
+interface KindAppearance {
+  Icon: IconComp;
+  tone: Tone;
+}
+
+const NEUTRAL_APPEARANCE: KindAppearance = {
+  Icon: Icons.Bell,
+  tone: "neutral",
 };
 
+const KIND_APPEARANCE: Record<NotificationKind, KindAppearance> = {
+  // Market moves — direction-aware icons
+  big_move: { Icon: Icons.TrendingUp, tone: "warning" },
+  net_worth_dip: { Icon: Icons.TrendingDown, tone: "destructive" },
+  new_ath: { Icon: Icons.TrendingUp, tone: "success" },
+
+  // Targets / drift / risk
+  allocation_drift: { Icon: Icons.Target, tone: "neutral" },
+  concentration_risk: { Icon: Icons.Shield, tone: "warning" },
+
+  // Goals + milestones
+  goal_milestone: { Icon: Icons.Star, tone: "success" },
+
+  // Cash + income
+  cash_drag: { Icon: Icons.Wallet, tone: "neutral" },
+  cash_drag_opportunity: { Icon: Icons.Sparkles, tone: "success" },
+  dividend_posted: { Icon: Icons.HandCoins, tone: "success" },
+  tax_optimization_window: { Icon: Icons.BadgeDollarSign, tone: "success" },
+
+  // Time-sensitive
+  bond_maturity_approaching: { Icon: Icons.Clock, tone: "warning" },
+  fx_moved_materially: { Icon: Icons.ArrowLeftRight, tone: "warning" },
+
+  // Mizan moats (Sharia + Zakat) — gold tone honours them visually
+  sharia_status_changed: { Icon: Icons.ShieldAlert, tone: "warning" },
+  zakat_hawl_approaching: { Icon: Icons.Moon, tone: "gold" },
+
+  // Infrastructure
+  sync_failure: { Icon: Icons.CloudOff, tone: "warning" },
+  ai_digest: { Icon: Icons.Sparkles, tone: "neutral" },
+};
+
+const TONE_STYLES: Record<Tone, { bg: string; fg: string; rail: string }> = {
+  success: {
+    bg: "bg-success/10",
+    fg: "text-success",
+    rail: "bg-success",
+  },
+  warning: {
+    bg: "bg-warning/10",
+    fg: "text-warning",
+    rail: "bg-warning",
+  },
+  destructive: {
+    bg: "bg-destructive/10",
+    fg: "text-destructive",
+    rail: "bg-destructive",
+  },
+  gold: {
+    bg: "bg-amber-500/10",
+    fg: "text-amber-600 dark:text-amber-400",
+    rail: "bg-amber-500",
+  },
+  neutral: {
+    bg: "bg-muted",
+    fg: "text-muted-foreground",
+    rail: "bg-muted-foreground/40",
+  },
+};
+
+function appearanceFor(kind: NotificationKind, severity: NotificationSeverity): {
+  Icon: IconComp;
+  bg: string;
+  fg: string;
+  rail: string;
+} {
+  const a = KIND_APPEARANCE[kind] ?? NEUTRAL_APPEARANCE;
+  // Critical severity always escalates to destructive, regardless of
+  // the per-kind tone — a critical sync failure should look critical.
+  const tone = severity === "critical" ? "destructive" : a.tone;
+  const t = TONE_STYLES[tone];
+  return { Icon: a.Icon, ...t };
+}
+
 function KindIcon({ kind, severity }: { kind: NotificationKind; severity: NotificationSeverity }) {
-  // Defensive lookup: if the Rust crate emits a new variant before the
-  // TS union catches up, fall back to the neutral palette so the bell
-  // still renders gracefully instead of crashing the whole tree.
-  const palette = KIND_PALETTE[kind] ?? NEUTRAL_PALETTE;
-  // Critical severity always uses the destructive palette to override
-  // the per-kind colour — a critical sync failure should look critical.
-  const useCritical = severity === "critical";
+  const { Icon, bg, fg } = appearanceFor(kind, severity);
   return (
     <span
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-        useCritical ? "bg-destructive/10" : palette.bg,
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+        bg,
       )}
       aria-hidden="true"
     >
-      <Icons.Bell
-        className={cn(
-          "h-4 w-4",
-          useCritical ? "text-destructive" : palette.fg,
-        )}
-      />
+      <Icon className={cn("h-4 w-4", fg)} />
     </span>
   );
 }
