@@ -17,6 +17,7 @@ import type {
   Notification,
   NotificationKind,
   NotificationSeverity,
+  NotificationsPage,
 } from "@/adapters/types-notifications";
 import { QueryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
@@ -59,28 +60,117 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
     enabled: open,
   });
 
+  // All three mutations use the optimistic-update / rollback / settle
+  // pattern so a click instantly reflects in the UI — no perceived
+  // "did the button do anything?" pause while the round-trip lands.
+  // If the backend later errors, we roll back to the snapshot. On
+  // settle we invalidate so the next refetch reconciles with the DB.
+
+  const cancelNotifQueries = async () => {
+    await queryClient.cancelQueries({ queryKey: QueryKeys.notifications(25) });
+    await queryClient.cancelQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
+  };
+
+  const snapshotNotifQueries = () => ({
+    page: queryClient.getQueryData<NotificationsPage>(QueryKeys.notifications(25)),
+    unread: queryClient.getQueryData<number>([QueryKeys.NOTIFICATIONS_UNREAD_COUNT]),
+  });
+
+  const rollbackNotifQueries = (snap: ReturnType<typeof snapshotNotifQueries>) => {
+    if (snap.page !== undefined) {
+      queryClient.setQueryData(QueryKeys.notifications(25), snap.page);
+    }
+    if (snap.unread !== undefined) {
+      queryClient.setQueryData([QueryKeys.NOTIFICATIONS_UNREAD_COUNT], snap.unread);
+    }
+  };
+
+  const invalidateNotifQueries = () => {
+    queryClient.invalidateQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
+    queryClient.invalidateQueries({ queryKey: QueryKeys.notifications(25) });
+  };
+
   const markReadMutation = useMutation({
     mutationFn: (id: string) => markNotificationRead(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.notifications(25) });
+    onMutate: async (id) => {
+      await cancelNotifQueries();
+      const snap = snapshotNotifQueries();
+      const nowMs = Date.now();
+      queryClient.setQueryData<NotificationsPage>(QueryKeys.notifications(25), (old) => {
+        if (!old) return old;
+        let touched = false;
+        const items = old.items.map((n) => {
+          if (n.id === id && n.readAtMs === null) {
+            touched = true;
+            return { ...n, readAtMs: nowMs };
+          }
+          return n;
+        });
+        return {
+          ...old,
+          items,
+          unreadCount: Math.max(0, old.unreadCount - (touched ? 1 : 0)),
+        };
+      });
+      queryClient.setQueryData<number>([QueryKeys.NOTIFICATIONS_UNREAD_COUNT], (n) =>
+        Math.max(0, (n ?? 0) - 1),
+      );
+      return snap;
     },
+    onError: (_err, _id, snap) => snap && rollbackNotifQueries(snap),
+    onSettled: invalidateNotifQueries,
   });
 
   const dismissMutation = useMutation({
     mutationFn: (id: string) => dismissNotification(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.notifications(25) });
+    onMutate: async (id) => {
+      await cancelNotifQueries();
+      const snap = snapshotNotifQueries();
+      // Look at the snapshot (not the live cache) to decide whether
+      // the dismissed row was unread — we're about to mutate the
+      // cache so reading from it would race.
+      const dropped = snap.page?.items.find((n) => n.id === id);
+      const wasUnread =
+        !!dropped && dropped.readAtMs === null && dropped.dismissedAtMs === null;
+      queryClient.setQueryData<NotificationsPage>(QueryKeys.notifications(25), (old) =>
+        old
+          ? {
+              ...old,
+              items: old.items.filter((n) => n.id !== id),
+              unreadCount: Math.max(0, old.unreadCount - (wasUnread ? 1 : 0)),
+            }
+          : old,
+      );
+      queryClient.setQueryData<number>([QueryKeys.NOTIFICATIONS_UNREAD_COUNT], (n) =>
+        Math.max(0, (n ?? 0) - (wasUnread ? 1 : 0)),
+      );
+      return snap;
     },
+    onError: (_err, _id, snap) => snap && rollbackNotifQueries(snap),
+    onSettled: invalidateNotifQueries,
   });
 
   const markAllMutation = useMutation({
     mutationFn: markAllNotificationsRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.notifications(25) });
+    onMutate: async () => {
+      await cancelNotifQueries();
+      const snap = snapshotNotifQueries();
+      const nowMs = Date.now();
+      queryClient.setQueryData<NotificationsPage>(QueryKeys.notifications(25), (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: old.items.map((n) =>
+            n.readAtMs === null && n.dismissedAtMs === null ? { ...n, readAtMs: nowMs } : n,
+          ),
+          unreadCount: 0,
+        };
+      });
+      queryClient.setQueryData<number>([QueryKeys.NOTIFICATIONS_UNREAD_COUNT], 0);
+      return snap;
     },
+    onError: (_err, _vars, snap) => snap && rollbackNotifQueries(snap),
+    onSettled: invalidateNotifQueries,
   });
 
   // Subscribe to the Notify-5 push event so the badge refreshes
@@ -139,10 +229,16 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
       <PopoverContent
         align="start"
         side="right"
-        sideOffset={12}
-        className="w-96 p-0"
+        sideOffset={16}
+        // Flex column with a fixed max height — the header is fixed,
+        // the row list takes the remaining height and scrolls. This
+        // guarantees the popover never grows taller than the viewport
+        // and the list is always scrollable when content overflows.
+        // shadow-2xl + a tighter border = a popover that floats above
+        // the dashboard cleanly instead of crashing into it.
+        className="flex w-[26rem] max-h-[min(640px,calc(100vh-6rem))] flex-col overflow-hidden rounded-2xl border-border/70 p-0 shadow-2xl"
       >
-        <div className="flex items-center justify-between border-b px-4 py-3.5">
+        <div className="bg-card flex shrink-0 items-center justify-between border-b px-4 py-3.5">
           <div className="flex items-center gap-2">
             <h3 className="text-[15px] font-semibold tracking-tight">
               Notifications
@@ -164,13 +260,15 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
               onClick={() => markAllMutation.mutate()}
               disabled={markAllMutation.isPending}
             >
-              Mark all read
+              {markAllMutation.isPending ? "Marking…" : "Mark all read"}
             </Button>
           ) : (
             <span className="text-muted-foreground text-xs">All caught up</span>
           )}
         </div>
-        <ScrollArea className="max-h-[60vh]">
+        {/* min-h-0 is the magic — without it a flex child won't shrink
+            below its content size, and the scroll area never engages. */}
+        <ScrollArea className="min-h-0 flex-1">
           <div className="divide-border divide-y">
             {pageQuery.isLoading ? (
               <PanelSkeleton />
