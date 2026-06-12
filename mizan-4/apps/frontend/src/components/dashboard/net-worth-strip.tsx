@@ -298,18 +298,20 @@ export function NetWorthStrip({
             )}
           </div>
         </Link>
-        {/* Allocation donut — sits to the right of the headline. Hidden
-            below the `sm:` breakpoint so a phone gets a clean stacked
-            headline + sparkline only; on desktop it's the visual anchor
-            that turns the strip into a real net-worth dashboard. */}
+        {/* Allocation donut — sits to the right of the headline,
+            vertically centred against the headline + delta block.
+            Hidden below the `sm:` breakpoint so a phone gets a clean
+            stacked headline + sparkline only; on desktop it's the
+            visual anchor that turns the strip into a real net-worth
+            dashboard at a glance. */}
         {allocationCategories && allocationCategories.length > 0 ? (
-          <div className="hidden sm:block">
+          <div className="hidden self-center sm:block">
             <AllocationDonut
               categories={allocationCategories}
               baseCurrency={baseCurrency}
               isLoading={isAllocationLoading}
               isPrivacyMode={isPrivacyMode}
-              size={132}
+              size={168}
             />
           </div>
         ) : null}

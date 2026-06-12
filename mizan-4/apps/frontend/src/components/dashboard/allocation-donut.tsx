@@ -34,19 +34,45 @@ export interface AllocationDonutProps {
   isLoading?: boolean;
   /** Privacy mode hides the absolute value but keeps the chart + class names. */
   isPrivacyMode?: boolean;
-  /** Outer diameter in CSS pixels (the card decides sizing). Default 140. */
+  /** Outer diameter in CSS pixels (the card decides sizing). Default 168. */
   size?: number;
 }
 
 const RING_RADIUS = 42;
 const RING_CIRC = 2 * Math.PI * RING_RADIUS;
 
+/**
+ * Mizan gold ladder — overrides the taxonomy's per-category colour so
+ * the donut reads on-brand. Segments are sorted largest → smallest
+ * before we assign these, so the brightest tone always lands on the
+ * biggest slice. Drawn from the Mizan brand palette (gold-cream →
+ * gold-primary → gold-deep, plus one warm-gold accent for the long tail).
+ *
+ * Eight stops covers every realistic asset-class count (taxonomy ships
+ * 12, but a single portfolio rarely fills more than 6–8 simultaneously).
+ * Anything beyond eight wraps back to the start of the ladder.
+ */
+const GOLD_LADDER = [
+  "hsl(40 67% 87%)", // gold-cream — biggest slice
+  "hsl(31 49% 64%)", // gold-primary
+  "hsl(45 62% 58%)", // warm bright gold
+  "hsl(31 42% 52%)",
+  "hsl(31 38% 46%)",
+  "hsl(31 32% 41%)", // gold-deep
+  "hsl(31 28% 36%)",
+  "hsl(31 24% 33%)",
+] as const;
+
+function goldFor(index: number): string {
+  return GOLD_LADDER[index % GOLD_LADDER.length]!;
+}
+
 export function AllocationDonut({
   categories,
   baseCurrency,
   isLoading = false,
   isPrivacyMode = false,
-  size = 140,
+  size = 168,
 }: AllocationDonutProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -58,13 +84,15 @@ export function AllocationDonut({
     .filter((c) => c.value > 0 && c.percentage > 0)
     .sort((a, b) => b.percentage - a.percentage);
 
-  // Cumulative offset so segments butt up around the ring.
+  // Cumulative offset so segments butt up around the ring. Each
+  // segment gets a gold-ladder colour assigned by its sorted index —
+  // largest slice = brightest tone, descending into deeper golds.
   let cum = 0;
-  const arcs = segments.map((c) => {
+  const arcs = segments.map((c, idx) => {
     const length = (c.percentage / 100) * RING_CIRC;
     const offset = -cum;
     cum += length;
-    return { ...c, length, offset };
+    return { ...c, length, offset, color: goldFor(idx) };
   });
 
   const hovered = hoveredId
@@ -85,15 +113,28 @@ export function AllocationDonut({
         role="img"
         aria-label="Net worth allocation by asset class"
       >
-        {/* Background track — same colour as the card border so the
-            donut reads as a coloured arc on a neutral ring. */}
+        {/* Background track — a calm gold-deep tone, much warmer than
+            the neutral muted token. The arcs read as bright gold sat
+            on a dimmer gold base, which feels engineered rather than
+            "we forgot to colour the ring". */}
         <circle
           cx="50"
           cy="50"
           r={RING_RADIUS}
           fill="none"
-          stroke="hsl(var(--muted) / 0.6)"
+          stroke="hsl(31 32% 41% / 0.18)"
           strokeWidth="14"
+        />
+        {/* Thin outer hairline — gold-cream at low opacity. Sits just
+            outside the ring and gives the donut a premium "framed"
+            edge without taking visual weight. */}
+        <circle
+          cx="50"
+          cy="50"
+          r={RING_RADIUS + 8}
+          fill="none"
+          stroke="hsl(40 67% 87% / 0.10)"
+          strokeWidth="0.5"
         />
 
         {isLoading ? null : (
@@ -133,30 +174,30 @@ export function AllocationDonut({
           itself doesn't catch pointer events, so hover passes through to
           the arcs underneath. */}
       <div
-        className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center px-3"
+        className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center px-4"
         aria-live="polite"
       >
         {hovered ? (
           <>
-            <div className="text-foreground text-[11px] font-semibold uppercase tracking-wider truncate max-w-full">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] truncate max-w-full" style={{ color: "hsl(31 32% 55%)" }}>
               {hovered.categoryName}
             </div>
-            <div className="text-foreground mt-0.5 text-lg font-semibold tabular-nums">
+            <div className="mt-1 text-2xl font-semibold tabular-nums" style={{ color: "hsl(40 67% 87%)" }}>
               {hovered.percentage.toFixed(1)}%
             </div>
-            <div className="text-muted-foreground mt-0.5 text-[10px] tabular-nums">
+            <div className="text-muted-foreground mt-1 text-[11px] tabular-nums">
               {isPrivacyMode ? "•••" : formatAmount(hovered.value, baseCurrency)}
             </div>
           </>
         ) : (
           <>
-            <div className="text-muted-foreground text-[10px] uppercase tracking-wider">
+            <div className="text-[10px] uppercase tracking-[0.12em]" style={{ color: "hsl(31 32% 55%)" }}>
               Allocation
             </div>
-            <div className="text-foreground mt-0.5 text-base font-semibold tabular-nums">
+            <div className="mt-1 text-xl font-semibold tabular-nums" style={{ color: "hsl(40 67% 87%)" }}>
               {isPrivacyMode ? "•••" : compactValue(totalValue, baseCurrency)}
             </div>
-            <div className="text-muted-foreground mt-0.5 text-[10px]">
+            <div className="text-muted-foreground mt-1 text-[11px]">
               {classCount} {classCount === 1 ? "class" : "classes"}
             </div>
           </>
