@@ -36,7 +36,8 @@ export default function ReportsIndexPage() {
           <ReportTile
             title="Income report"
             description="Year-to-date dividends, interest, rental income, and a monthly trend chart. Top 10 income-producing assets and YoY change."
-            icon={<Icons.TrendingUp className="text-primary h-6 w-6" />}
+            icon={<Icons.TrendingUp className="h-6 w-6"
+                style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open income report"}
             onClick={() => onAction("/reports/income")}
             locked={locked}
@@ -44,7 +45,8 @@ export default function ReportsIndexPage() {
           <ReportTile
             title="Rental income"
             description="One section per rented property — tenant, monthly rent, lease dates, projected annual income."
-            icon={<Icons.Home className="text-primary h-6 w-6" />}
+            icon={<Icons.Home className="h-6 w-6"
+                style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open rental report"}
             onClick={() => onAction("/reports/rental")}
             locked={locked}
@@ -52,7 +54,8 @@ export default function ReportsIndexPage() {
           <ReportTile
             title="Liability payoff"
             description="Amortization schedule for any fixed-rate liability. Total interest cost, projected payoff date, and a balance trajectory chart."
-            icon={<Icons.Activity2 className="text-primary h-6 w-6" />}
+            icon={<Icons.Activity2 className="h-6 w-6"
+                style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open payoff projection"}
             onClick={() => onAction("/reports/payoff")}
             locked={locked}
@@ -60,7 +63,8 @@ export default function ReportsIndexPage() {
           <ReportTile
             title="Portfolio health"
             description="0–100 composite score across concentration, FX exposure, cash drag, and allocation drift. Highlights the weakest driver."
-            icon={<Icons.PieChart className="text-primary h-6 w-6" />}
+            icon={<Icons.PieChart className="h-6 w-6"
+                style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open health report"}
             onClick={() => onAction("/reports/health")}
             locked={locked}
@@ -92,7 +96,10 @@ function ReportTile({
   locked: boolean;
 }) {
   return (
-    <Card className={locked ? "border-muted" : "border-primary/20"}>
+    <Card
+      className={locked ? "border-muted" : ""}
+      style={locked ? undefined : { borderColor: "hsl(31 38% 46% / 0.25)" }}
+    >
       <CardHeader>
         <div className="flex items-start gap-3">
           {icon}

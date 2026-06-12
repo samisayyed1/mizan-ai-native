@@ -21,9 +21,21 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { IssueDetailSheet } from "./components/issue-detail-sheet";
 
+/**
+ * Health severity palette — mapped onto the Mizan tone scale.
+ * Info: muted. Warning: gold-deep (no harsh yellow). Error/Critical:
+ * destructive red, reserved for genuine failure states.
+ */
 const SEVERITY_CONFIG: Record<
   HealthSeverity,
-  { label: string; bgColor: string; textColor: string; dotColor: string }
+  {
+    label: string;
+    bgColor: string;
+    textColor: string;
+    dotColor: string;
+    dotStyle?: React.CSSProperties;
+    chipStyle?: React.CSSProperties;
+  }
 > = {
   INFO: {
     label: "Info",
@@ -33,9 +45,14 @@ const SEVERITY_CONFIG: Record<
   },
   WARNING: {
     label: "Warning",
-    bgColor: "bg-warning/15",
-    textColor: "text-warning",
-    dotColor: "bg-warning",
+    bgColor: "",
+    textColor: "",
+    dotColor: "",
+    dotStyle: { backgroundColor: "hsl(31 38% 46%)" },
+    chipStyle: {
+      backgroundColor: "hsl(31 38% 46% / 0.12)",
+      color: "hsl(31 28% 36%)",
+    },
   },
   ERROR: {
     label: "Error",
@@ -66,7 +83,12 @@ export function getCategoryConfig(issue: HealthIssue): { label: string; icon: ke
 
 function SeverityDot({ severity }: { severity: HealthSeverity }) {
   const config = SEVERITY_CONFIG[severity];
-  return <span className={cn("h-2 w-2 shrink-0 rounded-full", config.dotColor)} />;
+  return (
+    <span
+      className={cn("h-2 w-2 shrink-0 rounded-full", config.dotColor)}
+      style={config.dotStyle}
+    />
+  );
 }
 
 function HealthIssueRow({
@@ -199,6 +221,7 @@ function StatusSummary({
               config.textColor,
               isActive && "ring-2 ring-current ring-offset-1",
             )}
+            style={config.chipStyle}
           >
             <SeverityDot severity={severity} />
             <span>{count}</span>

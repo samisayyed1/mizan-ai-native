@@ -529,16 +529,22 @@
   --input-bg: hsl(var(--flexoki-bg));
   --ring: hsl(var(--flexoki-ui-3));
 
-  /* Charts (full hsl colors) */
-  --chart-1: hsl(40 3% 20%);
-  --chart-2: hsl(45 2% 33%);
-  --chart-3: hsl(50 3% 42%);
-  --chart-4: hsl(43 3% 52%);
-  --chart-5: hsl(47 4% 61%);
-  --chart-6: hsl(49 7% 70%);
-  --chart-7: hsl(55 10% 79%);
-  --chart-8: hsl(50 14% 83%);
-  --chart-9: hsl(51 21% 88%);
+  /* Charts — Mizan gold ladder.
+   * The 8 gold stops live in `components/panels/panel-shared.tsx`
+   * (deepest → cream) and are mirrored here so every Recharts / Donut
+   * built from `var(--chart-N)` paints in the same world-class palette
+   * as the asset-class panels. Slot 1 is the deepest gold (highest-
+   * contrast against light paper); chart-9 falls back to a cream so
+   * we never run out of slots. */
+  --chart-1: hsl(31 28% 36%);
+  --chart-2: hsl(31 32% 41%);
+  --chart-3: hsl(31 38% 46%);
+  --chart-4: hsl(31 42% 52%);
+  --chart-5: hsl(31 49% 64%);
+  --chart-6: hsl(45 62% 58%);
+  --chart-7: hsl(31 24% 33%);
+  --chart-8: hsl(40 67% 87%);
+  --chart-9: hsl(40 30% 72%);
 
   /* Asset-class accents — Feroz Step 8 ("every asset class a different
    * colored graph"). Curated from Flexoki's named hue set so each class
@@ -655,16 +661,19 @@
   --flexoki-gr: 72 46% 41%;
   --flexoki-ye: 45 82% 45%;
 
-  /* Dark chart palette (full hsl colors) */
-  --chart-1: hsl(25 92% 72%);
-  --chart-2: hsl(24 81% 61%);
-  --chart-3: hsl(23 70% 51%);
-  --chart-4: hsl(23 73% 46%);
-  --chart-5: hsl(22 80% 41%);
-  --chart-6: hsl(22 82% 34%);
-  --chart-7: hsl(22 79% 25%);
-  --chart-8: hsl(22 75% 20%);
-  --chart-9: hsl(22 70% 15%);
+  /* Dark chart palette — Mizan gold ladder, lifted for legibility on
+   * the dark paper background. Slot 1 is the cream / brightest stop so
+   * the largest segment leads with the highest luminance against the
+   * charcoal background; later slots descend the ladder. */
+  --chart-1: hsl(40 67% 87%);
+  --chart-2: hsl(31 49% 64%);
+  --chart-3: hsl(45 62% 58%);
+  --chart-4: hsl(31 42% 52%);
+  --chart-5: hsl(31 38% 46%);
+  --chart-6: hsl(31 32% 41%);
+  --chart-7: hsl(31 28% 36%);
+  --chart-8: hsl(31 24% 33%);
+  --chart-9: hsl(40 30% 72%);
 
   /* Asset-class accents — Flexoki 400 weights, lifted for legibility on
    * the dark paper background. Precious Metals uses the lighter brand
