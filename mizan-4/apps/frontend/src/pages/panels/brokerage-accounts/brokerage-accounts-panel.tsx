@@ -1,27 +1,19 @@
 /**
  * Brokerage Accounts panel — Track B PR-B8 / Goal v3 §V Phase 5.
  *
- * Composition mirrors PR-B3 (Bank & Cash) — both panels line up
- * *accounts* rather than individual positions:
- *   - Header: total brokerage NAV + accounts count
- *   - Donut by broker (Schwab / Wahed / Saxo / SnapTrade-linked)
- *   - Accounts list (tap → account detail) showing NAV + position
- *     count + broker label + account-local currency chip
- *
- * Distinct from PR-B2 Equities which slices the *positions*. Both
- * read from the same holdings table — no double-spending of NAV.
- *
- * The SnapTrade sync-status badge ships separately as PR-B8.a once
- * the `BrokerSyncState` is threaded into the accounts query.
- *
- * Track UI PR-UI-4 — uses the shared AssetClassPanelLayout so the
- * page chrome matches every other panel detail view per Spec §6.
+ * Composed from the shared world-class panel primitives. The "holdings
+ * list" surface is replaced with an Accounts list because the panel's
+ * unit of navigation is the account, not an individual holding.
  */
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { AssetClassPanelLayout } from "@/components/panels/asset-class-panel-layout";
-import { Donut } from "@/components/charts";
+import {
+  AllocationDonutCard,
+  PanelHero,
+  PanelShell,
+  rowsToCategories,
+} from "@/components/panels/panel-shared";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
@@ -33,6 +25,7 @@ import {
   rollupByAccount,
   rollupByBroker,
   totalBrokerageNav,
+  type BrokerageAccountRow,
 } from "./rollup";
 
 export default function BrokerageAccountsPanelPage() {
@@ -58,75 +51,108 @@ export default function BrokerageAccountsPanelPage() {
     () => totalBrokerageNav(allHoldings ?? [], accounts ?? []),
     [allHoldings, accounts],
   );
+  const brokerCategories = useMemo(
+    () =>
+      rowsToCategories(
+        brokerRows.map((r) => ({ label: r.broker, value: r.totalValueBase })),
+      ),
+    [brokerRows],
+  );
 
-  const summary =
-    accountRows.length === 0 && !isLoading
-      ? "No brokerage accounts yet."
-      : `Total brokerage ${formatAmount(totalNav, baseCurrency)} across ${accountRows.length} ${accountRows.length === 1 ? "account" : "accounts"}.`;
-
-  const chart =
-    accountRows.length > 0 ? (
-      <section
-        aria-label="Brokerage NAV by broker"
-        className="bg-card rounded-2xl border p-4"
-      >
-        <div className="mb-3 text-sm font-medium">By broker</div>
-        <div className="h-64">
-          <Donut
-            data={brokerRows.map((r) => ({
-              label: r.broker,
-              value: r.totalValueBase,
-            }))}
-            ariaLabel="Brokerage NAV by broker"
-            palette="categorical"
-          />
-        </div>
-      </section>
-    ) : null;
-
-  const list =
-    accountRows.length > 0 ? (
-      <section
-        aria-label="Brokerage accounts list"
-        className="bg-card rounded-2xl border"
-      >
-        <header className="border-b px-4 py-3">
-          <h2 className="text-sm font-medium">Accounts</h2>
-        </header>
-        <ul role="list" className="divide-y">
-          {accountRows.map((row) => (
-            <li
-              key={row.accountId}
-              className="hover:bg-muted/40 flex items-center justify-between px-4 py-3 transition-colors"
-            >
-              <button
-                type="button"
-                onClick={() => navigate(`/accounts/${row.accountId}`)}
-                className="text-foreground flex-1 text-left text-sm font-medium"
-              >
-                <div>{row.accountName}</div>
-                <div className="text-muted-foreground text-xs">
-                  {row.broker} · {row.positionCount}{" "}
-                  {row.positionCount === 1 ? "position" : "positions"} ·{" "}
-                  {row.currency}
-                </div>
-              </button>
-              <div className="text-foreground text-sm font-semibold tabular-nums">
-                {formatAmount(row.totalValueBase, baseCurrency)}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-    ) : null;
+  const empty = accountRows.length === 0 && !isLoading;
 
   return (
-    <AssetClassPanelLayout
-      title="Brokerage Accounts"
-      IconComponent={Icons.Briefcase}
-      summary={summary}
-      chart={chart}
-      list={list}
-    />
+    <PanelShell>
+      <PanelHero
+        icon={Icons.Briefcase}
+        label="Brokerage"
+        value={totalNav}
+        baseCurrency={baseCurrency}
+        meta={
+          empty
+            ? "No brokerage accounts connected yet."
+            : `${accountRows.length} ${accountRows.length === 1 ? "account" : "accounts"}${brokerRows.length > 0 ? ` · ${brokerRows.length} ${brokerRows.length === 1 ? "broker" : "brokers"}` : ""}`
+        }
+        empty={empty}
+      />
+
+      {empty ? null : (
+        <>
+          <AllocationDonutCard
+            title="By broker"
+            categories={brokerCategories}
+            baseCurrency={baseCurrency}
+            emptyMessage="No broker classification yet."
+          />
+          <section
+            aria-label="Brokerage accounts"
+            className="bg-card overflow-hidden rounded-2xl border"
+          >
+            <header className="flex items-center justify-between border-b px-5 py-4">
+              <h2 className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
+                Accounts
+              </h2>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {accountRows.length} {accountRows.length === 1 ? "row" : "rows"}
+              </span>
+            </header>
+            <ul role="list" className="divide-border divide-y">
+              {accountRows.map((row) => (
+                <AccountRow
+                  key={row.accountId}
+                  row={row}
+                  baseCurrency={baseCurrency}
+                  totalNav={totalNav}
+                  onSelect={() => navigate(`/accounts/${row.accountId}`)}
+                />
+              ))}
+            </ul>
+          </section>
+        </>
+      )}
+    </PanelShell>
+  );
+}
+
+function AccountRow({
+  row,
+  baseCurrency,
+  totalNav,
+  onSelect,
+}: {
+  row: BrokerageAccountRow;
+  baseCurrency: string;
+  totalNav: number;
+  onSelect: () => void;
+}) {
+  const weight = totalNav > 0 ? (row.totalValueBase / totalNav) * 100 : 0;
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        className="hover:bg-muted/40 focus-visible:bg-muted/40 group flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors focus:outline-none"
+      >
+        <span className="bg-muted/60 text-foreground/80 grid h-9 w-12 shrink-0 place-items-center rounded-md text-[10px] font-semibold tracking-tight">
+          {row.broker.slice(0, 5).toUpperCase()}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="text-foreground block truncate text-[13px] font-medium">
+            {row.accountName}
+          </span>
+          <span className="text-muted-foreground text-[11px] tabular-nums">
+            {row.broker} · {row.positionCount}{" "}
+            {row.positionCount === 1 ? "position" : "positions"} · {weight.toFixed(1)}% of brokerage
+          </span>
+        </span>
+        <span className="text-foreground shrink-0 text-right text-[14px] font-semibold tabular-nums">
+          {formatAmount(row.totalValueBase, baseCurrency)}
+        </span>
+        <Icons.ChevronRight
+          className="text-muted-foreground/40 group-hover:text-muted-foreground h-4 w-4 shrink-0 transition-colors"
+          aria-hidden="true"
+        />
+      </button>
+    </li>
   );
 }
