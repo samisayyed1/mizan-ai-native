@@ -17,18 +17,20 @@ import { listNotifications } from "@/adapters";
 import { QueryKeys } from "@/lib/query-keys";
 
 /**
- * Dashboard composition per ADR 0018 / 0018b (Dashboard Information Architecture).
+ * Dashboard composition per ADR 0018 / 0018b·v2 (Dashboard IA).
  *
- * Top-to-bottom order on the main column (per ADR 0018b mental-flow
- * spec — *ask → total → where it sits → how it's performing → what to act on*):
+ * Top-to-bottom order on the main column:
  *   (a) AI command bar — pinned, full-width, persistent input
  *   (b) Net Worth strip — single big number + toggleable deltas + sparkline
- *   (c) Asset class panel grid — 12 panels in fixed order from taxonomy.ts
- *   (d) Heatmap — every holding as a tile sized by USD value, colored by perf
- *   (e) Today's Signal card — highest-signal AI insight for today
+ *   (c) Heatmap — every holding as a tile sized by USD value, colored by perf
+ *   (d) Asset class panel grid — 12 panels in fixed order from taxonomy.ts
  *
- * Right sidebar (lg+ only), top to bottom (ADR 0018b — time-sensitivity
- * descends): News → Zakat → Portfolio Health → Goals.
+ * Right sidebar (lg+ only), top to bottom (time-sensitivity descends):
+ *   1. News
+ *   2. Today's Signal / Heads Up
+ *   3. Zakat
+ *   4. Portfolio Health
+ *   5. Goals
  *
  * What this composition deliberately removes vs the prior shipped layout:
  * - TickerConveyor (was at the very top — too noisy, distracts from totals)
@@ -102,43 +104,41 @@ export function DashboardContent() {
               defaultWindow="30d"
             />
 
-            {/* ADR 0018b (c) — Asset class panel grid.
-                Twelve panels in fixed order from
-                `@/components/asset-class-panels/taxonomy.ts`. Tiles
-                surface BEFORE the heatmap so the user's eye scans
-                "where is my money?" right after the headline number,
-                then drops into the heatmap reward. */}
-            <AssetClassPanelGrid
-              holdings={allHoldings ?? []}
-              baseCurrency={baseCurrency}
-            />
-
-            {/* ADR 0018b (d) — Heatmap.
+            {/* ADR 0018b·v2 (c) — Heatmap.
                 Every holding as a treemap tile, sized by USD value,
-                colored by 24h performance. Now lives BELOW the tile
-                grid as the visual reward / scroll-anchor. */}
+                colored by 24h performance. Sits ABOVE the asset class
+                grid: the heatmap is the "big picture" beat (where the
+                money lives + how it moved), the tiles below are the
+                taxonomy / navigation layer the user drills into. */}
             <HoldingsHeatmap
               holdings={allHoldings ?? []}
               isLoading={isHoldingsLoading}
               baseCurrency={baseCurrency}
             />
 
-            {/* ADR 0018 (e) — Today's Signal card.
-                One card, highest-severity unread from today's
-                deterministic insights output. Severity-themed chrome;
-                deep-link tap → route, no-link tap → expand reasoning. */}
-            <TodaysSignalCard
-              notifications={notificationsPage?.items}
-              isLoading={isNotificationsLoading}
+            {/* ADR 0018b·v2 (d) — Asset class panel grid.
+                Twelve panels in fixed order from
+                `@/components/asset-class-panels/taxonomy.ts`. Tiles
+                serve as the navigation layer; tap any → /panels/{id}. */}
+            <AssetClassPanelGrid
+              holdings={allHoldings ?? []}
+              baseCurrency={baseCurrency}
             />
+
+            {/* NOTE: Today's Signal card (Heads Up) moved out of the
+                main column into the right sidebar (between News and
+                Zakat) per founder spec — actionable signals live
+                alongside the other time-sensitive surfaces, not as a
+                trailing main-column afterthought. */}
           </div>
 
-          {/* Right sidebar (lg+) — ADR 0018b composition.
+          {/* Right sidebar (lg+) — ADR 0018b·v2 composition.
               Order is descending time-sensitivity:
-                1. News    — daily-fresh, pulls the eye to the column
-                2. Zakat   — Mizan's unique value, daily reminder
-                3. Health  — actionable insight
-                4. Goals   — monthly/yearly checkpoints, fine at bottom
+                1. News      — daily-fresh, pulls the eye to the column
+                2. Heads Up  — today's highest-severity actionable signal
+                3. Zakat     — Mizan's unique value, daily reminder
+                4. Health    — running portfolio insight
+                5. Goals     — monthly/yearly checkpoints, fine at bottom
 
               No section header — the sidebar IS today by implication.
               On narrow viewports (<lg) it reflows inline below the
@@ -148,6 +148,10 @@ export function DashboardContent() {
             className="space-y-3 lg:col-span-1 lg:sticky lg:top-4 lg:self-start"
           >
             <NewsHomeWidget />
+            <TodaysSignalCard
+              notifications={notificationsPage?.items}
+              isLoading={isNotificationsLoading}
+            />
             <ZakatCard />
             <PortfolioHealthCard />
             <SavingGoals />
