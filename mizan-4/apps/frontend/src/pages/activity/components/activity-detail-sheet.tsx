@@ -108,8 +108,14 @@ export function ActivityDetailSheet({ activity, open, onOpenChange }: ActivityDe
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader className="pb-4">
           <SheetTitle className="flex items-center gap-3">
-            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-full">
-              <Icons.Receipt className="text-primary h-5 w-5" />
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-full"
+              style={{ backgroundColor: "hsl(31 49% 64% / 0.18)" }}
+            >
+              <Icons.Receipt
+                className="h-5 w-5"
+                style={{ color: "hsl(31 38% 46%)" }}
+              />
             </div>
             <div className="flex flex-col items-start">
               <span>Activity Details</span>
@@ -124,7 +130,14 @@ export function ActivityDetailSheet({ activity, open, onOpenChange }: ActivityDe
 
         <div className="space-y-6 pb-6 md:pb-8">
           {/* Header Summary */}
-          <div className="from-primary/5 to-primary/10 rounded-xl border bg-gradient-to-br p-4">
+          <div
+            className="rounded-xl border bg-gradient-to-br p-4"
+            style={{
+              backgroundImage:
+                "linear-gradient(to bottom right, hsl(40 67% 87% / 0.20), hsl(31 49% 64% / 0.18))",
+              borderColor: "hsl(31 49% 64% / 0.30)",
+            }}
+          >
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-muted-foreground mb-1 text-xs uppercase tracking-wide">

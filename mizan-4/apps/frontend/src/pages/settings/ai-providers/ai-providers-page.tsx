@@ -77,7 +77,7 @@ export default function AiProvidersPage() {
           text="Mizan handles AI for you. Power users can plug in their own provider below."
         />
         <Separator />
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-hidden rounded-2xl border bg-card">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
               <Skeleton className="h-9 w-9 rounded-lg" />
@@ -149,7 +149,7 @@ export default function AiProvidersPage() {
           expanding. */}
       {sortedProviders.length > 0 && (
         <AdvancedProvidersDisclosure providers={sortedProviders}>
-          <div className="overflow-hidden rounded-lg border">
+          <div className="overflow-hidden rounded-2xl border bg-card">
             {sortedProviders.map((provider, index, arr) => (
               <ProviderSettingsCardWrapper
                 key={provider.id}

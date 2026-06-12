@@ -568,24 +568,38 @@ export const AssetProfilePage = () => {
                     </>
                   ) : categoryBadges.length > 0 ? (
                     <>
-                      {categoryBadges.map((badge) => (
-                        <Badge
-                          key={badge.id}
-                          variant="secondary"
-                          className="gap-1.5"
-                          style={{
-                            backgroundColor: `${badge.categoryColor}20`,
-                            color: badge.categoryColor,
-                            borderColor: badge.categoryColor,
-                          }}
-                        >
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: badge.categoryColor }}
-                          />
-                          {badge.categoryName}
-                        </Badge>
-                      ))}
+                      {categoryBadges.map((badge, i) => {
+                        // Repaint the per-category taxonomy colours onto
+                        // the Mizan gold ladder so the badges read as
+                        // one palette instead of a server-driven mosaic.
+                        const stops = [
+                          "hsl(31 28% 36%)",
+                          "hsl(31 32% 41%)",
+                          "hsl(31 38% 46%)",
+                          "hsl(31 42% 52%)",
+                          "hsl(31 49% 64%)",
+                          "hsl(45 62% 58%)",
+                        ];
+                        const tone = stops[i % stops.length];
+                        return (
+                          <Badge
+                            key={badge.id}
+                            variant="secondary"
+                            className="gap-1.5"
+                            style={{
+                              backgroundColor: `${tone}1f`,
+                              color: tone,
+                              borderColor: `${tone}80`,
+                            }}
+                          >
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: tone }}
+                            />
+                            {badge.categoryName}
+                          </Badge>
+                        );
+                      })}
                       <Button
                         variant="ghost"
                         size="sm"

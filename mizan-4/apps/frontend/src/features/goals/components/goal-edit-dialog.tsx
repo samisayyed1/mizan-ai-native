@@ -160,6 +160,13 @@ export function GoalEditDialog({ goal, open, onClose }: Props) {
                   const selected = lifecycle === option.value;
                   const Icon = option.icon;
 
+                  const accentColor =
+                    option.value === "achieved"
+                      ? "hsl(31 28% 36%)"
+                      : option.value === "active"
+                        ? "hsl(31 42% 52%)"
+                        : undefined;
+
                   return (
                     <button
                       key={option.value}
@@ -169,18 +176,21 @@ export function GoalEditDialog({ goal, open, onClose }: Props) {
                       className={cn(
                         "rounded-xl border p-4 text-left transition-colors",
                         "focus-visible:ring-ring focus:outline-none focus-visible:ring-2",
-                        selected
-                          ? "border-primary bg-primary/5"
-                          : "border-border/70 bg-card hover:bg-accent",
+                        !selected && "border-border/70 bg-card hover:bg-accent",
                       )}
+                      style={
+                        selected
+                          ? {
+                              borderColor: "hsl(31 42% 52% / 0.55)",
+                              backgroundColor: "hsl(31 49% 64% / 0.10)",
+                            }
+                          : undefined
+                      }
                     >
                       <span className="mb-3 flex items-center gap-2">
                         <span
-                          className={cn(
-                            "bg-muted inline-flex h-8 w-8 items-center justify-center rounded-full",
-                            option.value === "achieved" && "text-success",
-                            option.value === "active" && "text-primary",
-                          )}
+                          className="bg-muted inline-flex h-8 w-8 items-center justify-center rounded-full"
+                          style={accentColor ? { color: accentColor } : undefined}
                         >
                           <Icon className="h-4 w-4" />
                         </span>
