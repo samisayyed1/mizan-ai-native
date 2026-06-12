@@ -24,11 +24,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@mizan/ui/components/ui/popover";
-import { ScrollArea } from "@mizan/ui/components/ui/scroll-area";
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@mizan/ui/components/ui/sheet";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -192,8 +191,8 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
   const items = pageQuery.data?.items ?? [];
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
         <Button
           type="button"
           variant="ghost"
@@ -225,24 +224,23 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
             </span>
           )}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        side="right"
-        sideOffset={16}
-        // Flex column with a fixed max height — the header is fixed,
-        // the row list takes the remaining height and scrolls. This
-        // guarantees the popover never grows taller than the viewport
-        // and the list is always scrollable when content overflows.
-        // shadow-2xl + a tighter border = a popover that floats above
-        // the dashboard cleanly instead of crashing into it.
-        className="flex w-[26rem] max-h-[min(640px,calc(100vh-6rem))] flex-col overflow-hidden rounded-2xl border-border/70 p-0 shadow-2xl"
+      </SheetTrigger>
+      {/* Full-height side sheet — slides in from the left next to the
+          app sidebar. Native viewport height means scroll always works,
+          and a real dim overlay sits behind it so the user feels the
+          chrome rather than fighting a floating popover. */}
+      <SheetContent
+        side="left"
+        showCloseButton={false}
+        className="flex w-[420px] max-w-[92vw] flex-col gap-0 border-r-border/70 p-0 sm:max-w-[420px]"
       >
-        <div className="bg-card flex shrink-0 items-center justify-between border-b px-4 py-3.5">
+        {/* Header — title + unread chip + actions. Sits flush at top
+            and never scrolls. */}
+        <header className="bg-card flex shrink-0 items-center justify-between gap-3 border-b px-5 py-4">
           <div className="flex items-center gap-2">
-            <h3 className="text-[15px] font-semibold tracking-tight">
+            <h2 className="text-[15px] font-semibold tracking-tight">
               Notifications
-            </h3>
+            </h2>
             {unread > 0 && (
               <span
                 className="bg-muted text-foreground/80 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none tabular-nums"
@@ -252,32 +250,45 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
               </span>
             )}
           </div>
-          {unread > 0 ? (
+          <div className="flex items-center gap-1">
+            {unread > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground h-8 text-xs"
+                onClick={() => markAllMutation.mutate()}
+                disabled={markAllMutation.isPending}
+              >
+                {markAllMutation.isPending ? "Marking…" : "Mark all read"}
+              </Button>
+            ) : (
+              <span className="text-muted-foreground mr-1 text-xs">
+                All caught up
+              </span>
+            )}
             <Button
+              type="button"
               variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-foreground h-7 text-xs"
-              onClick={() => markAllMutation.mutate()}
-              disabled={markAllMutation.isPending}
+              size="icon"
+              onClick={() => setOpen(false)}
+              aria-label="Close notifications"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-8 w-8 rounded-full"
             >
-              {markAllMutation.isPending ? "Marking…" : "Mark all read"}
+              <Icons.X className="h-4 w-4" />
             </Button>
-          ) : (
-            <span className="text-muted-foreground text-xs">All caught up</span>
-          )}
-        </div>
-        {/* min-h-0 is the magic — without it a flex child won't shrink
-            below its content size, and the scroll area never engages. */}
-        <ScrollArea className="min-h-0 flex-1">
+          </div>
+        </header>
+
+        {/* Scrollable body — native `overflow-y-auto`. The flex parent
+            (`SheetContent`) has `inset-y-0` so this child gets a real
+            viewport-height anchor, and `min-h-0 flex-1` lets it shrink
+            past its content size — without that, flex children refuse
+            to overflow + scroll. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="divide-border divide-y">
             {pageQuery.isLoading ? (
               <PanelSkeleton />
             ) : pageQuery.error ? (
-              // Explicit error UI — silently falling back to EmptyState
-              // hides a real failure behind "You're all caught up", which
-              // is confusing when the badge says e.g. 23 unread. The
-              // user needs to know the panel couldn't load and have a
-              // retry path.
               <ErrorState
                 error={pageQuery.error}
                 onRetry={() => void pageQuery.refetch()}
@@ -296,9 +307,9 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
               ))
             )}
           </div>
-        </ScrollArea>
-      </PopoverContent>
-    </Popover>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
