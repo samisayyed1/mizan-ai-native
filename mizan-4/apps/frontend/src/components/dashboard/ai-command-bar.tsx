@@ -44,6 +44,14 @@ export interface AiCommandBarProps {
   initialValue?: string;
   /** Hidden from screen readers when the page already has an h1 for the bar. */
   ariaLabel?: string;
+  /**
+   * When `true`, the bar pins to the top of its scroll container via
+   * `sticky top-0 z-30`. Use only for the canonical full-width hero
+   * placement. The sidebar variant (ADR 0018b·v3) sets this `false`
+   * because the sidebar is already sticky and double-stick reads as
+   * jitter inside a narrow column.
+   */
+  pinned?: boolean;
 }
 
 /**
@@ -63,6 +71,7 @@ export function AiCommandBar({
   placeholder = "Ask Mizan anything — Zakat, net worth, holdings, plans…",
   initialValue = "",
   ariaLabel = "Ask Mizan",
+  pinned = true,
 }: AiCommandBarProps) {
   const [value, setValue] = useState(initialValue);
   const navigate = useNavigate();
@@ -93,7 +102,7 @@ export function AiCommandBar({
   return (
     <section
       aria-label={ariaLabel}
-      className="bg-card sticky top-0 z-30 flex flex-col gap-1.5 rounded-xl border px-3 py-2 shadow-sm"
+      className={`bg-card flex flex-col gap-1.5 rounded-xl border px-3 py-2 shadow-sm ${pinned ? "sticky top-0 z-30" : ""}`}
       data-testid="ai-command-bar"
     >
       <form onSubmit={handleSubmit} className="flex items-center gap-2">

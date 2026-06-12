@@ -17,20 +17,22 @@ import { listNotifications } from "@/adapters";
 import { QueryKeys } from "@/lib/query-keys";
 
 /**
- * Dashboard composition per ADR 0018 / 0018b·v2 (Dashboard IA).
+ * Dashboard composition per ADR 0018 / 0018b·v3 (Dashboard IA).
  *
- * Top-to-bottom order on the main column:
- *   (a) AI command bar — pinned, full-width, persistent input
- *   (b) Net Worth strip — single big number + toggleable deltas + sparkline
- *   (c) Heatmap — every holding as a tile sized by USD value, colored by perf
- *   (d) Asset class panel grid — 12 panels in fixed order from taxonomy.ts
+ * Top-to-bottom order on the main column (data-first, no AI input on the
+ * hero — the number is what the eye should land on, the AI sits with the
+ * other today-context surfaces in the sidebar):
+ *   (a) Net Worth strip — single big number + toggleable deltas + sparkline
+ *   (b) Heatmap — every holding as a tile sized by USD value, colored by perf
+ *   (c) Asset class panel grid — 12 panels in fixed order from taxonomy.ts
  *
  * Right sidebar (lg+ only), top to bottom (time-sensitivity descends):
  *   1. News
  *   2. Today's Signal / Heads Up
- *   3. Zakat
- *   4. Portfolio Health
- *   5. Goals
+ *   3. Ask Mizan (AI command bar)
+ *   4. Zakat
+ *   5. Portfolio Health
+ *   6. Goals
  *
  * What this composition deliberately removes vs the prior shipped layout:
  * - TickerConveyor (was at the very top — too noisy, distracts from totals)
@@ -88,15 +90,12 @@ export function DashboardContent() {
       <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-4 md:px-6 md:pb-6 md:pt-6 lg:px-8 lg:pb-8 lg:pt-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-6">
           <div className="space-y-4 lg:col-span-2">
-            {/* ADR 0018 (a) — AI Command Bar.
-                Pinned full-width input. Submit → /assistant with the
-                prompt pre-seeded. Voice button routes to dictation. */}
-            <AiCommandBar />
-
-            {/* ADR 0018 (b) — Net Worth strip.
+            {/* ADR 0018b·v3 (a) — Net Worth strip.
                 Single large number in base currency, toggleable deltas
                 (24h / 7d / 30d / YTD / All) as chips, sparkline below.
-                Tap → /net-worth detail page. */}
+                Now the hero of the main column — the AI command bar
+                moved to the sidebar so the dashboard opens on data,
+                not an input field. Tap → /net-worth detail page. */}
             <NetWorthStrip
               history={valuationHistory}
               baseCurrency={baseCurrency}
@@ -132,13 +131,15 @@ export function DashboardContent() {
                 trailing main-column afterthought. */}
           </div>
 
-          {/* Right sidebar (lg+) — ADR 0018b·v2 composition.
-              Order is descending time-sensitivity:
-                1. News      — daily-fresh, pulls the eye to the column
-                2. Heads Up  — today's highest-severity actionable signal
-                3. Zakat     — Mizan's unique value, daily reminder
-                4. Health    — running portfolio insight
-                5. Goals     — monthly/yearly checkpoints, fine at bottom
+          {/* Right sidebar (lg+) — ADR 0018b·v3 composition.
+              Order is descending time-sensitivity / action-ability:
+                1. News        — daily-fresh, pulls the eye to the column
+                2. Heads Up    — today's highest-severity actionable signal
+                3. Ask Mizan   — AI command bar (sits with the other today
+                                 surfaces — query is a today action)
+                4. Zakat       — Mizan's unique value, daily reminder
+                5. Health      — running portfolio insight
+                6. Goals       — monthly/yearly checkpoints, fine at bottom
 
               No section header — the sidebar IS today by implication.
               On narrow viewports (<lg) it reflows inline below the
@@ -152,6 +153,9 @@ export function DashboardContent() {
               notifications={notificationsPage?.items}
               isLoading={isNotificationsLoading}
             />
+            {/* AI command bar — non-pinned (sidebar is already sticky),
+                shorter placeholder for the narrower column. */}
+            <AiCommandBar pinned={false} placeholder="Ask Mizan…" />
             <ZakatCard />
             <PortfolioHealthCard />
             <SavingGoals />
