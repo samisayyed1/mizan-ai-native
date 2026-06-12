@@ -1,5 +1,6 @@
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useHoldings } from "@/hooks/use-holdings";
+import { usePortfolioAllocations } from "@/hooks/use-portfolio-allocations";
 import { useValuationHistory } from "@/hooks/use-valuation-history";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -66,6 +67,13 @@ export function DashboardContent() {
   // the full extent; the strip computes window deltas client-side.
   const { valuationHistory, isLoading: isHistoryLoading } = useValuationHistory(undefined);
 
+  // Asset-class allocations power the donut nested inside the Net Worth
+  // strip (ADR 0018b·v4). One cached query keyed by account id; the
+  // strip ignores undefined gracefully so the donut just won't render
+  // while it loads.
+  const { allocations, isLoading: isAllocationsLoading } =
+    usePortfolioAllocations(PORTFOLIO_ACCOUNT_ID);
+
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
 
@@ -101,6 +109,8 @@ export function DashboardContent() {
               baseCurrency={baseCurrency}
               isLoading={isHistoryLoading}
               defaultWindow="30d"
+              allocationCategories={allocations?.assetClasses.categories ?? null}
+              isAllocationLoading={isAllocationsLoading}
             />
 
             {/* ADR 0018b·v2 (c) — Heatmap.
