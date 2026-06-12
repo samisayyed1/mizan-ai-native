@@ -56,6 +56,8 @@ export function PanelHero({
   baseCurrency,
   meta,
   empty = false,
+  onAdd,
+  addLabel = "Add",
 }: {
   icon: typeof Icons.TrendingUp;
   label: string;
@@ -63,19 +65,41 @@ export function PanelHero({
   baseCurrency: string;
   meta: string;
   empty?: boolean;
+  /**
+   * When provided, a primary "+ Add" action renders top-right of the
+   * hero. Calling it should open the inline AddAssetDialog with a
+   * panel-specific prompt so the assistant lands on the right
+   * capability.
+   */
+  onAdd?: () => void;
+  /** Override the button label — defaults to "Add". */
+  addLabel?: string;
 }) {
   return (
-    <header className="space-y-2 pb-2">
-      <div className="text-muted-foreground flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
-        <Icon className="h-3.5 w-3.5" />
-        {label}
-      </div>
-      <div className="flex flex-col gap-1">
-        <div className="text-foreground font-serif text-3xl font-semibold tabular-nums md:text-4xl">
-          {empty ? "—" : formatAmount(value, baseCurrency)}
+    <header className="flex items-start justify-between gap-4 pb-2">
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="text-muted-foreground flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
+          <Icon className="h-3.5 w-3.5" />
+          {label}
         </div>
-        <p className="text-muted-foreground text-sm">{meta}</p>
+        <div className="flex flex-col gap-1">
+          <div className="text-foreground font-serif text-3xl font-semibold tabular-nums md:text-4xl">
+            {empty ? "—" : formatAmount(value, baseCurrency)}
+          </div>
+          <p className="text-muted-foreground text-sm">{meta}</p>
+        </div>
       </div>
+      {onAdd && (
+        <button
+          type="button"
+          onClick={onAdd}
+          aria-label={`${addLabel} ${label}`}
+          className="bg-foreground text-background hover:bg-foreground/90 focus-visible:ring-ring inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full pl-3 pr-4 text-[13px] font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+        >
+          <Icons.Plus className="h-4 w-4" />
+          {addLabel}
+        </button>
+      )}
     </header>
   );
 }

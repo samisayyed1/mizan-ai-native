@@ -15,6 +15,7 @@ import {
   PanelShell,
   rowsToCategories,
 } from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -32,6 +33,7 @@ export default function ProvidentFundsPanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("provident-funds");
 
   const pfHoldings = useMemo(
     () => (allHoldings ?? []).filter(isProvidentFundHolding),
@@ -77,6 +79,7 @@ export default function ProvidentFundsPanelPage() {
             ? "No provident-fund holdings yet."
             : `${pfHoldings.length} ${pfHoldings.length === 1 ? "position" : "positions"}${schemeRows.length > 0 ? ` · ${schemeRows.length} ${schemeRows.length === 1 ? "scheme" : "schemes"}` : ""}`
         }
+        onAdd={onAdd}
         empty={empty}
       />
 

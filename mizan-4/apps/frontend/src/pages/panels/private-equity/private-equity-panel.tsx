@@ -12,6 +12,7 @@ import {
   PanelHero,
   PanelShell,
 } from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -28,6 +29,7 @@ export default function PrivateEquityPanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("private-equity");
 
   const peHoldings = useMemo(
     () => (allHoldings ?? []).filter(isPrivateEquityHolding),
@@ -60,6 +62,7 @@ export default function PrivateEquityPanelPage() {
             ? "No PE positions yet."
             : `${peHoldings.length} ${peHoldings.length === 1 ? "position" : "positions"}${vintageRows.length > 0 ? ` · ${vintageRows.length} ${vintageRows.length === 1 ? "vintage" : "vintages"}` : ""}`
         }
+        onAdd={onAdd}
         empty={empty}
       />
 

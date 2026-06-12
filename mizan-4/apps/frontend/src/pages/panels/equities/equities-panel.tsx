@@ -18,6 +18,7 @@ import {
   PanelShell,
   rowsToCategories,
 } from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -35,6 +36,7 @@ export default function EquitiesPanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("equities");
 
   const equityHoldings = useMemo(
     () => (allHoldings ?? []).filter(isEquityHolding),
@@ -70,6 +72,7 @@ export default function EquitiesPanelPage() {
             ? "No equity holdings yet."
             : `${equityHoldings.length} ${equityHoldings.length === 1 ? "position" : "positions"}${regionRows.length > 0 ? ` · ${regionRows.length} ${regionRows.length === 1 ? "region" : "regions"}` : ""}`
         }
+        onAdd={onAdd}
         empty={empty}
       />
 

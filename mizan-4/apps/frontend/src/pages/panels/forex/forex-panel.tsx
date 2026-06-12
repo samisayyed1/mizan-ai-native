@@ -13,6 +13,7 @@ import {
   PanelShell,
   rowsToCategories,
 } from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -29,6 +30,7 @@ export default function ForexPanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("forex");
 
   const fxHoldings = useMemo(
     () => (allHoldings ?? []).filter(isFxHolding),
@@ -63,6 +65,7 @@ export default function ForexPanelPage() {
             ? "No FX positions yet."
             : `${fxHoldings.length} ${fxHoldings.length === 1 ? "position" : "positions"}${longLegCategories.length > 0 ? ` · ${longLegCategories.length} long ${longLegCategories.length === 1 ? "currency" : "currencies"}` : ""}`
         }
+        onAdd={onAdd}
         empty={empty}
       />
 

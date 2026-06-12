@@ -13,6 +13,7 @@ import {
   PanelShell,
   rowsToCategories,
 } from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -29,6 +30,7 @@ export default function InsurancePanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("insurance");
 
   const insuranceHoldings = useMemo(
     () => (allHoldings ?? []).filter(isInsuranceHolding),
@@ -64,6 +66,7 @@ export default function InsurancePanelPage() {
             ? "No insurance policies yet."
             : `${insuranceHoldings.length} ${insuranceHoldings.length === 1 ? "policy" : "policies"}${categoryRows.length > 0 ? ` · ${categoryRows.length} ${categoryRows.length === 1 ? "category" : "categories"}` : ""}`
         }
+        onAdd={onAdd}
         empty={empty}
       />
 

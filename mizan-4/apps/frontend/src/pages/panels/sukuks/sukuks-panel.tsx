@@ -17,6 +17,7 @@ import {
   PanelShell,
   rowsToCategories,
 } from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -34,6 +35,7 @@ export default function SukuksPanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("sukuks");
 
   const bondHoldings = useMemo(
     () => (allHoldings ?? []).filter(isBondHolding),
@@ -76,6 +78,7 @@ export default function SukuksPanelPage() {
             ? "No bond or sukuk holdings yet."
             : `${bondHoldings.length} ${bondHoldings.length === 1 ? "position" : "positions"}${issuerCategories.length > 0 ? ` · ${issuerCategories.length} ${issuerCategories.length === 1 ? "issuer" : "issuers"}` : ""}`
         }
+        onAdd={onAdd}
         empty={empty}
       />
 

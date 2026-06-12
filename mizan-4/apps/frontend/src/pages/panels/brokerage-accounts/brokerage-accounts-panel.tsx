@@ -14,6 +14,7 @@ import {
   PanelShell,
   rowsToCategories,
 } from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useAccounts } from "@/hooks/use-accounts";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
@@ -36,6 +37,7 @@ export default function BrokerageAccountsPanelPage() {
   const { accounts, isLoading: accountsLoading } = useAccounts();
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("brokerage");
 
   const isLoading = holdingsLoading || accountsLoading;
 
@@ -73,6 +75,7 @@ export default function BrokerageAccountsPanelPage() {
             ? "No brokerage accounts connected yet."
             : `${accountRows.length} ${accountRows.length === 1 ? "account" : "accounts"}${brokerRows.length > 0 ? ` · ${brokerRows.length} ${brokerRows.length === 1 ? "broker" : "brokers"}` : ""}`
         }
+        onAdd={onAdd}
         empty={empty}
       />
 

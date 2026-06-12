@@ -13,6 +13,7 @@ import {
   PanelShell,
   rowsToCategories,
 } from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
@@ -29,6 +30,7 @@ export default function CollectiblesPanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("collectibles");
 
   const collectibleHoldings = useMemo(
     () => (allHoldings ?? []).filter(isCollectibleHolding),
@@ -63,6 +65,7 @@ export default function CollectiblesPanelPage() {
             ? "No collectibles yet."
             : `${collectibleHoldings.length} ${collectibleHoldings.length === 1 ? "item" : "items"}`
         }
+        onAdd={onAdd}
         empty={empty}
       />
 
