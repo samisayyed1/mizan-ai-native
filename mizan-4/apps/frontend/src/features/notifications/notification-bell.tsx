@@ -284,23 +284,43 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
 
 // Semantic palette mapping. Where Flexoki has a named token (success /
 // destructive / warning), we use it so dark + light mode flip cleanly
-// without explicit dark: variants. The two kinds without a semantic
-// match (allocation_drift, ai_digest) keep their Tailwind palettes but
-// pair light + dark variants so contrast is right in both themes.
+// without explicit dark: variants. Allocation drift + AI digest keep
+// neutral muted tones — they aren't success / warning / failure events.
+//
+// MUST cover every variant in `NotificationKind` (see
+// adapters/types-notifications.ts) — but `KindIcon` also falls back to
+// the muted palette at runtime so a backend-only addition can never
+// crash the bell again.
+const NEUTRAL_PALETTE = {
+  bg: "bg-muted",
+  fg: "text-muted-foreground",
+} as const;
+
 const KIND_PALETTE: Record<NotificationKind, { bg: string; fg: string }> = {
   big_move: { bg: "bg-warning/10", fg: "text-warning" },
-  allocation_drift: { bg: "bg-blue-500/10", fg: "text-blue-600 dark:text-blue-400" },
+  allocation_drift: NEUTRAL_PALETTE,
   goal_milestone: { bg: "bg-success/10", fg: "text-success" },
-  cash_drag: { bg: "bg-muted", fg: "text-muted-foreground" },
+  cash_drag: NEUTRAL_PALETTE,
   dividend_posted: { bg: "bg-success/10", fg: "text-success" },
   new_ath: { bg: "bg-success/10", fg: "text-success" },
   net_worth_dip: { bg: "bg-destructive/10", fg: "text-destructive" },
   sync_failure: { bg: "bg-warning/10", fg: "text-warning" },
-  ai_digest: { bg: "bg-violet-500/10", fg: "text-violet-600 dark:text-violet-400" },
+  ai_digest: NEUTRAL_PALETTE,
+  bond_maturity_approaching: { bg: "bg-warning/10", fg: "text-warning" },
+  fx_moved_materially: { bg: "bg-warning/10", fg: "text-warning" },
+  sharia_status_changed: { bg: "bg-warning/10", fg: "text-warning" },
+  // Zakat is Mizan's flagship signal — gold to honour it visually.
+  zakat_hawl_approaching: { bg: "bg-amber-500/10", fg: "text-amber-600 dark:text-amber-400" },
+  concentration_risk: { bg: "bg-warning/10", fg: "text-warning" },
+  cash_drag_opportunity: { bg: "bg-success/10", fg: "text-success" },
+  tax_optimization_window: { bg: "bg-success/10", fg: "text-success" },
 };
 
 function KindIcon({ kind, severity }: { kind: NotificationKind; severity: NotificationSeverity }) {
-  const palette = KIND_PALETTE[kind];
+  // Defensive lookup: if the Rust crate emits a new variant before the
+  // TS union catches up, fall back to the neutral palette so the bell
+  // still renders gracefully instead of crashing the whole tree.
+  const palette = KIND_PALETTE[kind] ?? NEUTRAL_PALETTE;
   // Critical severity always uses the destructive palette to override
   // the per-kind colour — a critical sync failure should look critical.
   const useCritical = severity === "critical";
