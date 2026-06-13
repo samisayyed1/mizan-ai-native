@@ -37,3 +37,70 @@ pub enum AssetKind {
     /// Currency exchange rate (infrastructure, not holdable).
     Fx,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_is_investment() {
+        assert_eq!(AssetKind::default(), AssetKind::Investment);
+    }
+
+    #[test]
+    fn serde_uses_screaming_snake_case() {
+        // The wire format is contractual — the storage layer + the
+        // mizan-core compat shim both round-trip these values, so any
+        // accidental rename or case-style change here is a breaking
+        // change for stored Holdings rows. Test the strings exactly.
+        assert_eq!(
+            serde_json::to_string(&AssetKind::Investment).expect("ok"),
+            "\"INVESTMENT\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AssetKind::Property).expect("ok"),
+            "\"PROPERTY\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AssetKind::PreciousMetal).expect("ok"),
+            "\"PRECIOUS_METAL\""
+        );
+        assert_eq!(
+            serde_json::to_string(&AssetKind::PrivateEquity).expect("ok"),
+            "\"PRIVATE_EQUITY\""
+        );
+    }
+
+    #[test]
+    fn serde_roundtrips_every_variant() {
+        for kind in [
+            AssetKind::Investment,
+            AssetKind::Property,
+            AssetKind::Vehicle,
+            AssetKind::Collectible,
+            AssetKind::PreciousMetal,
+            AssetKind::PrivateEquity,
+            AssetKind::Liability,
+            AssetKind::Other,
+            AssetKind::Fx,
+        ] {
+            let json = serde_json::to_string(&kind).expect("encode");
+            let back: AssetKind = serde_json::from_str(&json).expect("decode");
+            assert_eq!(kind, back, "round-trip mismatch for {kind:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_string() {
+        let result: Result<AssetKind, _> = serde_json::from_str("\"WIDGETS\"");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn clone_and_eq_work() {
+        let a = AssetKind::PreciousMetal;
+        let b = a.clone();
+        assert_eq!(a, b);
+        assert_ne!(a, AssetKind::Investment);
+    }
+}

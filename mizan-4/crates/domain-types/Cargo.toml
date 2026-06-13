@@ -15,5 +15,12 @@ rust_decimal = { workspace = true, features = ["serde-with-str"] }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+# Test-only — keeps the leaf-crate discipline (per ADR 0003 this crate
+# has no runtime serialisation dependency; the contract tests verify
+# wire-format stability against the storage layer's serde format).
+serde_json = { workspace = true }
+rust_decimal_macros = { workspace = true }
+
 [lints]
 workspace = true

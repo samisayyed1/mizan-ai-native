@@ -34,3 +34,24 @@ pub enum DomainTypesError {
     #[error("invalid input: {0}")]
     InvalidInput(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_invalid_input_renders_via_display() {
+        let e = DomainTypesError::InvalidInput("malformed currency code".to_string());
+        assert_eq!(format!("{e}"), "invalid input: malformed currency code");
+    }
+
+    #[test]
+    fn re_exports_are_reachable() {
+        // Compile-time check that the public surface stays callable
+        // from outside the module. If a future refactor accidentally
+        // drops one of these re-exports, this fails to build.
+        let _kind: AssetKind = AssetKind::default();
+        let _ty: HoldingType = HoldingType::Cash;
+        let _ = std::mem::size_of::<HoldingsView>();
+    }
+}
