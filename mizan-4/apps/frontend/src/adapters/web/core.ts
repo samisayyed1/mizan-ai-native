@@ -373,11 +373,32 @@ export function fromBase64(value: string): Uint8Array {
 }
 
 /**
+ * Thrown by `invoke` on web when the requested Tauri command isn't
+ * routed to an HTTP endpoint here. Distinct error class so UI layers
+ * can pattern-match on `err instanceof WebUnavailableError` and
+ * render the "Available on Mizan Desktop" card instead of a generic
+ * red banner.
+ *
+ * Used for desktop-only feature surfaces (FIRE planner, sync crypto
+ * primitives, smart-CSV analysis, etc.) that intentionally have no
+ * cloud counterpart.
+ */
+export class WebUnavailableError extends Error {
+  readonly available = false as const;
+  constructor(public readonly command: string) {
+    super(
+      `${command} is available on Mizan Desktop. Download the desktop app for the full feature set.`,
+    );
+    this.name = "WebUnavailableError";
+  }
+}
+
+/**
  * Invoke a command via REST API (internal - use typed adapter functions instead)
  */
 export const invoke = async <T>(command: string, payload?: Record<string, unknown>): Promise<T> => {
   const config = COMMANDS[command];
-  if (!config) throw new Error(`Unsupported command ${command}`);
+  if (!config) throw new WebUnavailableError(command);
   let url = `${API_PREFIX}${config.path}`;
   let body: BodyInit | undefined;
 
