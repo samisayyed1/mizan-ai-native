@@ -18,6 +18,7 @@ use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::audit;
 use crate::auth::AuthenticatedUser;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -142,6 +143,22 @@ pub async fn create_invite(
     // actually delivered.
     let emailed = try_send_invite_email(&email, &redeem_url).await;
 
+    // Audit row carries the invitee's email DOMAIN only (no localpart) —
+    // enough to triage "where did this invite go" without persisting PII.
+    let invitee_domain = email.split('@').nth(1).unwrap_or("");
+    let _ = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("team.invite_created")
+            .user(user.id)
+            .data(&serde_json::json!({
+                "team_id": team_id.to_string(),
+                "invitee_domain": invitee_domain,
+                "role": role,
+                "emailed": emailed,
+            })),
+    )
+    .await;
+
     Ok(Json(InviteResponse {
         token,
         team_id,
@@ -260,6 +277,17 @@ pub async fn accept_invite(
     .map_err(AppError::from)?;
 
     tx.commit().await.map_err(AppError::from)?;
+
+    let _ = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("team.invite_accepted")
+            .user(user.id)
+            .data(&serde_json::json!({
+                "team_id": team_id.to_string(),
+                "role": role,
+            })),
+    )
+    .await;
 
     Ok(Json(AcceptInviteResponse {
         team_id,

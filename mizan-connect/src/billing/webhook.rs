@@ -12,6 +12,7 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::audit;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -50,6 +51,12 @@ pub async fn receive_webhook(
         tracing::info!(event_id = %envelope.id, "stripe webhook replay ignored");
         return Ok(StatusCode::OK);
     }
+
+    // Audit-log breadcrumbs accumulated while processing this event.
+    // Written AFTER tx.commit() so an audit write failure can never
+    // roll back a successful subscription mutation (the user-facing
+    // path comes first).
+    let mut audit_breadcrumbs: Vec<(String, Option<Uuid>, serde_json::Value)> = Vec::new();
 
     match envelope.event_type.as_str() {
         "customer.subscription.created"
@@ -103,6 +110,18 @@ pub async fn receive_webhook(
                 },
             )
             .await?;
+
+            audit_breadcrumbs.push((
+                format!("billing.{}", envelope.event_type.replace('.', "_")),
+                Some(user_id),
+                serde_json::json!({
+                    "stripe_subscription_id": sub.id,
+                    "stripe_customer_id_suffix": sub.customer.chars().rev().take(4).collect::<String>().chars().rev().collect::<String>(),
+                    "tier": tier,
+                    "status": status,
+                    "cancel_at_period_end": sub.cancel_at_period_end,
+                }),
+            ));
         }
 
         "invoice.paid" => {
@@ -112,6 +131,14 @@ pub async fn receive_webhook(
                 (invoice.subscription, ts(invoice.period_start))
             {
                 repository::reset_ai_credits(&mut tx, &sub_id, period_start).await?;
+                audit_breadcrumbs.push((
+                    "billing.invoice_paid".to_string(),
+                    None,
+                    serde_json::json!({
+                        "stripe_subscription_id": sub_id,
+                        "period_start": period_start.to_string(),
+                    }),
+                ));
             }
         }
 
@@ -139,6 +166,11 @@ pub async fn receive_webhook(
                     stripe_subscription_id = %sub_id,
                     "stripe webhook: invoice.payment_failed recorded"
                 );
+                audit_breadcrumbs.push((
+                    "billing.invoice_payment_failed".to_string(),
+                    None,
+                    serde_json::json!({ "stripe_subscription_id": sub_id }),
+                ));
             }
         }
 
@@ -175,6 +207,26 @@ pub async fn receive_webhook(
     }
 
     tx.commit().await?;
+
+    // Audit log writes happen AFTER the user-facing transaction commits.
+    // They're fire-and-forget — an audit write failure logs a warning
+    // but never unwinds a successfully-processed Stripe event. The
+    // audit gate requires *attempted* writes for every state mutation,
+    // not strict at-least-once delivery (those are separate concerns).
+    for (event_type, user_id, payload) in audit_breadcrumbs {
+        let mut event = audit::AuditEvent::new(&event_type).data(&payload);
+        if let Some(uid) = user_id {
+            event = event.user(uid);
+        }
+        if let Err(err) = audit::record_event(state.db(), event).await {
+            tracing::warn!(
+                error = %err,
+                event_type = %event_type,
+                "audit log write failed for stripe webhook event",
+            );
+        }
+    }
+
     Ok(StatusCode::OK)
 }
 

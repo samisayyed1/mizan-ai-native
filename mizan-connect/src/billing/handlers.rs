@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use crate::audit;
 use crate::auth::AuthenticatedUser;
 use crate::error::AppError;
 use crate::state::AppState;
@@ -91,6 +92,18 @@ pub async fn create_checkout_session(
         .await
         .map_err(stripe_to_app_error)?;
 
+    let _ = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("billing.checkout_session_created")
+            .user(user.id)
+            .data(&serde_json::json!({
+                "plan": req.plan,
+                "interval": req.interval,
+                "stripe_session_id": session.url.rsplit('/').next().unwrap_or(""),
+            })),
+    )
+    .await;
+
     Ok(Json(CheckoutResponse { url: session.url }))
 }
 
@@ -120,6 +133,12 @@ pub async fn create_portal_session(
         .create_billing_portal_session(&customer_id, &billing.return_url)
         .await
         .map_err(stripe_to_app_error)?;
+
+    let _ = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("billing.portal_session_created").user(user.id),
+    )
+    .await;
 
     Ok(Json(PortalResponse { url: session.url }))
 }
