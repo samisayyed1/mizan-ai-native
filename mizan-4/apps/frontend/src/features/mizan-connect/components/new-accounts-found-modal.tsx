@@ -184,7 +184,7 @@ export function NewAccountsFoundModal({
               {accounts.map((acc) => {
                 const setup = accountSetups[acc.id];
                 return (
-                  <div key={acc.id} className="space-y-4 rounded-lg border p-4">
+                  <div key={acc.id} className="bg-card space-y-4 rounded-2xl border p-5">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="font-medium">{acc.name}</p>
@@ -222,11 +222,15 @@ export function NewAccountsFoundModal({
                         className="grid grid-cols-2 gap-3"
                       >
                         <label
-                          className={`hover:bg-accent relative flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
+                          className="hover:bg-accent relative flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors"
+                          style={
                             setup?.trackingMode === "TRANSACTIONS"
-                              ? "border-primary bg-primary/5"
-                              : "border-muted"
-                          }`}
+                              ? {
+                                  borderColor: "hsl(31 42% 52% / 0.55)",
+                                  backgroundColor: "hsl(31 49% 64% / 0.10)",
+                                }
+                              : { borderColor: "hsl(var(--muted))" }
+                          }
                         >
                           <RadioGroupItem value="TRANSACTIONS" className="mt-0.5" />
                           <div className="flex flex-col">
@@ -237,11 +241,15 @@ export function NewAccountsFoundModal({
                           </div>
                         </label>
                         <label
-                          className={`hover:bg-accent relative flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
+                          className="hover:bg-accent relative flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors"
+                          style={
                             setup?.trackingMode === "HOLDINGS"
-                              ? "border-primary bg-primary/5"
-                              : "border-muted"
-                          }`}
+                              ? {
+                                  borderColor: "hsl(31 42% 52% / 0.55)",
+                                  backgroundColor: "hsl(31 49% 64% / 0.10)",
+                                }
+                              : { borderColor: "hsl(var(--muted))" }
+                          }
                         >
                           <RadioGroupItem value="HOLDINGS" className="mt-0.5" />
                           <div className="flex flex-col">

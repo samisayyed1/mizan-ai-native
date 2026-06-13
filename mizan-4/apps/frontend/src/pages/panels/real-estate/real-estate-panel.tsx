@@ -1,35 +1,27 @@
 /**
  * Real Estate panel — Track B PR-B11 / Goal v3 §V Phase 5.
  *
- * §23 reference user's real estate composition is the most
- * Zakat-narrative-rich panel: Bukit Batok primary residence (Not
- * Zakatable), 3 Hyderabad rentals (Zakatable on net rental income
- * through Hawl), 1 Hyderabad held-for-sale (Zakatable on market
- * value, AI-estimated against Dubai Land Department comparables).
- *
- * Composition mirrors PR-B1 / PR-B2 / PR-B3:
- *   - Header: total real estate + property count
- *   - Donut by intent (Residence / Rental / Land / Commercial)
- *   - Bar per property (one bar per holding)
- *   - Property list (tap-row → holding detail)
- *
- * Stacked equity-over-mortgage bar lands in PR-B11.a once the
- * mortgage-link wire ships.
+ * Composed from the shared world-class panel primitives.
  */
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Bar, Donut } from "@/components/charts";
+import {
+  AllocationDonutCard,
+  HoldingsCard,
+  PanelHero,
+  PanelShell,
+  rowsToCategories,
+} from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
-import { Button, Icons } from "@mizan/ui";
-import { formatAmount } from "@mizan/ui/lib/utils";
+import { Icons } from "@mizan/ui";
 
 import {
   isRealEstateHolding,
   rollupByIntent,
-  rollupByProperty,
   totalRealEstateExposure,
 } from "./rollup";
 
@@ -38,6 +30,7 @@ export default function RealEstatePanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("real-estate");
 
   const propertyHoldings = useMemo(
     () => (allHoldings ?? []).filter(isRealEstateHolding),
@@ -47,104 +40,55 @@ export default function RealEstatePanelPage() {
     () => totalRealEstateExposure(allHoldings ?? []),
     [allHoldings],
   );
-  const intentRows = useMemo(
-    () => rollupByIntent(allHoldings ?? []),
+  const intentCategories = useMemo(
+    () =>
+      rowsToCategories(
+        rollupByIntent(allHoldings ?? []).map((r) => ({
+          label: r.intent,
+          value: r.value,
+        })),
+      ),
     [allHoldings],
   );
-  const propertyRows = useMemo(
-    () => rollupByProperty(allHoldings ?? []),
-    [allHoldings],
-  );
+
+  const empty = propertyHoldings.length === 0 && !isLoading;
 
   return (
-    <div className="space-y-6 px-4 py-6 md:px-6 lg:px-10">
-      <header className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Icons.Home className="text-muted-foreground h-5 w-5" />
-          <h1 className="text-2xl font-semibold tracking-tight">Real Estate</h1>
-        </div>
-        <div className="text-muted-foreground text-sm">
-          {propertyHoldings.length === 0 && !isLoading
+    <PanelShell>
+      <PanelHero
+        icon={Icons.Home}
+        label="Real Estate"
+        value={totalExposure}
+        baseCurrency={baseCurrency}
+        meta={
+          empty
             ? "No real-estate holdings yet."
-            : `Total real estate ${formatAmount(totalExposure, baseCurrency)} across ${propertyHoldings.length} ${propertyHoldings.length === 1 ? "property" : "properties"}.`}
-        </div>
-      </header>
+            : `${propertyHoldings.length} ${propertyHoldings.length === 1 ? "property" : "properties"}`
+        }
+        onAdd={onAdd}
+        empty={empty}
+      />
 
-      {propertyHoldings.length > 0 && (
+      {empty ? null : (
         <>
-          <section
-            aria-label="Real estate by intent"
-            className="bg-card rounded-2xl border p-4"
-          >
-            <div className="mb-3 text-sm font-medium">By intent</div>
-            {intentRows.length === 0 ? (
-              <div className="text-muted-foreground py-12 text-center text-sm">
-                No intent classification on these properties — add a
-                property type (Residence / Rental / Land / Commercial)
-                in the property detail.
-              </div>
-            ) : (
-              <div className="h-64">
-                <Donut
-                  data={intentRows.map((r) => ({ label: r.intent, value: r.value }))}
-                  ariaLabel="Real estate allocation by intent"
-                  palette="categorical"
-                />
-              </div>
-            )}
-          </section>
-
-          <section
-            aria-label="Real estate per property"
-            className="bg-card rounded-2xl border p-4"
-          >
-            <div className="mb-3 text-sm font-medium">Per property</div>
-            <div className="h-64">
-              <Bar
-                data={propertyRows.map((r) => ({ label: r.label, value: r.value }))}
-                ariaLabel="Real estate market value per property"
-                palette="categorical"
-              />
-            </div>
-          </section>
-
-          <section
-            aria-label="Real estate holdings"
-            className="bg-card rounded-2xl border"
-          >
-            <header className="border-b px-4 py-3">
-              <h2 className="text-sm font-medium">Properties</h2>
-            </header>
-            <ul role="list" className="divide-y">
-              {propertyRows.map((p) => (
-                <li
-                  key={p.holdingId}
-                  className="hover:bg-muted/40 flex items-center justify-between px-4 py-3 transition-colors"
-                >
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/holdings/${p.holdingId}`)}
-                    className="text-foreground flex-1 text-left text-sm font-medium"
-                  >
-                    <div>{p.label}</div>
-                    <div className="text-muted-foreground text-xs">{p.intent}</div>
-                  </button>
-                  <div className="text-foreground text-sm font-semibold tabular-nums">
-                    {formatAmount(p.value, baseCurrency)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <AllocationDonutCard
+            title="By intent"
+            categories={intentCategories}
+            baseCurrency={baseCurrency}
+            emptyMessage="No intent classification yet."
+          />
+          <HoldingsCard
+            holdings={propertyHoldings}
+            baseCurrency={baseCurrency}
+            totalExposure={totalExposure}
+            classNoun="real-estate"
+            title="Properties"
+            onSelect={(h) =>
+              navigate(`/holdings/${h.instrument?.id ?? h.id}`)
+            }
+          />
         </>
       )}
-
-      <div className="pt-2">
-        <Button variant="outline" size="sm" onClick={() => navigate("/")}>
-          <Icons.ArrowLeft className="mr-2 h-4 w-4" />
-          Back to dashboard
-        </Button>
-      </div>
-    </div>
+    </PanelShell>
   );
 }

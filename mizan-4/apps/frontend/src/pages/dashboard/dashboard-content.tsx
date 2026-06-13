@@ -4,6 +4,12 @@ import { useValuationHistory } from "@/hooks/use-valuation-history";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import {
+  getPanelDescriptor,
+  rollupHoldingsByPanel,
+} from "@/components/asset-class-panels/taxonomy";
+import type { CategoryAllocation } from "@/lib/types";
 import { HoldingsHeatmap } from "./holdings-heatmap";
 import { NewsHomeWidget } from "./news-home-widget";
 import { PortfolioHealthCard } from "./portfolio-health-card";
@@ -17,16 +23,22 @@ import { listNotifications } from "@/adapters";
 import { QueryKeys } from "@/lib/query-keys";
 
 /**
- * Dashboard composition per ADR 0018 (Dashboard Information Architecture).
+ * Dashboard composition per ADR 0018 / 0018b·v3 (Dashboard IA).
  *
- * Top-to-bottom order on the main column:
- *   (a) AI command bar — pinned, full-width, persistent input
- *   (b) Net Worth strip — single big number + toggleable deltas + sparkline
- *   (c) Heatmap — every holding as a tile sized by USD value, colored by perf
- *   (d) Asset class panel grid — 12 panels in fixed order from taxonomy.ts
- *   (e) Today's Signal card — highest-signal AI insight for today
+ * Top-to-bottom order on the main column (data-first, no AI input on the
+ * hero — the number is what the eye should land on, the AI sits with the
+ * other today-context surfaces in the sidebar):
+ *   (a) Net Worth strip — single big number + toggleable deltas + sparkline
+ *   (b) Heatmap — every holding as a tile sized by USD value, colored by perf
+ *   (c) Asset class panel grid — 12 panels in fixed order from taxonomy.ts
  *
- * Right sidebar (lg+ only): Goals, Portfolio Health, Zakat, News.
+ * Right sidebar (lg+ only), top to bottom (time-sensitivity descends):
+ *   1. News
+ *   2. Today's Signal / Heads Up
+ *   3. Ask Mizan (AI command bar)
+ *   4. Zakat
+ *   5. Portfolio Health
+ *   6. Goals
  *
  * What this composition deliberately removes vs the prior shipped layout:
  * - TickerConveyor (was at the very top — too noisy, distracts from totals)
@@ -63,6 +75,33 @@ export function DashboardContent() {
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
 
+  // Asset-class allocations power the donut nested inside the Net Worth
+  // strip. We derive them from the SAME `rollupHoldingsByPanel` source
+  // the asset-class tile grid uses, so the donut and the tiles can
+  // never disagree on which classes the user holds or in what
+  // proportion. Negative-value classes (e.g. an overdrawn cash sleeve)
+  // are excluded — a donut can't render a negative slice — but they
+  // still show up in the tile grid below, which can.
+  const allocationCategories = useMemo<CategoryAllocation[]>(() => {
+    if (!allHoldings || allHoldings.length === 0) return [];
+    const rollups = rollupHoldingsByPanel(allHoldings, baseCurrency);
+    const positive = rollups.filter((r) => r.totalValue > 0);
+    const total = positive.reduce((s, r) => s + r.totalValue, 0);
+    if (total <= 0) return [];
+    return positive.map((r) => {
+      const desc = getPanelDescriptor(r.panelId);
+      return {
+        categoryId: desc.id,
+        categoryName: desc.label,
+        // The donut overrides colour via its built-in gold ladder; this
+        // field is part of CategoryAllocation's contract so we keep it.
+        color: "",
+        value: r.totalValue,
+        percentage: (r.totalValue / total) * 100,
+      };
+    });
+  }, [allHoldings, baseCurrency]);
+
   return (
     // PR-POLISH-4 — depth-page background ladder. Dark mode shifts to
     // a pure-grayscale tier (#0A) so cards above visually rise off
@@ -84,70 +123,77 @@ export function DashboardContent() {
       <div className="grow px-4 pb-[calc(var(--mobile-nav-ui-height)+max(var(--mobile-nav-gap),env(safe-area-inset-bottom)))] pt-4 md:px-6 md:pb-6 md:pt-6 lg:px-8 lg:pb-8 lg:pt-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-6">
           <div className="space-y-4 lg:col-span-2">
-            {/* ADR 0018 (a) — AI Command Bar.
-                Pinned full-width input. Submit → /assistant with the
-                prompt pre-seeded. Voice button routes to dictation. */}
-            <AiCommandBar />
-
-            {/* ADR 0018 (b) — Net Worth strip.
+            {/* ADR 0018b·v3 (a) — Net Worth strip.
                 Single large number in base currency, toggleable deltas
                 (24h / 7d / 30d / YTD / All) as chips, sparkline below.
-                Tap → /net-worth detail page. */}
+                Now the hero of the main column — the AI command bar
+                moved to the sidebar so the dashboard opens on data,
+                not an input field. Tap → /net-worth detail page. */}
             <NetWorthStrip
               history={valuationHistory}
               baseCurrency={baseCurrency}
               isLoading={isHistoryLoading}
               defaultWindow="30d"
+              allocationCategories={allocationCategories}
+              isAllocationLoading={isHoldingsLoading}
             />
 
-            {/* ADR 0018 (c) — Heatmap.
+            {/* ADR 0018b·v2 (c) — Heatmap.
                 Every holding as a treemap tile, sized by USD value,
-                colored by 24h performance. Tap → asset detail. */}
+                colored by 24h performance. Sits ABOVE the asset class
+                grid: the heatmap is the "big picture" beat (where the
+                money lives + how it moved), the tiles below are the
+                taxonomy / navigation layer the user drills into. */}
             <HoldingsHeatmap
               holdings={allHoldings ?? []}
               isLoading={isHoldingsLoading}
               baseCurrency={baseCurrency}
             />
 
-            {/* ADR 0018 (d) — Asset class panel grid.
+            {/* ADR 0018b·v2 (d) — Asset class panel grid.
                 Twelve panels in fixed order from
-                `@/components/asset-class-panels/taxonomy.ts`.
-                Each tile: name, total value, 24h/30d delta, sparkline,
-                chevron. Tap → /panels/{panelId} detail view. */}
+                `@/components/asset-class-panels/taxonomy.ts`. Tiles
+                serve as the navigation layer; tap any → /panels/{id}. */}
             <AssetClassPanelGrid
               holdings={allHoldings ?? []}
               baseCurrency={baseCurrency}
             />
 
-            {/* ADR 0018 (e) — Today's Signal card.
-                One card, highest-severity unread from today's
-                deterministic insights output. Severity-themed chrome;
-                deep-link tap → route, no-link tap → expand reasoning. */}
-            <TodaysSignalCard
-              notifications={notificationsPage?.items}
-              isLoading={isNotificationsLoading}
-            />
+            {/* NOTE: Today's Signal card (Heads Up) moved out of the
+                main column into the right sidebar (between News and
+                Zakat) per founder spec — actionable signals live
+                alongside the other time-sensitive surfaces, not as a
+                trailing main-column afterthought. */}
           </div>
 
-          {/* Right sidebar (lg+) — PR-DENSITY-5 composition.
-              Unified card language from PR-POLISH-3 + an explicit
-              "Today" section header that anchors the column to the
-              main flow + sticky scroll behavior so the sidebar
-              stays in view as the user scrolls the panel grid.
-              On narrow viewports (<lg) the sidebar reflows inline
-              below the panel grid; the section header acts as a
-              natural separator. */}
+          {/* Right sidebar (lg+) — ADR 0018b·v3 composition.
+              Order is descending time-sensitivity / action-ability:
+                1. News        — daily-fresh, pulls the eye to the column
+                2. Heads Up    — today's highest-severity actionable signal
+                3. Ask Mizan   — AI command bar (sits with the other today
+                                 surfaces — query is a today action)
+                4. Zakat       — Mizan's unique value, daily reminder
+                5. Health      — running portfolio insight
+                6. Goals       — monthly/yearly checkpoints, fine at bottom
+
+              No section header — the sidebar IS today by implication.
+              On narrow viewports (<lg) it reflows inline below the
+              panel grid. */}
           <aside
             aria-label="Dashboard sidebar"
             className="space-y-3 lg:col-span-1 lg:sticky lg:top-4 lg:self-start"
           >
-            <h2 className="text-muted-foreground px-1 text-[11px] font-semibold uppercase tracking-[0.08em]">
-              Today
-            </h2>
-            <SavingGoals />
-            <PortfolioHealthCard />
-            <ZakatCard />
             <NewsHomeWidget />
+            <TodaysSignalCard
+              notifications={notificationsPage?.items}
+              isLoading={isNotificationsLoading}
+            />
+            {/* AI command bar — non-pinned (sidebar is already sticky),
+                shorter placeholder for the narrower column. */}
+            <AiCommandBar pinned={false} placeholder="Ask Mizan…" />
+            <ZakatCard />
+            <PortfolioHealthCard />
+            <SavingGoals />
           </aside>
         </div>
       </div>

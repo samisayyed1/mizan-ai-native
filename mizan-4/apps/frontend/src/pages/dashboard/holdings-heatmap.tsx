@@ -326,7 +326,7 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-md font-semibold tracking-tight">Heatmap</CardTitle>
+          <CardTitle className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">Heatmap</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
           {/* Shimmer skeleton — sweeps a soft highlight across a
@@ -363,7 +363,7 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-md font-semibold tracking-tight">Heatmap</CardTitle>
+          <CardTitle className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">Heatmap</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
           <div className="flex h-[200px] flex-col items-center justify-center gap-3 text-center">

@@ -25,11 +25,12 @@
  * page (PR-NW1+) where the chart context makes the methodology obvious.
  */
 import { Sparkline } from "@/components/charts";
-import type { AccountValuation } from "@/lib/types";
+import type { AccountValuation, CategoryAllocation } from "@/lib/types";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { formatAmount } from "@mizan/ui/lib/utils";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { AllocationDonut } from "./allocation-donut";
 
 /** Preset windows offered by the strip toggle. Order = display order. */
 export const NET_WORTH_STRIP_WINDOWS = ["24h", "7d", "30d", "YTD", "All"] as const;
@@ -48,6 +49,15 @@ export interface NetWorthStripProps {
   defaultWindow?: NetWorthStripWindow;
   /** Override the tap-through destination. Defaults to `/net-worth`. */
   toHref?: string;
+  /**
+   * Asset-class allocation categories from `usePortfolioAllocations`.
+   * When provided, an interactive donut renders to the right of the
+   * headline (ADR 0018b·v4). Passing `null`/`undefined`/empty hides
+   * the donut without breaking the strip.
+   */
+  allocationCategories?: readonly CategoryAllocation[] | null;
+  /** Loading flag for the allocation donut specifically. */
+  isAllocationLoading?: boolean;
 }
 
 /**
@@ -211,6 +221,8 @@ export function NetWorthStrip({
   isLoading = false,
   defaultWindow = "30d",
   toHref = "/net-worth",
+  allocationCategories,
+  isAllocationLoading = false,
 }: NetWorthStripProps) {
   const [selectedWindow, setSelectedWindow] = useState<NetWorthStripWindow>(defaultWindow);
   const safeHistory = useMemo(() => history ?? [], [history]);
@@ -248,6 +260,10 @@ export function NetWorthStrip({
       aria-label="Net worth"
       className="bg-card relative flex flex-col gap-3 rounded-2xl border p-4"
     >
+      {/* Top row: headline (link) + allocation donut + chevron. The
+          allocation donut sits OUTSIDE the headline link so its arcs
+          stay independently interactive (hover/focus per segment)
+          without hijacking the strip's tap-to-detail affordance. */}
       <div className="flex items-start justify-between gap-3">
         <Link
           to={toHref}
@@ -282,6 +298,23 @@ export function NetWorthStrip({
             )}
           </div>
         </Link>
+        {/* Allocation donut — sits to the right of the headline,
+            vertically centred against the headline + delta block.
+            Hidden below the `sm:` breakpoint so a phone gets a clean
+            stacked headline + sparkline only; on desktop it's the
+            visual anchor that turns the strip into a real net-worth
+            dashboard at a glance. */}
+        {allocationCategories && allocationCategories.length > 0 ? (
+          <div className="hidden self-center sm:block">
+            <AllocationDonut
+              categories={allocationCategories}
+              baseCurrency={baseCurrency}
+              isLoading={isAllocationLoading}
+              isPrivacyMode={isPrivacyMode}
+              size={168}
+            />
+          </div>
+        ) : null}
         <Icons.ChevronRight
           className="text-muted-foreground mt-1 h-5 w-5 shrink-0"
           aria-hidden="true"

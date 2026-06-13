@@ -30,16 +30,18 @@ export interface LinkableAsset {
   name: string;
 }
 
-// Asset type configuration using theme colors
+// Asset type tiles — each one painted with a stop on the Mizan gold
+// ladder (see `components/panels/panel-shared.tsx`) so the chooser
+// reads as one coherent palette instead of the previous green/purple/
+// orange/red mosaic. Liability keeps the destructive tone since it's
+// the only entry that genuinely subtracts from net worth.
 const ASSET_TYPES = [
   {
     kind: AlternativeAssetKind.PROPERTY,
     label: "Property",
     description: "Real estate & land",
     icon: Icons.RealEstateDuotone,
-    iconColor: "text-green-400",
-    selectedBg: "bg-green-400/15",
-    borderColor: "border-green-400/50",
+    tone: { fg: "hsl(31 32% 41%)", bg: "hsl(31 49% 64% / 0.18)", border: "hsl(31 49% 64% / 0.55)" },
   },
   // Vehicle intentionally omitted as a selectable category — vehicles
   // are depreciating assets and are excluded from net worth per the
@@ -52,36 +54,28 @@ const ASSET_TYPES = [
     label: "Collectible",
     description: "Art, watches & rare items",
     icon: Icons.CollectibleDuotone,
-    iconColor: "text-purple-400",
-    selectedBg: "bg-purple-400/15",
-    borderColor: "border-purple-400/50",
+    tone: { fg: "hsl(31 28% 36%)", bg: "hsl(31 42% 52% / 0.16)", border: "hsl(31 42% 52% / 0.55)" },
   },
   {
     kind: AlternativeAssetKind.PRECIOUS_METAL,
     label: "Precious Metal",
     description: "Gold, silver & platinum",
     icon: Icons.PreciousDuotone,
-    iconColor: "text-orange-400",
-    selectedBg: "bg-orange-400/15",
-    borderColor: "border-orange-400/50",
+    tone: { fg: "hsl(45 62% 38%)", bg: "hsl(45 62% 58% / 0.20)", border: "hsl(45 62% 58% / 0.55)" },
   },
   {
     kind: AlternativeAssetKind.LIABILITY,
     label: "Liability",
     description: "Loans & debt",
     icon: Icons.LiabilityDuotone,
-    iconColor: "text-red-400",
-    selectedBg: "bg-red-400/15",
-    borderColor: "border-red-400/50",
+    tone: { fg: "var(--destructive)", bg: "hsl(var(--destructive) / 0.12)", border: "hsl(var(--destructive) / 0.45)" },
   },
   {
     kind: AlternativeAssetKind.OTHER,
     label: "Other Asset",
     description: "Custom assets",
     icon: Icons.OtherAssetDuotone,
-    iconColor: "text-base-500",
-    selectedBg: "bg-base-500/15",
-    borderColor: "border-base-500/50",
+    tone: { fg: "hsl(31 24% 33%)", bg: "hsl(31 24% 33% / 0.10)", border: "hsl(31 24% 33% / 0.40)" },
   },
 ];
 
@@ -370,10 +364,14 @@ export function AlternativeAssetQuickAddModal({
                         className={cn(
                           "relative flex flex-col items-start rounded-xl border-2 p-4 text-left transition-all duration-200",
                           "hover:shadow-md",
-                          isSelected
-                            ? cn(type.borderColor, type.selectedBg)
-                            : "border-border/50 bg-secondary/30 hover:border-border hover:bg-secondary/50",
+                          !isSelected &&
+                            "border-border/50 bg-secondary/30 hover:border-border hover:bg-secondary/50",
                         )}
+                        style={
+                          isSelected
+                            ? { borderColor: type.tone.border, backgroundColor: type.tone.bg }
+                            : undefined
+                        }
                       >
                         {isSelected && (
                           <motion.div
@@ -381,18 +379,22 @@ export function AlternativeAssetQuickAddModal({
                             animate={{ scale: 1 }}
                             className="absolute right-2 top-2"
                           >
-                            <div className="bg-primary flex h-5 w-5 items-center justify-center rounded-full">
-                              <Icons.Check className="text-primary-foreground h-3 w-3" />
+                            <div
+                              className="flex h-5 w-5 items-center justify-center rounded-full"
+                              style={{ backgroundColor: type.tone.fg }}
+                            >
+                              <Icons.Check className="h-3 w-3 text-white" />
                             </div>
                           </motion.div>
                         )}
                         <div
                           className={cn(
                             "mb-3 flex h-10 w-10 items-center justify-center rounded-lg",
-                            isSelected ? type.selectedBg : "bg-muted",
+                            !isSelected && "bg-muted",
                           )}
+                          style={isSelected ? { backgroundColor: type.tone.bg } : undefined}
                         >
-                          <Icon size={20} className={type.iconColor} />
+                          <Icon size={20} style={{ color: type.tone.fg }} />
                         </div>
                         <span
                           className={cn(

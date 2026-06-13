@@ -1,37 +1,29 @@
 /**
  * Provident Funds panel — Track B PR-B9 / Goal v3 §V Phase 5.
  *
- * Composition:
- *   - Header: total PF + position count
- *   - Donut by scheme (CPF / EPF / 401k / NPS / Super / Other)
- *   - CPF sub-donut (OA / SA / MA / RA) — only renders when CPF is present
- *   - Positions list with scheme + sub-account chip
- *
- * §23 reference user has CPF OA + SA + MA + RA balances plus SRS
- * US-equity positions. The CPF sub-donut surfaces the four CPF
- * accounts; cross-asset linkage via `metadata.providentFund.sourceAccountId`
- * lets the user jump from a SGS bond row here to the bonds panel
- * (and back).
- *
- * Out of scope (track separately as PR-B9.a):
- *   - CPF interest accrual line (1Y backtest from monthly statements)
- *   - SRS top-up reminder insight
- *   - EPF withdrawal eligibility window banner
+ * Composed from the shared world-class panel primitives.
  */
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Donut } from "@/components/charts";
+import {
+  AllocationDonutCard,
+  GoldBarsCard,
+  HoldingsCard,
+  PanelGlanceRow,
+  PanelHero,
+  PanelShell,
+  rowsToCategories,
+} from "@/components/panels/panel-shared";
+import { usePanelAdd } from "@/components/panels/use-panel-add";
 import { useHoldings } from "@/hooks/use-holdings";
 import { PORTFOLIO_ACCOUNT_ID } from "@/lib/constants";
 import { useSettingsContext } from "@/lib/settings-provider";
-import { Button, Icons } from "@mizan/ui";
-import { formatAmount } from "@mizan/ui/lib/utils";
+import { Icons } from "@mizan/ui";
 
 import {
   isProvidentFundHolding,
   rollupByCpfSubAccount,
-  rollupByPosition,
   rollupByScheme,
   totalProvidentFundExposure,
 } from "./rollup";
@@ -41,6 +33,7 @@ export default function ProvidentFundsPanelPage() {
   const { holdings: allHoldings, isLoading } = useHoldings(PORTFOLIO_ACCOUNT_ID);
   const { settings } = useSettingsContext();
   const baseCurrency = settings?.baseCurrency ?? "USD";
+  const onAdd = usePanelAdd("provident-funds");
 
   const pfHoldings = useMemo(
     () => (allHoldings ?? []).filter(isProvidentFundHolding),
@@ -54,104 +47,79 @@ export default function ProvidentFundsPanelPage() {
     () => rollupByScheme(allHoldings ?? []),
     [allHoldings],
   );
+  const schemeCategories = useMemo(
+    () =>
+      rowsToCategories(
+        schemeRows.map((r) => ({ label: r.label, value: r.totalValueBase })),
+      ),
+    [schemeRows],
+  );
   const cpfRows = useMemo(
-    () => rollupByCpfSubAccount(allHoldings ?? []),
+    () =>
+      rollupByCpfSubAccount(allHoldings ?? []).map((r) => ({
+        label: r.subAccount,
+        value: r.totalValueBase,
+        sub: `${r.positionCount} ${r.positionCount === 1 ? "position" : "positions"}`,
+      })),
     [allHoldings],
   );
-  const positionRows = useMemo(
-    () => rollupByPosition(allHoldings ?? []),
-    [allHoldings],
-  );
+  const hasCpf = cpfRows.some((r) => r.value > 0);
+
+  const empty = pfHoldings.length === 0 && !isLoading;
 
   return (
-    <div className="space-y-6 px-4 py-6 md:px-6 lg:px-10">
-      <header className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Icons.PiggyBank className="text-muted-foreground h-5 w-5" />
-          <h1 className="text-2xl font-semibold tracking-tight">Provident Funds</h1>
-        </div>
-        <div className="text-muted-foreground text-sm">
-          {pfHoldings.length === 0 && !isLoading
-            ? "No provident-fund positions yet."
-            : `Total ${formatAmount(totalExposure, baseCurrency)} across ${pfHoldings.length} ${pfHoldings.length === 1 ? "position" : "positions"}.`}
-        </div>
-      </header>
+    <PanelShell>
+      <PanelHero
+        icon={Icons.PiggyBank}
+        label="Provident Funds"
+        value={totalExposure}
+        baseCurrency={baseCurrency}
+        meta={
+          empty
+            ? "No provident-fund holdings yet."
+            : `${pfHoldings.length} ${pfHoldings.length === 1 ? "position" : "positions"}${schemeRows.length > 0 ? ` · ${schemeRows.length} ${schemeRows.length === 1 ? "scheme" : "schemes"}` : ""}`
+        }
+        onAdd={onAdd}
+        empty={empty}
+      />
 
-      {pfHoldings.length > 0 && (
+      {empty ? null : (
         <>
-          <section
-            aria-label="Provident funds by scheme"
-            className="bg-card rounded-2xl border p-4"
-          >
-            <div className="mb-3 text-sm font-medium">By scheme</div>
-            <div className="h-64">
-              <Donut
-                data={schemeRows.map((r) => ({ label: r.label, value: r.totalValueBase }))}
-                ariaLabel="Provident fund exposure by scheme"
-                palette="categorical"
+          {hasCpf ? (
+            <PanelGlanceRow>
+              <AllocationDonutCard
+                title="By scheme"
+                categories={schemeCategories}
+                baseCurrency={baseCurrency}
+                emptyMessage="No scheme classification yet."
               />
-            </div>
-          </section>
-
-          {cpfRows.length > 0 && (
-            <section
-              aria-label="CPF sub-accounts"
-              className="bg-card rounded-2xl border p-4"
-            >
-              <div className="mb-3 text-sm font-medium">CPF sub-accounts</div>
-              <div className="h-64">
-                <Donut
-                  data={cpfRows.map((r) => ({
-                    label: r.subAccount,
-                    value: r.totalValueBase,
-                  }))}
-                  ariaLabel="CPF balances by sub-account (OA / SA / MA / RA)"
-                  palette="categorical"
-                />
-              </div>
-            </section>
+              <GoldBarsCard
+                title="CPF sub-accounts"
+                rows={cpfRows}
+                baseCurrency={baseCurrency}
+                total={totalExposure}
+                emptyMessage="No CPF sub-accounts."
+              />
+            </PanelGlanceRow>
+          ) : (
+            <AllocationDonutCard
+              title="By scheme"
+              categories={schemeCategories}
+              baseCurrency={baseCurrency}
+              emptyMessage="No scheme classification yet."
+            />
           )}
-
-          <section
-            aria-label="Provident fund positions"
-            className="bg-card rounded-2xl border"
-          >
-            <header className="border-b px-4 py-3">
-              <h2 className="text-sm font-medium">Positions</h2>
-            </header>
-            <ul role="list" className="divide-y">
-              {positionRows.map((p) => (
-                <li
-                  key={p.holdingId}
-                  className="hover:bg-muted/40 flex items-center justify-between px-4 py-3 transition-colors"
-                >
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/holdings/${p.holdingId}`)}
-                    className="text-foreground flex-1 text-left text-sm font-medium"
-                  >
-                    <div>{p.label}</div>
-                    <div className="text-muted-foreground text-xs">
-                      {p.schemeLabel}
-                      {p.subAccount ? ` · ${p.subAccount}` : ""}
-                    </div>
-                  </button>
-                  <div className="text-foreground text-sm font-semibold tabular-nums">
-                    {formatAmount(p.value, baseCurrency)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <HoldingsCard
+            holdings={pfHoldings}
+            baseCurrency={baseCurrency}
+            totalExposure={totalExposure}
+            classNoun="provident funds"
+            onSelect={(h) =>
+              navigate(`/holdings/${h.instrument?.id ?? h.id}`)
+            }
+          />
         </>
       )}
-
-      <div className="pt-2">
-        <Button variant="outline" size="sm" onClick={() => navigate("/")}>
-          <Icons.ArrowLeft className="mr-2 h-4 w-4" />
-          Back to dashboard
-        </Button>
-      </div>
-    </div>
+    </PanelShell>
   );
 }

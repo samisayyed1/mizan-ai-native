@@ -44,8 +44,18 @@ export default function AdvisorDashboardPage() {
       <Page>
         <PageHeader heading="Advisor dashboard" />
         <PageContent>
-          <Card className="border-primary/20 from-primary/5 to-card bg-linear-to-br mx-auto max-w-2xl p-8 text-center">
-            <Icons.Users className="text-primary mx-auto mb-3 h-10 w-10" />
+          <Card
+            className="bg-linear-to-br to-card mx-auto max-w-2xl p-8 text-center"
+            style={{
+              borderColor: "hsl(31 38% 46% / 0.25)",
+              backgroundImage:
+                "linear-gradient(to bottom right, hsl(40 67% 87% / 0.18), transparent)",
+            }}
+          >
+            <Icons.Users
+              className="mx-auto mb-3 h-10 w-10"
+              style={{ color: "hsl(31 38% 46%)" }}
+            />
             <h2 className="text-lg font-semibold">Advisor dashboard</h2>
             <p className="text-muted-foreground mx-auto mt-2 max-w-md text-sm leading-relaxed">
               Manage multiple client portfolios from one place. Read-only drill-down by default;
@@ -54,7 +64,7 @@ export default function AdvisorDashboardPage() {
             </p>
             <button
               type="button"
-              className="bg-primary text-primary-foreground mt-4 rounded-md px-4 py-2 text-sm font-medium hover:opacity-90"
+              className="bg-foreground text-background mt-4 rounded-md px-4 py-2 text-sm font-medium transition-colors hover:opacity-90"
               onClick={() => requestUpgrade("advisor_mode")}
             >
               Upgrade to Enterprise
@@ -92,7 +102,10 @@ export default function AdvisorDashboardPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {teams.map((team) => (
-              <Card key={team.id} className="border-primary/10">
+              <Card
+                key={team.id}
+                style={{ borderColor: "hsl(31 38% 46% / 0.15)" }}
+              >
                 <CardHeader>
                   <div className="flex items-start justify-between gap-3">
                     <div>

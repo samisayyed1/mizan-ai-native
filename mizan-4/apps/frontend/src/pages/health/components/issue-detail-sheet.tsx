@@ -23,9 +23,16 @@ interface IssueDetailSheetProps {
   isFixing: boolean;
 }
 
-const SEVERITY_CONFIG: Record<HealthSeverity, { label: string; color: string }> = {
+const SEVERITY_CONFIG: Record<
+  HealthSeverity,
+  { label: string; color: string; style?: React.CSSProperties }
+> = {
   INFO: { label: "Info", color: "text-muted-foreground" },
-  WARNING: { label: "Warning", color: "text-yellow-600 dark:text-yellow-400" },
+  WARNING: {
+    label: "Warning",
+    color: "",
+    style: { color: "hsl(31 28% 36%)" },
+  },
   ERROR: { label: "Error", color: "text-destructive" },
   CRITICAL: { label: "Critical", color: "text-destructive" },
 };
@@ -126,7 +133,12 @@ export function IssueDetailSheet({
       <SheetContent side="right" className="flex w-full flex-col sm:max-w-md">
         <SheetHeader className="shrink-0 space-y-3 pb-6">
           <div className="flex items-center gap-2 text-xs">
-            <span className={cn("font-medium", severityConfig.color)}>{severityConfig.label}</span>
+            <span
+              className={cn("font-medium", severityConfig.color)}
+              style={severityConfig.style}
+            >
+              {severityConfig.label}
+            </span>
             <span className="text-muted-foreground">·</span>
             <span className="text-muted-foreground">{categoryConfig.label}</span>
           </div>

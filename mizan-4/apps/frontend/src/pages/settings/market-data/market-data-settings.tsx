@@ -645,7 +645,7 @@ export default function MarketDataSettingsPage() {
       <div className="text-foreground space-y-6">
         <SettingsHeader heading="Market Data" text="Configure your market data providers." />
         <Separator />
-        <div className="overflow-hidden rounded-lg border">
+        <div className="overflow-hidden rounded-2xl border bg-card">
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
             <div key={i} className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
               <Skeleton className="h-9 w-9 rounded-lg" />
@@ -835,7 +835,7 @@ export default function MarketDataSettingsPage() {
           {builtinProviders.length === 0 ? (
             <p className="text-muted-foreground text-sm">No built-in providers configured.</p>
           ) : (
-            <div className="overflow-hidden rounded-lg border">
+            <div className="overflow-hidden rounded-2xl border bg-card">
               {builtinProviders.map((provider, index, arr) => (
                 <ProviderSettings
                   key={provider.id}
@@ -910,7 +910,7 @@ export default function MarketDataSettingsPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border">
+            <div className="overflow-hidden rounded-2xl border bg-card">
               {customProviders.map((cp, index) => (
                 <CustomProviderCard
                   key={cp.id}

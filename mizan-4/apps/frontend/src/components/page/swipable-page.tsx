@@ -187,11 +187,15 @@ export function SwipablePage({
             {/* Mobile Navigation at top */}
             <div className="pt-safe flex shrink-0 items-center justify-between px-3 pb-2">
               <div className="w-10" />
-              <MobileNavigation
-                views={views}
-                currentView={currentView}
-                onViewChange={handleViewChange}
-              />
+              {views.length > 1 ? (
+                <MobileNavigation
+                  views={views}
+                  currentView={currentView}
+                  onViewChange={handleViewChange}
+                />
+              ) : (
+                <div className="flex-1" />
+              )}
               <div className="flex items-center gap-1.5">
                 {views.find((v) => v.value === currentView)?.actions}
               </div>
@@ -228,15 +232,22 @@ export function SwipablePage({
         ) : (
           /* Desktop: Navigation at top center + content below */
           <div className="hidden h-full flex-col md:flex">
-            {/* Header with Navigation and Actions */}
+            {/* Header with Navigation and Actions. When there's only
+                one view (e.g. the Dashboard after ADR 0018b — the
+                Investments/Net Worth split was collapsed because the
+                dashboard IS the investments view) the navigation pills
+                are hidden so the chrome doesn't pretend the page is a
+                tabbed surface. The actions slot still renders. */}
             <div className="flex shrink-0 items-center justify-between gap-4 px-2 pb-3 pt-4 lg:px-4">
               <div className="flex items-center gap-3">
                 {title && <h1 className="text-muted-foreground text-sm font-medium">{title}</h1>}
-                <NavigationPills
-                  views={views}
-                  currentView={currentView}
-                  onViewChange={handleViewChange}
-                />
+                {views.length > 1 && (
+                  <NavigationPills
+                    views={views}
+                    currentView={currentView}
+                    onViewChange={handleViewChange}
+                  />
+                )}
               </div>
               {/* Actions slot - renders current view's actions */}
               <div className="flex items-center gap-2">

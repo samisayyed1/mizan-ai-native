@@ -1,0 +1,51 @@
+# Netlify config for the Mizan landing.
+#
+# `@netlify/plugin-nextjs` is auto-installed by Netlify when it
+# detects Next.js in package.json — we don't ship it in devDependencies
+# to avoid duplicating it locally.
+#
+# Headers mirror `vercel.json` so the Netlify deploy gets the same
+# HSTS preload + nosniff + frame deny + Permissions-Policy baseline as
+# the Vercel mirror.
+
+[build]
+  base    = "mizan-landing/"
+  command = "pnpm install --frozen-lockfile && pnpm build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  PNPM_VERSION = "9.12.3"
+  # Skip Husky / repo-root install hooks — we only want to install
+  # this subfolder.
+  NPM_FLAGS = "--prefix=/dev/null"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# SEO: force the canonical host. Redirect the *.netlify.app deploy URL
+# (301) to getmizan.net so search engines only ever index one domain —
+# no duplicate-content split. The Next app also emits canonical tags,
+# but a hard redirect is the strongest signal.
+[[redirects]]
+  from = "https://mizan-landing-802.netlify.app/*"
+  to = "https://getmizan.net/:splat"
+  status = 301
+  force = true
+
+# Global security headers — every response from the site.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    X-Content-Type-Options    = "nosniff"
+    Referrer-Policy           = "strict-origin-when-cross-origin"
+    X-Frame-Options           = "DENY"
+    Permissions-Policy        = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+
+# Long-cache the dynamic OG image — same TTL the route sets via header,
+# repeated here so Netlify's edge respects it without parsing.
+[[headers]]
+  for = "/api/og"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, immutable"

@@ -17,19 +17,18 @@ import type {
   Notification,
   NotificationKind,
   NotificationSeverity,
+  NotificationsPage,
 } from "@/adapters/types-notifications";
 import { QueryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@mizan/ui/components/ui/popover";
-import { ScrollArea } from "@mizan/ui/components/ui/scroll-area";
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@mizan/ui/components/ui/sheet";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNowStrict } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -60,28 +59,117 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
     enabled: open,
   });
 
+  // All three mutations use the optimistic-update / rollback / settle
+  // pattern so a click instantly reflects in the UI — no perceived
+  // "did the button do anything?" pause while the round-trip lands.
+  // If the backend later errors, we roll back to the snapshot. On
+  // settle we invalidate so the next refetch reconciles with the DB.
+
+  const cancelNotifQueries = async () => {
+    await queryClient.cancelQueries({ queryKey: QueryKeys.notifications(25) });
+    await queryClient.cancelQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
+  };
+
+  const snapshotNotifQueries = () => ({
+    page: queryClient.getQueryData<NotificationsPage>(QueryKeys.notifications(25)),
+    unread: queryClient.getQueryData<number>([QueryKeys.NOTIFICATIONS_UNREAD_COUNT]),
+  });
+
+  const rollbackNotifQueries = (snap: ReturnType<typeof snapshotNotifQueries>) => {
+    if (snap.page !== undefined) {
+      queryClient.setQueryData(QueryKeys.notifications(25), snap.page);
+    }
+    if (snap.unread !== undefined) {
+      queryClient.setQueryData([QueryKeys.NOTIFICATIONS_UNREAD_COUNT], snap.unread);
+    }
+  };
+
+  const invalidateNotifQueries = () => {
+    queryClient.invalidateQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
+    queryClient.invalidateQueries({ queryKey: QueryKeys.notifications(25) });
+  };
+
   const markReadMutation = useMutation({
     mutationFn: (id: string) => markNotificationRead(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.notifications(25) });
+    onMutate: async (id) => {
+      await cancelNotifQueries();
+      const snap = snapshotNotifQueries();
+      const nowMs = Date.now();
+      queryClient.setQueryData<NotificationsPage>(QueryKeys.notifications(25), (old) => {
+        if (!old) return old;
+        let touched = false;
+        const items = old.items.map((n) => {
+          if (n.id === id && n.readAtMs === null) {
+            touched = true;
+            return { ...n, readAtMs: nowMs };
+          }
+          return n;
+        });
+        return {
+          ...old,
+          items,
+          unreadCount: Math.max(0, old.unreadCount - (touched ? 1 : 0)),
+        };
+      });
+      queryClient.setQueryData<number>([QueryKeys.NOTIFICATIONS_UNREAD_COUNT], (n) =>
+        Math.max(0, (n ?? 0) - 1),
+      );
+      return snap;
     },
+    onError: (_err, _id, snap) => snap && rollbackNotifQueries(snap),
+    onSettled: invalidateNotifQueries,
   });
 
   const dismissMutation = useMutation({
     mutationFn: (id: string) => dismissNotification(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.notifications(25) });
+    onMutate: async (id) => {
+      await cancelNotifQueries();
+      const snap = snapshotNotifQueries();
+      // Look at the snapshot (not the live cache) to decide whether
+      // the dismissed row was unread — we're about to mutate the
+      // cache so reading from it would race.
+      const dropped = snap.page?.items.find((n) => n.id === id);
+      const wasUnread =
+        !!dropped && dropped.readAtMs === null && dropped.dismissedAtMs === null;
+      queryClient.setQueryData<NotificationsPage>(QueryKeys.notifications(25), (old) =>
+        old
+          ? {
+              ...old,
+              items: old.items.filter((n) => n.id !== id),
+              unreadCount: Math.max(0, old.unreadCount - (wasUnread ? 1 : 0)),
+            }
+          : old,
+      );
+      queryClient.setQueryData<number>([QueryKeys.NOTIFICATIONS_UNREAD_COUNT], (n) =>
+        Math.max(0, (n ?? 0) - (wasUnread ? 1 : 0)),
+      );
+      return snap;
     },
+    onError: (_err, _id, snap) => snap && rollbackNotifQueries(snap),
+    onSettled: invalidateNotifQueries,
   });
 
   const markAllMutation = useMutation({
     mutationFn: markAllNotificationsRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.NOTIFICATIONS_UNREAD_COUNT] });
-      queryClient.invalidateQueries({ queryKey: QueryKeys.notifications(25) });
+    onMutate: async () => {
+      await cancelNotifQueries();
+      const snap = snapshotNotifQueries();
+      const nowMs = Date.now();
+      queryClient.setQueryData<NotificationsPage>(QueryKeys.notifications(25), (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          items: old.items.map((n) =>
+            n.readAtMs === null && n.dismissedAtMs === null ? { ...n, readAtMs: nowMs } : n,
+          ),
+          unreadCount: 0,
+        };
+      });
+      queryClient.setQueryData<number>([QueryKeys.NOTIFICATIONS_UNREAD_COUNT], 0);
+      return snap;
     },
+    onError: (_err, _vars, snap) => snap && rollbackNotifQueries(snap),
+    onSettled: invalidateNotifQueries,
   });
 
   // Subscribe to the Notify-5 push event so the badge refreshes
@@ -103,8 +191,8 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
   const items = pageQuery.data?.items ?? [];
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
         <Button
           type="button"
           variant="ghost"
@@ -136,44 +224,71 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
             </span>
           )}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        side="right"
-        sideOffset={12}
-        className="w-96 p-0"
+      </SheetTrigger>
+      {/* Full-height side sheet — slides in from the left next to the
+          app sidebar. Native viewport height means scroll always works,
+          and a real dim overlay sits behind it so the user feels the
+          chrome rather than fighting a floating popover. */}
+      <SheetContent
+        side="left"
+        showCloseButton={false}
+        className="flex w-[420px] max-w-[92vw] flex-col gap-0 border-r-border/70 p-0 sm:max-w-[420px]"
       >
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div>
-            <h3 className="text-sm font-semibold tracking-tight">Notifications</h3>
-            <p className="text-muted-foreground text-xs">
-              {unread === 0
-                ? "You're all caught up."
-                : `${unread} unread`}
-            </p>
+        {/* Header — title + unread chip + actions. Sits flush at top
+            and never scrolls. */}
+        <header className="bg-card flex shrink-0 items-center justify-between gap-3 border-b px-5 py-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[15px] font-semibold tracking-tight">
+              Notifications
+            </h2>
+            {unread > 0 && (
+              <span
+                className="bg-muted text-foreground/80 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none tabular-nums"
+                aria-label={`${unread} unread`}
+              >
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
           </div>
-          {unread > 0 && (
+          <div className="flex items-center gap-1">
+            {unread > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground h-8 text-xs"
+                onClick={() => markAllMutation.mutate()}
+                disabled={markAllMutation.isPending}
+              >
+                {markAllMutation.isPending ? "Marking…" : "Mark all read"}
+              </Button>
+            ) : (
+              <span className="text-muted-foreground mr-1 text-xs">
+                All caught up
+              </span>
+            )}
             <Button
+              type="button"
               variant="ghost"
-              size="sm"
-              className="text-xs"
-              onClick={() => markAllMutation.mutate()}
-              disabled={markAllMutation.isPending}
+              size="icon"
+              onClick={() => setOpen(false)}
+              aria-label="Close notifications"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted/60 h-8 w-8 rounded-full"
             >
-              Mark all read
+              <Icons.X className="h-4 w-4" />
             </Button>
-          )}
-        </div>
-        <ScrollArea className="max-h-[60vh]">
+          </div>
+        </header>
+
+        {/* Scrollable body — native `overflow-y-auto`. The flex parent
+            (`SheetContent`) has `inset-y-0` so this child gets a real
+            viewport-height anchor, and `min-h-0 flex-1` lets it shrink
+            past its content size — without that, flex children refuse
+            to overflow + scroll. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="divide-border divide-y">
             {pageQuery.isLoading ? (
               <PanelSkeleton />
             ) : pageQuery.error ? (
-              // Explicit error UI — silently falling back to EmptyState
-              // hides a real failure behind "You're all caught up", which
-              // is confusing when the badge says e.g. 23 unread. The
-              // user needs to know the panel couldn't load and have a
-              // retry path.
               <ErrorState
                 error={pageQuery.error}
                 onRetry={() => void pageQuery.refetch()}
@@ -192,9 +307,9 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
               ))
             )}
           </div>
-        </ScrollArea>
-      </PopoverContent>
-    </Popover>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -220,13 +335,11 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
       onSelect();
     }
   };
-  const relative = useMemo(
-    () =>
-      formatDistanceToNowStrict(new Date(notification.createdAtMs), {
-        addSuffix: true,
-      }),
+  const compactTime = useMemo(
+    () => compactRelativeTime(notification.createdAtMs, Date.now()),
     [notification.createdAtMs],
   );
+  const { rail } = appearanceFor(notification.kind, notification.severity);
   return (
     <div
       role="button"
@@ -239,28 +352,42 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
         }
       }}
       className={cn(
-        "group focus-visible:bg-muted/70 hover:bg-muted/50 flex w-full cursor-pointer items-start gap-3 px-4 py-3 outline-none transition-colors",
-        isUnread && "bg-muted/30",
+        "group focus-visible:bg-muted/70 hover:bg-muted/50 relative flex w-full cursor-pointer items-start gap-3 px-4 py-3.5 outline-none transition-colors",
+        // Subtle unread tint — premium iOS/Linear-style "the eye lands
+        // here first" cue. The severity-coloured rail (3px, absolutely
+        // positioned on the left edge) makes the unread state legible
+        // even without colour, since rail width is the signal.
+        isUnread && "bg-muted/25",
       )}
     >
+      {/* Severity rail — only renders on unread rows. Hairline width
+          (3px) so it accents without screaming. */}
+      {isUnread && (
+        <span
+          aria-hidden="true"
+          className={cn("absolute inset-y-1.5 left-0 w-[3px] rounded-full", rail)}
+        />
+      )}
       <KindIcon kind={notification.kind} severity={notification.severity} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <p className="truncate text-sm font-medium tracking-tight">
+        <div className="flex items-start gap-2">
+          <p
+            className={cn(
+              "min-w-0 flex-1 line-clamp-2 text-[13px] leading-snug tracking-tight",
+              isUnread ? "font-semibold text-foreground" : "font-medium text-foreground/90",
+            )}
+          >
             {notification.title}
           </p>
-          {isUnread && (
-            <span
-              className="bg-primary inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-              aria-label="Unread"
-            />
-          )}
+          <span
+            className="text-muted-foreground/70 mt-px shrink-0 text-[11px] tabular-nums"
+            title={new Date(notification.createdAtMs).toLocaleString()}
+          >
+            {compactTime}
+          </span>
         </div>
-        <p className="text-muted-foreground line-clamp-2 text-xs">
+        <p className="text-muted-foreground mt-1 line-clamp-2 text-[12px] leading-snug">
           {notification.body}
-        </p>
-        <p className="text-muted-foreground/70 mt-1 text-[10px] uppercase tracking-wide">
-          {relative}
         </p>
       </div>
       <button
@@ -269,7 +396,7 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
           e.stopPropagation();
           onDismiss(notification.id);
         }}
-        className="text-muted-foreground/60 hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100"
+        className="text-muted-foreground/50 hover:text-foreground hover:bg-muted/70 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
         aria-label="Dismiss"
         title="Dismiss"
       >
@@ -279,45 +406,139 @@ function NotificationRow({ notification, onMarkRead, onDismiss, onSelect }: RowP
   );
 }
 
+/**
+ * "now" / "5m" / "3h" / "2d" / "3w" / "Jun 12" — compact relative time
+ * for a tight notification row. Falls back to a localised short date
+ * when the event is older than 4 weeks, so the user always sees
+ * something concrete (not "2 months ago").
+ */
+function compactRelativeTime(createdAtMs: number, nowMs: number): string {
+  const diff = Math.max(0, nowMs - createdAtMs);
+  const sec = Math.floor(diff / 1000);
+  if (sec < 45) return "now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d`;
+  const wk = Math.floor(day / 7);
+  if (wk < 4) return `${wk}w`;
+  return new Date(createdAtMs).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Helpers
 
-// Semantic palette mapping. Where Flexoki has a named token (success /
-// destructive / warning), we use it so dark + light mode flip cleanly
-// without explicit dark: variants. The two kinds without a semantic
-// match (allocation_drift, ai_digest) keep their Tailwind palettes but
-// pair light + dark variants so contrast is right in both themes.
-const KIND_PALETTE: Record<NotificationKind, { bg: string; fg: string }> = {
-  big_move: { bg: "bg-warning/10", fg: "text-warning" },
-  allocation_drift: { bg: "bg-blue-500/10", fg: "text-blue-600 dark:text-blue-400" },
-  goal_milestone: { bg: "bg-success/10", fg: "text-success" },
-  cash_drag: { bg: "bg-muted", fg: "text-muted-foreground" },
-  dividend_posted: { bg: "bg-success/10", fg: "text-success" },
-  new_ath: { bg: "bg-success/10", fg: "text-success" },
-  net_worth_dip: { bg: "bg-destructive/10", fg: "text-destructive" },
-  sync_failure: { bg: "bg-warning/10", fg: "text-warning" },
-  ai_digest: { bg: "bg-violet-500/10", fg: "text-violet-600 dark:text-violet-400" },
+// Per-kind appearance: a semantic icon (no more identical bells) plus
+// a tone (`success | warning | destructive | gold | neutral`) that
+// drives both the icon tint and the row's unread accent rail.
+//
+// MUST cover every variant in `NotificationKind` (see
+// adapters/types-notifications.ts) — but `KindIcon` also falls back to
+// a neutral icon + tone at runtime so a backend-only addition can
+// never crash the bell again.
+type IconComp = typeof Icons.Bell;
+type Tone = "success" | "warning" | "destructive" | "gold" | "neutral";
+
+interface KindAppearance {
+  Icon: IconComp;
+  tone: Tone;
+}
+
+const NEUTRAL_APPEARANCE: KindAppearance = {
+  Icon: Icons.Bell,
+  tone: "neutral",
 };
 
+const KIND_APPEARANCE: Record<NotificationKind, KindAppearance> = {
+  // Market moves — direction-aware icons
+  big_move: { Icon: Icons.TrendingUp, tone: "warning" },
+  net_worth_dip: { Icon: Icons.TrendingDown, tone: "destructive" },
+  new_ath: { Icon: Icons.TrendingUp, tone: "success" },
+
+  // Targets / drift / risk
+  allocation_drift: { Icon: Icons.Target, tone: "neutral" },
+  concentration_risk: { Icon: Icons.Shield, tone: "warning" },
+
+  // Goals + milestones
+  goal_milestone: { Icon: Icons.Star, tone: "success" },
+
+  // Cash + income
+  cash_drag: { Icon: Icons.Wallet, tone: "neutral" },
+  cash_drag_opportunity: { Icon: Icons.Sparkles, tone: "success" },
+  dividend_posted: { Icon: Icons.HandCoins, tone: "success" },
+  tax_optimization_window: { Icon: Icons.BadgeDollarSign, tone: "success" },
+
+  // Time-sensitive
+  bond_maturity_approaching: { Icon: Icons.Clock, tone: "warning" },
+  fx_moved_materially: { Icon: Icons.ArrowLeftRight, tone: "warning" },
+
+  // Mizan moats (Sharia + Zakat) — gold tone honours them visually
+  sharia_status_changed: { Icon: Icons.ShieldAlert, tone: "warning" },
+  zakat_hawl_approaching: { Icon: Icons.Moon, tone: "gold" },
+
+  // Infrastructure
+  sync_failure: { Icon: Icons.CloudOff, tone: "warning" },
+  ai_digest: { Icon: Icons.Sparkles, tone: "neutral" },
+};
+
+const TONE_STYLES: Record<Tone, { bg: string; fg: string; rail: string }> = {
+  success: {
+    bg: "bg-success/10",
+    fg: "text-success",
+    rail: "bg-success",
+  },
+  warning: {
+    bg: "bg-warning/10",
+    fg: "text-warning",
+    rail: "bg-warning",
+  },
+  destructive: {
+    bg: "bg-destructive/10",
+    fg: "text-destructive",
+    rail: "bg-destructive",
+  },
+  gold: {
+    bg: "bg-amber-500/10",
+    fg: "text-amber-600 dark:text-amber-400",
+    rail: "bg-amber-500",
+  },
+  neutral: {
+    bg: "bg-muted",
+    fg: "text-muted-foreground",
+    rail: "bg-muted-foreground/40",
+  },
+};
+
+function appearanceFor(kind: NotificationKind, severity: NotificationSeverity): {
+  Icon: IconComp;
+  bg: string;
+  fg: string;
+  rail: string;
+} {
+  const a = KIND_APPEARANCE[kind] ?? NEUTRAL_APPEARANCE;
+  // Critical severity always escalates to destructive, regardless of
+  // the per-kind tone — a critical sync failure should look critical.
+  const tone = severity === "critical" ? "destructive" : a.tone;
+  const t = TONE_STYLES[tone];
+  return { Icon: a.Icon, ...t };
+}
+
 function KindIcon({ kind, severity }: { kind: NotificationKind; severity: NotificationSeverity }) {
-  const palette = KIND_PALETTE[kind];
-  // Critical severity always uses the destructive palette to override
-  // the per-kind colour — a critical sync failure should look critical.
-  const useCritical = severity === "critical";
+  const { Icon, bg, fg } = appearanceFor(kind, severity);
   return (
     <span
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-        useCritical ? "bg-destructive/10" : palette.bg,
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+        bg,
       )}
       aria-hidden="true"
     >
-      <Icons.Bell
-        className={cn(
-          "h-4 w-4",
-          useCritical ? "text-destructive" : palette.fg,
-        )}
-      />
+      <Icon className={cn("h-4 w-4", fg)} />
     </span>
   );
 }
