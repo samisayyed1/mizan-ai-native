@@ -8,6 +8,7 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde::Serialize;
 
+use crate::audit;
 use crate::auth::AuthenticatedUser;
 use crate::error::{AppError, ErrorCode};
 use crate::state::AppState;
@@ -76,6 +77,17 @@ pub async fn create_login_portal(
         )
         .await?;
 
+    let _ = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("snaptrade.login_portal_created")
+            .user(user.0.id)
+            .data(&serde_json::json!({
+                "session_id": portal.session_id,
+                "environment": cfg.environment.as_str(),
+            })),
+    )
+    .await;
+
     Ok(Json(LoginPortalEnvelope {
         redirect_uri: portal.redirect_uri,
         session_id: portal.session_id,
@@ -109,6 +121,17 @@ pub async fn disconnect_connection(
     client
         .disconnect_authorization(&snap_user, &secret, &authorization_id)
         .await?;
+
+    let _ = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("snaptrade.connection_disconnected")
+            .user(user.0.id)
+            .data(&serde_json::json!({
+                "authorization_id": authorization_id,
+            })),
+    )
+    .await;
+
     Ok(Json(
         serde_json::json!({ "disconnected": authorization_id }),
     ))
@@ -167,8 +190,21 @@ pub async fn sync_now(
             activities_synced = activities_synced.saturating_add(acts.len() as u32);
         }
     }
+    let accounts_synced = accounts.len() as u32;
+    let _ = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("snaptrade.sync_completed")
+            .user(user.0.id)
+            .data(&serde_json::json!({
+                "accounts_synced": accounts_synced,
+                "positions_synced": positions_synced,
+                "activities_synced": activities_synced,
+            })),
+    )
+    .await;
+
     Ok(Json(SyncSummary {
-        accounts_synced: accounts.len() as u32,
+        accounts_synced,
         positions_synced,
         activities_synced,
     }))

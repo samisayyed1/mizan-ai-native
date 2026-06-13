@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::audit;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -68,6 +69,18 @@ pub async fn get_user_state(
     headers: HeaderMap,
 ) -> Result<Json<UserStateDto>, AppError> {
     require_admin(&state, &headers)?;
+
+    // Admin read of another user's record — log every lookup so a future
+    // audit can reconstruct who an operator inspected and when. Done
+    // before the DB hit so we capture the attempt even if the user
+    // doesn't exist (an enumeration probe is itself audit-worthy).
+    let _ = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("admin.user_lookup").data(&serde_json::json!({
+            "target_user_id": user_id.to_string(),
+        })),
+    )
+    .await;
 
     // One round-trip to Postgres pulling the user, their (maybe-existing)
     // solo team, and their MOST-RECENT subscription. We deliberately use
@@ -256,6 +269,32 @@ pub async fn force_grant_subscription(
         status = %status,
         "admin: force-granted subscription",
     );
+
+    // Force-grant is the highest-sensitivity admin action — it bypasses
+    // the entire Stripe billing path. The audit row is the only record
+    // that this happened, so we drop the fire-and-forget pattern here
+    // and explicitly log even if the user-facing response succeeded.
+    if let Err(err) = audit::record_event(
+        state.db(),
+        audit::AuditEvent::new("admin.force_grant_subscription")
+            .user(user_id)
+            .data(&serde_json::json!({
+                "target_user_id": user_id.to_string(),
+                "tier": tier,
+                "status": status,
+            })),
+    )
+    .await
+    {
+        // Don't roll back the grant — but loud-log so on-call notices.
+        tracing::error!(
+            error = %err,
+            user_id = %user_id,
+            tier = %tier,
+            status = %status,
+            "audit log write failed for force_grant_subscription — investigate immediately",
+        );
+    }
 
     Ok(Json(ForceGrantResponse {
         ok: true,
