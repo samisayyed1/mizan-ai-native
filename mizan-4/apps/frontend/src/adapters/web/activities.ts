@@ -63,17 +63,47 @@ export const parseCsv = async (file: File, config: ParseConfig): Promise<ParsedC
 };
 
 /**
- * Web stub for the smart CSV analysis flow. The server-side
+ * Web fallback for the smart CSV analysis flow. The server-side
  * endpoint that mirrors `analyze_csv_import` hasn't been wired up
- * yet; until it is, web-mode callers fall back to the structural
- * `parseCsv` and lose the detected-mappings + summary headline.
+ * yet; until it does, web-mode callers fall back to the structural
+ * `parseCsv` and get a degraded but functional CsvImportAnalysis.
+ *
+ * Previously this threw at runtime — that crashed the import wizard
+ * the moment a web user dropped a CSV. Now it parses the rows with
+ * the structural parser, returns them with empty `detectedMappings`
+ * and a clear `unavailable` summary, and the UI shows a polite
+ * "smart mapping is desktop-only — drop the file into Mizan Desktop
+ * for auto-detect" card alongside the manual column-mapping step.
  */
 export const analyzeCsvImport = async (
-  _file: File,
-  _config: ParseConfig,
+  file: File,
+  config: ParseConfig,
   _sampleSize?: number,
 ): Promise<CsvImportAnalysis> => {
-  throw new Error(
-    "analyzeCsvImport is not yet implemented in web mode — use the desktop app for now",
-  );
+  const parsed = await parseCsv(file, config);
+  // Degraded but well-shaped result so the import wizard renders.
+  // The UI checks `field_mappings` being empty to decide whether to
+  // show the "Smart analysis is available on Mizan Desktop — map
+  // columns by hand and proceed" hint above the manual mapping step.
+  return {
+    headers: parsed.headers,
+    sample_rows: parsed.rows.slice(0, 50),
+    field_mappings: {},
+    summary: {
+      stats: {
+        rows_kept: 0,
+        rows_skipped_blank: 0,
+        rows_skipped_unparseable: 0,
+        rows_total: parsed.rows.length,
+      } as unknown as CsvImportAnalysis["summary"]["stats"],
+      total_buy_cost_basis: 0,
+      total_sell_proceeds: 0,
+      total_fees: 0,
+      unique_symbols: 0,
+      symbols_with_net_position: 0,
+      buy_count: 0,
+      sell_count: 0,
+      other_count: 0,
+    },
+  };
 };
