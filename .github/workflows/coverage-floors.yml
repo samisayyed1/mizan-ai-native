@@ -1,0 +1,110 @@
+name: Coverage Floors
+
+# Hard-gate line+branch coverage on the financial-truth and zakat
+# crates per CLAUDE.md §0 + working-agreement §5. The nightly mutants
+# workflow (nightly-mutants.yml) is the test-quality signal; this one
+# is the structural floor that has to hold on every PR.
+#
+# Floors (from working-agreement §5):
+#   financial-truth → 95% line
+#   zakat           → 95% line
+#   csv-import      → 90% line
+#   domain-types    → 90% line
+#
+# Below the floor the job fails and the PR cannot merge. cargo-llvm-cov
+# is the canonical tool; tarpaulin was deprecated by working-agreement
+# §18.7 for being source-instrumented (false positives on macro-heavy
+# crates like ours).
+
+on:
+  pull_request:
+    branches: [main]
+    # Path filter deliberately excludes this workflow file itself.
+    # The gate is supposed to enforce the floor on the gated crates'
+    # production code, not on edits to the gate definition. PRs that
+    # only touch this file will skip the floor check by design.
+    paths:
+      - 'mizan-4/crates/financial-truth/**'
+      - 'mizan-4/crates/zakat/**'
+      - 'mizan-4/crates/csv-import/**'
+      - 'mizan-4/crates/domain-types/**'
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage-floor:
+    name: ${{ matrix.crate }} ≥ ${{ matrix.floor }}%
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # First dry-run on 2026-06-13 (PR #184) showed baseline
+        # coverage *below* every target floor:
+        #   financial-truth: 90.39% lines (target 95)
+        #   zakat:            3.85% lines (target 95 — test harness uses
+        #                                  #[tokio::test], may need
+        #                                  --all-features to surface)
+        #   csv-import:      87.87% lines (target 90 — gap of 2.13)
+        #   domain-types:     0%   lines (no executable code — pure
+        #                                  type-only crate; gate is
+        #                                  documentation-only here)
+        #
+        # The floors below are the *target* values from the production
+        # working agreement (§5). The follow-up PRs add tests to close
+        # each gap, and once each crate reaches its target the floor
+        # holds the line. Until then this workflow shows the delta on
+        # every PR that touches the gated crates.
+        include:
+          - crate: mizan-financial-truth
+            path: crates/financial-truth
+            floor: 95
+          - crate: mizan-zakat
+            path: crates/zakat
+            floor: 95
+          - crate: mizan-csv-import
+            path: crates/csv-import
+            floor: 90
+          - crate: mizan-domain-types
+            path: crates/domain-types
+            floor: 90
+    defaults:
+      run:
+        working-directory: mizan-4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (with llvm-tools)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mizan-4 -> target
+
+      - name: Install cargo-llvm-cov
+        # Pinned version so a tooling regression upstream doesn't
+        # silently change the percentage formula (recent versions
+        # default to per-file rather than per-crate aggregation).
+        run: cargo install cargo-llvm-cov --version 0.6.18 --locked
+
+      - name: Run coverage
+        run: |
+          set -euo pipefail
+          # --summary-only so we only get the table at the end (full
+          # source dump explodes log size). --fail-under-lines enforces
+          # the floor server-side — exit non-zero below the line.
+          cargo llvm-cov \
+            --package ${{ matrix.crate }} \
+            --summary-only \
+            --fail-under-lines ${{ matrix.floor }} \
+            --no-fail-fast
+
+      - name: Annotate floor
+        if: failure()
+        run: |
+          echo "::error title=Coverage floor breached::${{ matrix.crate }} dropped below ${{ matrix.floor }}% line coverage. CLAUDE.md §0 + working-agreement §5 require a hard floor here. Add tests for the uncovered lines or contact a maintainer."
