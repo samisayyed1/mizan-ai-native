@@ -60,18 +60,24 @@ export function ExchangeRatesSettings() {
       enableHiding: false,
       cell: ({ row }) => {
         const source = row.original.source;
+        // User-facing labels never expose the raw provider routing
+        // (Yahoo / Alpha Vantage / etc.). Managed rates all surface as
+        // "Mizan"; only Manual and user-defined custom scrapers stay
+        // distinct because they're the user's own input. The raw
+        // provider name is still available to power users via the
+        // Advanced → Market Data settings page.
         if (source.startsWith("CUSTOM_SCRAPER:")) {
           const code = source.slice("CUSTOM_SCRAPER:".length);
           return <span className="capitalize">{code}</span>;
         }
         const names: Record<string, string> = {
-          YAHOO: "Yahoo Finance",
-          ALPHA_VANTAGE: "Alpha Vantage",
+          YAHOO: "Mizan",
+          ALPHA_VANTAGE: "Mizan",
           MANUAL: "Manual",
           CUSTOM_SCRAPER: "Custom",
           CUSTOMSCRAPER: "Custom",
         };
-        return <span>{names[source] ?? source}</span>;
+        return <span>{names[source] ?? "Mizan"}</span>;
       },
     },
     {

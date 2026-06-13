@@ -125,9 +125,21 @@ export default function AdvisorDashboardPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-muted-foreground text-xs">
-                    Drill-down to {team.name}'s portfolio coming in M5.2b.
-                  </p>
+                  {/* Drill-down view is on the next sprint. Until it
+                      ships, the team tile is informational — we render
+                      a polished "in progress" line instead of leaking
+                      the internal sprint identifier ("M5.2b") into the
+                      UI. The card's gold border + brand styling
+                      signals that this is a real surface, not a
+                      crashed render. */}
+                  <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: "hsl(31 38% 46%)" }}
+                    />
+                    <span>Read-only portfolio view in active development.</span>
+                  </div>
                 </CardContent>
               </Card>
             ))}
