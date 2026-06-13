@@ -1569,39 +1569,36 @@ mod tests {
         // unrealized_gain = 0 and no day_change. Honest about what we
         // don't know.
         let h_sec = holdings.iter().find(|h| h.id == "h_usd").unwrap();
-        // FX rate Local→Base is the LENIENT fallback (still 1.0) —
-        // that's used only for `prev_close_value` and similar
-        // non-critical fields, not for market_value.
-        assert_decimal_approx(
-            h_sec.fx_rate,
-            dec!(1.0),
-            TOLERANCE,
-            "Local→Base FX falls back to 1.0 (non-critical path)",
+        // PR-FIX-1: the previous lenient 1.0 fallback has been removed
+        // workspace-wide (CLAUDE.md §0 rule 2). `holding.fx_rate` is
+        // now strictly None when the local→base pair is unavailable —
+        // no fabricated rate ever leaks downstream.
+        assert!(
+            h_sec.fx_rate.is_none(),
+            "Local→Base FX must be None (not 1.0) when the pair is unavailable",
         );
-        // Market value falls back to cost basis (1800 local + 1800 base
-        // since FX is unavailable so base = local at the cost-basis
-        // path's own fallback).
+        // Quote→Base is missing, so usable_quote returns None and the
+        // function routes to cost-basis fallback. Cost basis .local is
+        // 1800 (user-supplied). Cost basis .base now stays at its
+        // initialized 0 instead of fabricating 1800 via a silent 1.0:
+        // the user sees an honest "—" on the base column instead of a
+        // wrong-but-invisible CAD 1800 lie.
         assert_monetary_value_approx(
             Some(&h_sec.market_value),
             dec!(1800.0),
-            dec!(1800.0),
+            dec!(0.0),
             TOLERANCE,
-            "Market value falls back to cost basis when FX is missing",
+            "Market value: .local from cost basis, .base = 0 when FX unavailable",
         );
-        // Cost basis itself uses the lenient 1.0 fallback for the
-        // local→base conversion of the user-supplied cost-basis-local,
-        // which is fine for displaying SOMETHING; the headline number
-        // matches market_value (because we set market_value=cost_basis
-        // in the fallback path) so the user sees zero unrealized gain
-        // rather than a hallucinated value.
         assert_monetary_value_approx(
             h_sec.cost_basis.as_ref(),
             dec!(1800.0),
-            dec!(1800.0),
+            dec!(0.0),
             TOLERANCE,
-            "Cost basis still computed (uses lenient FX for base side)",
+            "Cost basis: .local preserved, .base = 0 when FX unavailable",
         );
-        // Unrealized gain is exactly zero — honest about no live quote.
+        // Unrealized gain is exactly zero — market_value == cost_basis
+        // by construction on the fallback path.
         assert_monetary_value_approx(
             h_sec.unrealized_gain.as_ref(),
             dec!(0.0),
@@ -1983,20 +1980,106 @@ mod tests {
             .unwrap();
 
         let h = &holdings[0];
-        // Without FX, market value falls back to cost basis instead
-        // of silently computing 1000 × 2.40 × 1.0 = $2400 (wrong USD
-        // value derived from SGD price + fake 1:1 FX).
+        // PR-FIX-1: Without FX, market value falls back to cost basis
+        // for .local (SGD 2000, the honest local truth), but .base is
+        // ZERO instead of the previous lenient SGD 2000 → USD 2000 lie
+        // that arose from the silent 1.0 fallback (CLAUDE.md §0 rule
+        // 2 violation). The dashboard now renders the base column as
+        // "—" with a warning chip rather than a wrong-but-invisible
+        // USD 2000.
         assert_monetary_value_approx(
             Some(&h.market_value),
             dec!(2000.0),
-            dec!(2000.0),
+            dec!(0.0),
             TOLERANCE,
-            "Missing FX fallback: market_value == cost_basis (no fake 1:1 conversion)",
+            "Missing FX: market_value.local = cost basis SGD, .base = 0 (no 1:1 fabrication)",
         );
         assert_eq!(
             h.unrealized_gain,
             Some(MonetaryValue::zero()),
             "Unrealized gain == 0 on missing-FX fallback"
+        );
+        assert!(
+            h.fx_rate.is_none(),
+            "fx_rate must be None when SGD→USD pair unavailable, never silently 1.0",
+        );
+    }
+
+    /// PR-FIX-1 contract pin: a missing FX pair must NEVER silently
+    /// produce a 1.0 conversion in any value path. This test sets up
+    /// the worst-case scenario (live quote present, quote currency
+    /// differs from BOTH local and base, neither FX pair registered)
+    /// and asserts every numeric the dashboard would render: price
+    /// must be None, market_value.local/.base must be 0, fx_rate must
+    /// be None, day_change/prev_close must be None.
+    ///
+    /// Burn this test in: if a future refactor brings back any
+    /// `unwrap_or(Decimal::ONE)` on an FX lookup, this fails loudly.
+    #[tokio::test]
+    async fn test_no_silent_fx_fallback_anywhere() {
+        let (fx, market_data, valuation_service) = setup_test_env();
+
+        // Worst case: position is in JPY (local), base is CAD, the
+        // live quote prices it in EUR — three different currencies.
+        // None of EUR→CAD, EUR→JPY, or JPY→CAD are registered in the
+        // test FX service.
+        fx.set_fail("EUR", "CAD", true);
+        fx.set_fail("EUR", "JPY", true);
+        fx.set_fail("JPY", "CAD", true);
+
+        market_data.add_quote_pair(
+            "VWRL.AS",
+            create_quote("today", dec!(95.00), "EUR"),
+            Some(create_quote("yesterday", dec!(94.00), "EUR")),
+        );
+
+        let mut holdings = vec![create_holding(
+            "h_jpy",
+            HoldingType::Security,
+            "VWRL.AS",
+            dec!(100),
+            "JPY",
+            "CAD",
+            Some(dec!(1_000_000.0)), // cost basis local (JPY)
+            None,
+        )];
+
+        valuation_service
+            .calculate_holdings_live_valuation(&mut holdings)
+            .await
+            .unwrap();
+
+        let h = &holdings[0];
+
+        assert!(
+            h.fx_rate.is_none(),
+            "fx_rate must stay None when JPY→CAD pair is unavailable, never silently 1.0",
+        );
+        // Quote→Base (EUR→CAD) missing → usable_quote returns None →
+        // cost-basis fallback fires. cost_basis.base stays 0 (no fake
+        // conversion). market_value mirrors cost_basis on fallback;
+        // price is set from cost basis per-unit in the holding's local
+        // currency (10_000 JPY/unit) — that's honest, not a
+        // fabricated FX conversion.
+        assert_eq!(
+            h.price,
+            Some(dec!(10_000.0)),
+            "price = cost basis per unit in local currency (no FX involved)",
+        );
+        assert_monetary_value_approx(
+            Some(&h.market_value),
+            dec!(1_000_000.0),
+            dec!(0.0),
+            TOLERANCE,
+            "market_value.local from cost basis (JPY truth), .base = 0 (no 1:1 lie)",
+        );
+        assert!(
+            h.day_change.is_none(),
+            "day_change must be None — can't honestly compute without FX",
+        );
+        assert!(
+            h.prev_close_value.is_none(),
+            "prev_close_value must be None on cost-basis fallback",
         );
     }
 
