@@ -1,0 +1,73 @@
+name: Release Gate
+
+# Runs scripts/release-gate.sh in CI (§A18 Production Test Matrix).
+#
+# Two triggers:
+#   - workflow_dispatch — release engineer can hit "Run workflow" before
+#     cutting a tag without having to remember the local invocation.
+#   - push of a version tag (v*) — locks the gate to the artifact the
+#     release pipeline will publish, so a tag never ships unverified.
+#
+# Distinct from .github/workflows/ci.yml — that one fans out per-job
+# (frontend / mizan4-rust / mizan-connect-rust) which is faster on PRs
+# but doesn't match the script the release-engineer runs locally. This
+# one runs the *exact same* script (`scripts/release-gate.sh`) so
+# "passed CI" and "passed local gate" mean the same thing.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    name: release-gate.sh
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rust setup with caching (the script runs cargo check + clippy +
+      # test + a separate cargo check on mizan-connect; sharing the
+      # target/ across them via the cache is the biggest speedup).
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            mizan-4/target
+            mizan-connect/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('mizan-4/Cargo.lock', 'mizan-connect/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: mizan-4/pnpm-lock.yaml
+
+      - name: Run release gate
+        run: ./scripts/release-gate.sh
+
+      # If the gate failed, leave /tmp/release-gate.log accessible as an
+      # artifact so the release engineer doesn't have to re-run locally
+      # to see what broke.
+      - name: Upload last-failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-last-failure
+          path: /tmp/release-gate.log
+          if-no-files-found: warn
+          retention-days: 7
