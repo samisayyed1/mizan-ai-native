@@ -26,13 +26,20 @@ on:
   pull_request:
     branches: [main]
     # The OUTER path filter triggers the workflow whenever any
-    # gated crate's files change. Per-crate enforcement happens
-    # inside via the detect-changes job (below).
+    # gated crate's files change OR when the gate definition itself
+    # changes. Per-crate enforcement happens inside via the
+    # detect-changes job (below) — so a PR that only edits the
+    # workflow file fires the detect job, which then emits
+    # `false` for every crate output and the matrix is fully
+    # skipped. That's the cheapest re-validation: workflow edits
+    # always get a fresh run, but they don't have to clear the
+    # floor for crates they didn't touch.
     paths:
       - 'mizan-4/crates/financial-truth/**'
       - 'mizan-4/crates/zakat/**'
       - 'mizan-4/crates/csv-import/**'
       - 'mizan-4/crates/domain-types/**'
+      - '.github/workflows/coverage-floors.yml'
   push:
     branches: [main]
 
