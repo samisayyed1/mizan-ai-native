@@ -32,7 +32,7 @@ export default function ReportsIndexPage() {
         <p className="text-muted-foreground mb-4 text-sm">
           Dynamic summaries grounded in your current encrypted wealth state.
         </p>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/*
             Each tile points at the actual page that backs the
             report. Previously these all pointed at /reports/{slug}
