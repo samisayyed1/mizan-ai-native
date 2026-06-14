@@ -107,3 +107,53 @@ impl From<serde_json::Error> for FinancialTruthError {
 /// Crate-local `Result` alias. Identical shape to `std::result::Result`
 /// with the error type pinned to [`FinancialTruthError`].
 pub type Result<T> = std::result::Result<T, FinancialTruthError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde_json_error_converts_to_serialization_failed() {
+        // The crate's public surface promises `SerializationFailed(String)`
+        // and never leaks a third-party error type. The internal `From`
+        // impl is what lets the rest of the crate use `?` on
+        // serde_json::Error — pin its behaviour here so a future refactor
+        // doesn't accidentally swap to `From<serde_json::Error>` of a
+        // different variant.
+        //
+        // Trigger a real serde_json::Error by parsing malformed JSON.
+        let err = serde_json::from_str::<serde_json::Value>("{ this is not json }")
+            .expect_err("malformed");
+        let converted: FinancialTruthError = err.into();
+        match converted {
+            FinancialTruthError::SerializationFailed(msg) => {
+                assert!(!msg.is_empty(), "preserves source message");
+            }
+            other => panic!("expected SerializationFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn error_variants_display_correctly() {
+        // The Display impls go on the wire (tracing logs, user-facing
+        // error toasts). Each variant's format string is contractual.
+        assert_eq!(
+            format!(
+                "{}",
+                FinancialTruthError::InvalidInput("bad input".to_string())
+            ),
+            "invalid append input: bad input"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                FinancialTruthError::SerializationFailed("encode failed".to_string())
+            ),
+            "ledger payload serialisation failed: encode failed"
+        );
+        assert_eq!(
+            format!("{}", FinancialTruthError::RetryQueueFull),
+            "ledger retry queue is at capacity"
+        );
+    }
+}

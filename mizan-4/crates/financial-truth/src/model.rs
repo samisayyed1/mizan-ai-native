@@ -282,4 +282,122 @@ mod tests {
         e.amount = Some(rust_decimal::Decimal::new(123_456, 2));
         assert_ne!(e.rederive_hash(), original);
     }
+
+    // ─── PR-COV-2: push the financial-truth floor from 90.39% to ≥95%
+    //
+    // The previous suite never exercised `assemble_via_service`, the
+    // public façade used by storage backends that compute `sequence`
+    // and `prev_hash` inside their own transactions (SQLite reads the
+    // chain tip then inserts). Cover it directly so a future refactor
+    // of the constructor surface fails CI before it breaks the storage
+    // crate that consumes it.
+
+    #[test]
+    fn assemble_via_service_matches_internal_assemble() {
+        // Identical inputs to both constructors should produce
+        // bit-identical LedgerEntries — the public facade is just a
+        // pass-through for crate-external storage backends.
+        let recorded_at = chrono::Utc::now();
+        let mut metadata = BTreeMap::new();
+        metadata.insert("source".to_string(), serde_json::json!("test"));
+
+        let via_public = LedgerEntry::assemble_via_service(
+            "entry-7".to_string(),
+            42,
+            LedgerEntryKind::ActivityRecorded,
+            GENESIS_PREV_HASH.to_string(),
+            Some("acc-99".to_string()),
+            Some("asset-XYZ".to_string()),
+            Some(rust_decimal::Decimal::new(150_000, 2)),
+            Some("USD".to_string()),
+            metadata.clone(),
+            recorded_at,
+        );
+
+        let via_internal = LedgerEntry::assemble(
+            "entry-7".to_string(),
+            42,
+            LedgerEntryKind::ActivityRecorded,
+            GENESIS_PREV_HASH.to_string(),
+            Some("acc-99".to_string()),
+            Some("asset-XYZ".to_string()),
+            Some(rust_decimal::Decimal::new(150_000, 2)),
+            Some("USD".to_string()),
+            metadata,
+            recorded_at,
+        );
+
+        // Field-by-field equality proves the facade is a pure passthrough.
+        assert_eq!(via_public.id, via_internal.id);
+        assert_eq!(via_public.sequence, via_internal.sequence);
+        assert_eq!(via_public.kind, via_internal.kind);
+        assert_eq!(via_public.prev_hash, via_internal.prev_hash);
+        assert_eq!(via_public.account_id, via_internal.account_id);
+        assert_eq!(via_public.asset_id, via_internal.asset_id);
+        assert_eq!(via_public.amount, via_internal.amount);
+        assert_eq!(via_public.currency, via_internal.currency);
+        assert_eq!(via_public.recorded_at, via_internal.recorded_at);
+        assert_eq!(via_public.entry_hash, via_internal.entry_hash);
+        // The hash itself is deterministic — same inputs → same digest.
+        assert_eq!(via_public.entry_hash.len(), 64);
+    }
+
+    #[test]
+    fn assemble_via_service_with_minimal_fields() {
+        // None for every optional. Exercises the default branch of the
+        // canonical_payload serialiser and proves the facade doesn't
+        // require any of the optional columns to be populated.
+        let entry = LedgerEntry::assemble_via_service(
+            "entry-minimal".to_string(),
+            0,
+            LedgerEntryKind::AccountCreated,
+            GENESIS_PREV_HASH.to_string(),
+            None,
+            None,
+            None,
+            None,
+            BTreeMap::new(),
+            chrono::Utc::now(),
+        );
+        assert!(entry.account_id.is_none());
+        assert!(entry.asset_id.is_none());
+        assert!(entry.amount.is_none());
+        assert!(entry.currency.is_none());
+        assert!(entry.metadata.is_empty());
+        assert_eq!(entry.entry_hash.len(), 64);
+        // prev_hash must round-trip exactly when no mutation happened.
+        assert_eq!(entry.prev_hash, GENESIS_PREV_HASH);
+    }
+
+    #[test]
+    fn sequence_change_alters_entry_hash() {
+        // Same id, same prev_hash, different sequence — must produce
+        // distinct hashes (otherwise a re-sequenced replay attack would
+        // be undetectable).
+        let e1 = LedgerEntry::assemble_via_service(
+            "e".into(),
+            1,
+            LedgerEntryKind::AccountCreated,
+            GENESIS_PREV_HASH.into(),
+            None,
+            None,
+            None,
+            None,
+            BTreeMap::new(),
+            chrono::Utc::now(),
+        );
+        let e2 = LedgerEntry::assemble_via_service(
+            "e".into(),
+            2,
+            LedgerEntryKind::AccountCreated,
+            GENESIS_PREV_HASH.into(),
+            None,
+            None,
+            None,
+            None,
+            BTreeMap::new(),
+            e1.recorded_at,
+        );
+        assert_ne!(e1.entry_hash, e2.entry_hash);
+    }
 }
