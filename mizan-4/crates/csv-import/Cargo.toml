@@ -22,5 +22,11 @@ log = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+# Test-only — round-trip the camelCase IPC wire format of
+# ParsedCsvResult per PR-COV-3. The leaf-crate discipline (ADR 0003)
+# stays intact: no runtime serde-json dep.
+serde_json = { workspace = true }
+
 [lints]
 workspace = true
