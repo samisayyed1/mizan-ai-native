@@ -145,8 +145,22 @@ export default function IncomePage() {
   const { totalIncome, currency, monthlyAverage, byType, byCurrency } = periodSummary;
   const dividendIncome = byType.DIVIDEND || 0;
   const interestIncome = byType.INTEREST || 0;
+  // Rental income (real-estate panel), distributions (private-equity panel),
+  // and any other miscellaneous income (referral bonuses, royalties etc.)
+  // round out the Income Sources card so cross-border portfolios with
+  // property and PE — not just listed securities — see their full income
+  // picture. Without these the card silently understated total income.
+  const rentalIncome = (byType.RENTAL_INCOME || 0) + (byType.RENT || 0);
+  const distributionIncome = (byType.DISTRIBUTION || 0) + (byType.CAPITAL_DISTRIBUTION || 0);
+  const otherIncome = Math.max(
+    0,
+    totalIncome - dividendIncome - interestIncome - rentalIncome - distributionIncome,
+  );
   const dividendPercentage = totalIncome > 0 ? (dividendIncome / totalIncome) * 100 : 0;
   const interestPercentage = totalIncome > 0 ? (interestIncome / totalIncome) * 100 : 0;
+  const rentalPercentage = totalIncome > 0 ? (rentalIncome / totalIncome) * 100 : 0;
+  const distributionPercentage = totalIncome > 0 ? (distributionIncome / totalIncome) * 100 : 0;
+  const otherPercentage = totalIncome > 0 ? (otherIncome / totalIncome) * 100 : 0;
 
   const topDividendStocks = Object.values(periodSummary.byAsset)
     .filter((asset) => asset.income > 0)
@@ -354,6 +368,53 @@ export default function IncomePage() {
                     ),
                     percentage: interestPercentage,
                   },
+                  // Rental and distributions only render when present so a
+                  // pure-equities portfolio doesn't show empty 0% rows.
+                  ...(rentalIncome > 0
+                    ? [
+                        {
+                          name: "Rental",
+                          amount: (
+                            <AmountDisplay
+                              value={rentalIncome}
+                              currency={currency}
+                              isHidden={isBalanceHidden}
+                            />
+                          ),
+                          percentage: rentalPercentage,
+                        },
+                      ]
+                    : []),
+                  ...(distributionIncome > 0
+                    ? [
+                        {
+                          name: "Distributions",
+                          amount: (
+                            <AmountDisplay
+                              value={distributionIncome}
+                              currency={currency}
+                              isHidden={isBalanceHidden}
+                            />
+                          ),
+                          percentage: distributionPercentage,
+                        },
+                      ]
+                    : []),
+                  ...(otherIncome > 0
+                    ? [
+                        {
+                          name: "Other",
+                          amount: (
+                            <AmountDisplay
+                              value={otherIncome}
+                              currency={currency}
+                              isHidden={isBalanceHidden}
+                            />
+                          ),
+                          percentage: otherPercentage,
+                        },
+                      ]
+                    : []),
                 ].map((source, index) => {
                   const chartColor = `var(--chart-${index + 1})`;
                   return (

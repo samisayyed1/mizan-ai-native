@@ -997,6 +997,126 @@ struct TitleContext<E: AiEnvironment> {
     model_id: String,
 }
 
+/// Build a compact "what does the user own?" snapshot the model receives
+/// every turn. Total net worth, allocation by panel, top 5 holdings,
+/// cash by currency. Returns `None` if the portfolio is empty so a
+/// brand-new user doesn't get a misleading "0 USD" framing.
+///
+/// This is the baseline a human advisor would already know walking into a
+/// meeting — without it the model has to call `get_holdings` /
+/// `get_asset_allocation` for every conversational reference to "your
+/// portfolio." Tools remain authoritative for fresh, drilled-down queries.
+async fn build_portfolio_snapshot<E: AiEnvironment + ?Sized>(
+    env: &E,
+    base_currency: &str,
+) -> Option<String> {
+    use mizan_core::constants::PORTFOLIO_TOTAL_ACCOUNT_ID;
+    use mizan_core::holdings::HoldingType;
+    use rust_decimal::Decimal;
+    use std::collections::BTreeMap;
+
+    let holdings = env
+        .holdings_service()
+        .get_holdings(PORTFOLIO_TOTAL_ACCOUNT_ID, base_currency)
+        .await
+        .ok()?;
+
+    if holdings.is_empty() {
+        return None;
+    }
+
+    let mut total_value = Decimal::ZERO;
+    let mut cash_by_ccy: BTreeMap<String, Decimal> = BTreeMap::new();
+    let mut investment_holdings: Vec<&mizan_core::holdings::Holding> = Vec::new();
+
+    for h in &holdings {
+        total_value += h.market_value.base;
+        if matches!(h.holding_type, HoldingType::Cash) {
+            *cash_by_ccy.entry(h.local_currency.clone()).or_insert(Decimal::ZERO) +=
+                h.market_value.local;
+        } else {
+            investment_holdings.push(h);
+        }
+    }
+
+    if total_value <= Decimal::ZERO {
+        return None;
+    }
+
+    // Top 5 investment holdings by base-currency market value.
+    investment_holdings.sort_by(|a, b| b.market_value.base.cmp(&a.market_value.base));
+    let top: Vec<&mizan_core::holdings::Holding> =
+        investment_holdings.iter().take(5).copied().collect();
+
+    let mut lines: Vec<String> = vec![
+        "## Portfolio Snapshot".to_string(),
+        format!(
+            "Ambient context — current as of this turn. Use this to answer high-level questions \
+             without a tool call; call get_holdings / get_asset_allocation / get_valuation_history \
+             for fresh detail, drill-down, or anything not summarised here. All values converted \
+             to {} (the user's base currency)."
+            ,
+            base_currency
+        ),
+        format!("- Total net worth: {} {}", round_money(total_value), base_currency),
+    ];
+
+    if !cash_by_ccy.is_empty() {
+        let cash_total: Decimal = cash_by_ccy.values().copied().sum();
+        lines.push(format!(
+            "- Cash across {} bank account currenc{}: ~{} {} equivalent",
+            cash_by_ccy.len(),
+            if cash_by_ccy.len() == 1 { "y" } else { "ies" },
+            round_money(cash_total),
+            base_currency
+        ));
+        for (ccy, amount) in cash_by_ccy.iter().take(8) {
+            lines.push(format!("  - {}: {}", ccy, round_money(*amount)));
+        }
+    }
+
+    if !top.is_empty() {
+        lines.push(format!(
+            "- Top {} holding{} by market value:",
+            top.len(),
+            if top.len() == 1 { "" } else { "s" }
+        ));
+        for h in &top {
+            let label = h
+                .instrument
+                .as_ref()
+                .and_then(|i| i.name.clone().or_else(|| Some(i.symbol.clone())))
+                .unwrap_or_else(|| "Unknown".to_string());
+            let pct = if total_value > Decimal::ZERO {
+                (h.market_value.base / total_value) * Decimal::ONE_HUNDRED
+            } else {
+                Decimal::ZERO
+            };
+            lines.push(format!(
+                "  - {}: {} {} ({}% of net worth)",
+                label,
+                round_money(h.market_value.base),
+                base_currency,
+                round_money_2dp(pct)
+            ));
+        }
+    }
+
+    Some(lines.join("\n"))
+}
+
+/// Round a Decimal to a whole number for human display in the snapshot.
+fn round_money(d: rust_decimal::Decimal) -> String {
+    // Use rust_decimal's round_dp so we preserve sign + locale-free formatting.
+    d.round_dp(0).to_string()
+}
+
+/// 2dp percent for the snapshot — tighter than `round_money` but the same
+/// locale-free formatting.
+fn round_money_2dp(d: rust_decimal::Decimal) -> String {
+    d.round_dp(2).to_string()
+}
+
 /// Build a multimodal `Message::User` from text content and file attachments.
 fn build_user_prompt(user_message: &str, attachments: &[MessageAttachment]) -> Message {
     if attachments.is_empty() {
@@ -1198,6 +1318,20 @@ async fn spawn_chat_stream<E: AiEnvironment + 'static>(
 
     // Build preamble with capability-specific instructions
     let mut preamble = format!("{}{}", base_preamble, dynamic_context);
+
+    // Ambient portfolio snapshot — the model gets net worth, allocation,
+    // top holdings and cash-by-currency baked into context on every turn so
+    // it can reason about the user's portfolio without calling a tool first
+    // for orientation. Tools are still authoritative for fresh queries; this
+    // is the "what does the user own?" baseline a human advisor would
+    // already know walking into a meeting. Cheap (~50ms) and bounded
+    // (~25 lines of text), so it doesn't blow the context window.
+    if capabilities.tools {
+        if let Some(snapshot) = build_portfolio_snapshot(env.as_ref(), &base_currency).await {
+            preamble.push_str("\n\n");
+            preamble.push_str(&snapshot);
+        }
+    }
 
     if let Some(context) = working_context.render() {
         preamble.push_str("\n\n");
