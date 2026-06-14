@@ -266,13 +266,45 @@ impl<E: AiEnvironment> ProviderService<E> {
         format!("ai_{}", provider_id)
     }
 
-    /// Get API key for a provider from the secret store.
+    /// Get API key for a provider. Resolution order:
+    /// 1. OS secret store (what the user pasted in Settings → AI
+    ///    Providers). Survives across launches; encrypted by the OS
+    ///    keychain.
+    /// 2. The catalog-declared env var (e.g. `ANTHROPIC_API_KEY`),
+    ///    picked up from `.env.local` via the Tauri runner's
+    ///    `dotenvy` load on boot.
+    ///
+    /// The env fallback is what makes the Uncle Feroz demo "just
+    /// work" when the key is dropped in `.env.local`: no Settings
+    /// pane click-through required. The env value is never written
+    /// back to the secret store — clearing the env re-locks the
+    /// provider correctly. Whitespace-only values in either source
+    /// are treated as unset.
+    ///
+    /// Mirrors the precedence logic in
+    /// `provider_service::resolve_api_key`; kept here as a parallel
+    /// implementation rather than a shared helper because the two
+    /// services live in different modules with no shared parent
+    /// suitable for a util.
     pub fn get_api_key(&self, provider_id: &str) -> Result<Option<String>, AiError> {
         let secret_key = Self::secret_key_for_provider(provider_id);
-        self.env
+        let from_store = self
+            .env
             .secret_store()
             .get_secret(&secret_key)
-            .map_err(|e| AiError::Internal(e.to_string()))
+            .map_err(|e| AiError::Internal(e.to_string()))?
+            .filter(|s| !s.trim().is_empty());
+        if from_store.is_some() {
+            return Ok(from_store);
+        }
+        let env_value = PROVIDER_CATALOG
+            .providers
+            .get(provider_id)
+            .and_then(|p| p.env_key.as_deref())
+            .filter(|k| !k.is_empty())
+            .and_then(|key| std::env::var(key).ok())
+            .filter(|s| !s.trim().is_empty());
+        Ok(env_value)
     }
 
     /// Check if a provider has an API key stored.
@@ -523,6 +555,82 @@ mod tests {
         let catalog = &*PROVIDER_CATALOG;
         assert!(catalog.capabilities.contains_key("tools"));
         assert!(catalog.capabilities.contains_key("thinking"));
+    }
+
+    // Env-fallback tests for ProviderService::get_api_key. Use a
+    // process-global Mutex to serialise tests that mutate
+    // ANTHROPIC_API_KEY — env state is shared across the test
+    // runner's threads.
+    use crate::env::test_env::MockEnvironment;
+    use std::sync::{Arc, Mutex};
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn fresh_provider_service() -> ProviderService<MockEnvironment> {
+        ProviderService::new(Arc::new(MockEnvironment::new()))
+    }
+
+    #[test]
+    fn get_api_key_falls_back_to_env_when_secret_store_empty() {
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("ANTHROPIC_API_KEY", "sk-ant-env-fallback-works");
+        let svc = fresh_provider_service();
+        let got = svc.get_api_key("anthropic").unwrap();
+        assert_eq!(got.as_deref(), Some("sk-ant-env-fallback-works"));
+        std::env::remove_var("ANTHROPIC_API_KEY");
+    }
+
+    #[test]
+    fn get_api_key_prefers_secret_store_over_env() {
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("ANTHROPIC_API_KEY", "from-env-should-lose");
+        let svc = ProviderService::new(Arc::new(
+            MockEnvironment::new().with_secret("ai_anthropic", "from-store-wins"),
+        ));
+        let got = svc.get_api_key("anthropic").unwrap();
+        assert_eq!(got.as_deref(), Some("from-store-wins"));
+        std::env::remove_var("ANTHROPIC_API_KEY");
+    }
+
+    #[test]
+    fn get_api_key_returns_none_when_both_sources_empty() {
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("ANTHROPIC_API_KEY");
+        let svc = fresh_provider_service();
+        assert!(svc.get_api_key("anthropic").unwrap().is_none());
+    }
+
+    #[test]
+    fn get_api_key_ignores_whitespace_only_env_value() {
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("ANTHROPIC_API_KEY", "    ");
+        let svc = fresh_provider_service();
+        assert!(svc.get_api_key("anthropic").unwrap().is_none());
+        std::env::remove_var("ANTHROPIC_API_KEY");
+    }
+
+    #[test]
+    fn has_api_key_reports_true_when_only_env_is_set() {
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test");
+        let svc = fresh_provider_service();
+        assert!(
+            svc.has_api_key("anthropic"),
+            "has_api_key must see env fallback"
+        );
+        std::env::remove_var("ANTHROPIC_API_KEY");
+    }
+
+    #[test]
+    fn ollama_provider_with_no_env_key_returns_none_not_random_env() {
+        // Ollama's catalog entry has envKey="OLLAMA_API_KEY" but
+        // unsetting it must not leak into reading OTHER env vars.
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("OLLAMA_API_KEY");
+        // Set an unrelated key to prove no cross-contamination.
+        std::env::set_var("ANTHROPIC_API_KEY", "wrong-provider");
+        let svc = fresh_provider_service();
+        assert!(svc.get_api_key("ollama").unwrap().is_none());
+        std::env::remove_var("ANTHROPIC_API_KEY");
     }
 
     #[test]
