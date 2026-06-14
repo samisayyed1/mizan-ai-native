@@ -53,11 +53,18 @@ impl GatedError {
 /// Resolve the current entitlements, defaulting to Free for signed-out users or
 /// builds without cloud sync (so the app degrades gracefully rather than
 /// erroring). This is the entry point premium commands should use.
+///
+/// The fallback path routes through `mizan_connect::resolve_offline_entitlements()`
+/// so the `MIZAN_DEMO_MODE=1` + `MIZAN_ALLOW_PRODUCTION=1` override (PR #199)
+/// unlocks Gold-tier here too. Without this routing the desktop's premium
+/// commands (Zakat, advisor, advanced reports) stayed locked even when both
+/// env vars were set at launch — the Uncle Feroz pitch flow rendered with
+/// Free-tier gates everywhere despite the override.
 pub async fn resolve_entitlements(ctx: &ServiceContext) -> Entitlements {
     ctx.connect_service()
         .get_entitlements()
         .await
-        .unwrap_or_default()
+        .unwrap_or_else(|_| mizan_connect::resolve_offline_entitlements())
 }
 
 /// Gate helper: returns `Ok(())` when `allowed`, otherwise an encoded
