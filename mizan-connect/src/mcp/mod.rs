@@ -32,6 +32,8 @@
 //! `mcp_call_log` so support can analyse patterns.
 
 pub mod egress_dlp;
+pub mod handlers;
+pub mod repository;
 pub mod sandbox;
 pub mod types;
 
@@ -40,3 +42,22 @@ pub use sandbox::{classify_tool_permission, is_financial_truth_table, ToolPermis
 pub use types::{
     McpCallLogEntry, McpError, McpServer, McpServerRegistration, McpToolInvocation, McpTrustLevel,
 };
+
+use axum::routing::{delete, get, post};
+use axum::Router;
+
+use crate::state::AppState;
+
+/// `/v1/mcp/*` router. Mounted on both `/v1` and `/api/v1` aliases.
+///
+/// Per spec §21, MCP capability is Gold+ — entitlement gating lands
+/// in a follow-up PR-K2.b. For now every authenticated user can
+/// register a self-registered server (acknowledgement-gated) and
+/// call it through the sandbox + DLP layers.
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/mcp/servers", post(handlers::register_server))
+        .route("/mcp/servers", get(handlers::list_servers))
+        .route("/mcp/servers/:id", delete(handlers::disconnect_server))
+        .route("/mcp/servers/:id/call", post(handlers::call_tool))
+}
