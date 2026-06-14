@@ -33,13 +33,23 @@ export default function ReportsIndexPage() {
           Dynamic summaries grounded in your current encrypted wealth state.
         </p>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/*
+            Each tile points at the actual page that backs the
+            report. Previously these all pointed at /reports/{slug}
+            paths that don't exist in the router (only /reports
+            itself + /reports/monthly are registered), producing
+            blank pages. The income + health surfaces have shipped
+            full pages (/income, /health); rental + payoff are
+            served by the Real Estate panel + the Holdings list with
+            a liabilities filter until dedicated report views ship.
+          */}
           <ReportTile
             title="Income report"
             description="Year-to-date dividends, interest, rental income, and a monthly trend chart. Top 10 income-producing assets and YoY change."
             icon={<Icons.TrendingUp className="h-6 w-6"
                 style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open income report"}
-            onClick={() => onAction("/reports/income")}
+            onClick={() => onAction("/income")}
             locked={locked}
           />
           <ReportTile
@@ -48,7 +58,7 @@ export default function ReportsIndexPage() {
             icon={<Icons.Home className="h-6 w-6"
                 style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open rental report"}
-            onClick={() => onAction("/reports/rental")}
+            onClick={() => onAction("/panels/real-estate")}
             locked={locked}
           />
           <ReportTile
@@ -57,7 +67,7 @@ export default function ReportsIndexPage() {
             icon={<Icons.Activity2 className="h-6 w-6"
                 style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open payoff projection"}
-            onClick={() => onAction("/reports/payoff")}
+            onClick={() => onAction("/holdings?tab=liabilities")}
             locked={locked}
           />
           <ReportTile
@@ -66,7 +76,7 @@ export default function ReportsIndexPage() {
             icon={<Icons.PieChart className="h-6 w-6"
                 style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open health report"}
-            onClick={() => onAction("/reports/health")}
+            onClick={() => onAction("/health")}
             locked={locked}
           />
         </div>
