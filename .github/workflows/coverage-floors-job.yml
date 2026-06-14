@@ -1,0 +1,108 @@
+name: Coverage floor (reusable)
+
+# Reusable workflow that runs cargo-llvm-cov in JSON mode for a
+# single crate and fails non-zero if line coverage falls below the
+# floor. Called once per gated crate by coverage-floors.yml.
+#
+# Splitting this out into a reusable workflow (instead of a matrix
+# in the parent) sidesteps GitHub Actions' restriction that
+# matrix-level `if:` can't cleanly reference `needs.*.outputs.*`.
+
+on:
+  workflow_call:
+    inputs:
+      crate:
+        description: "Cargo package name, e.g. mizan-zakat"
+        required: true
+        type: string
+      slug:
+        description: "Path slug under crates/, e.g. zakat"
+        required: true
+        type: string
+      floor:
+        description: "Line-coverage percent floor (integer)"
+        required: true
+        type: number
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  measure:
+    name: ${{ inputs.crate }} ≥ ${{ inputs.floor }}%
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mizan-4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (with llvm-tools)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mizan-4 -> target
+
+      - name: Install cargo-llvm-cov
+        # Pinned so a tooling regression upstream doesn't silently
+        # change the JSON schema or per-file aggregation.
+        run: cargo install cargo-llvm-cov --version 0.6.18 --locked
+
+      - name: Run coverage + measure floor
+        env:
+          FLOOR: ${{ inputs.floor }}
+          SLUG: ${{ inputs.slug }}
+          CRATE: ${{ inputs.crate }}
+        run: |
+          set -euo pipefail
+          # Run llvm-cov in JSON mode so we can compute the per-crate
+          # line-coverage percentage ourselves — the built-in
+          # `--fail-under-lines` flag uses the workspace-wide TOTAL,
+          # which is dominated by un-targeted crates.
+          cargo llvm-cov \
+            --package "$CRATE" \
+            --json \
+            --output-path /tmp/cov.json \
+            --no-fail-fast
+
+          python3 <<'PY'
+          import json, sys, os
+
+          floor = float(os.environ['FLOOR'])
+          slug  = os.environ['SLUG']
+
+          with open('/tmp/cov.json') as f:
+              data = json.load(f)
+
+          target_prefix = f'/crates/{slug}/src/'
+          total = covered = 0
+          per_file = []
+          for f in data['data'][0]['files']:
+              if target_prefix in f['filename']:
+                  lines = f['summary']['lines']
+                  total += lines['count']
+                  covered += lines['covered']
+                  per_file.append((f['filename'].split(target_prefix)[-1], lines['percent']))
+
+          if total == 0:
+              print(f'::error::no source files matched {target_prefix} — '
+                    f'workflow path filter is wrong or crate moved')
+              sys.exit(2)
+
+          pct = (covered / total) * 100
+          print(f'\n{slug} per-file line coverage:')
+          for name, p in sorted(per_file):
+              marker = '✓' if p >= floor else '✗'
+              print(f'  {marker} {name:<28} {p:6.2f}%')
+          print(f'\n{slug} TOTAL: {pct:.2f}% (floor {floor}%)\n')
+
+          if pct < floor:
+              print(f'::error title=Coverage floor breached::'
+                    f'{slug} is at {pct:.2f}% line coverage; floor is {floor}%. '
+                    f'CLAUDE.md §0 + working-agreement §5 require a hard floor here.')
+              sys.exit(1)
+          PY

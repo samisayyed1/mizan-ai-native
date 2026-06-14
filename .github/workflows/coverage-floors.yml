@@ -1,39 +1,34 @@
 name: Coverage Floors
 
-# Hard-gate line+branch coverage on the financial-truth, zakat,
-# csv-import, and domain-types crates per CLAUDE.md §0 +
-# working-agreement §5. The nightly mutants workflow
-# (nightly-mutants.yml) is the test-quality signal; this one is the
-# structural floor that has to hold on every PR.
+# Hard-gate line coverage on the financial-truth, zakat, csv-import,
+# and domain-types crates per CLAUDE.md §0 + working-agreement §5.
 #
 # Floors (from working-agreement §5):
-#   financial-truth → 95% line
-#   zakat           → 95% line
-#   csv-import      → 90% line
-#   domain-types    → 90% line
+#   financial-truth → 95%
+#   zakat           → 95%
+#   csv-import      → 90%
+#   domain-types    → 90%
 #
-# Per-crate path filtering: each matrix entry only runs when the
-# corresponding crate's source actually changed. A PR touching
-# `domain-types/` triggers ONLY the domain-types floor — not the
-# other three. This is the correct enforcement shape: a PR is
-# gated on what it changes, not on what it didn't change.
+# Design notes:
 #
-# cargo-llvm-cov is the canonical tool; tarpaulin was deprecated by
-# working-agreement §18.7 for being source-instrumented (false
-# positives on macro-heavy crates like ours).
+# 1. cargo-llvm-cov's TOTAL line in `--summary-only` aggregates across
+#    EVERY file instrumented in the binary, not just the target
+#    crate. With `--package mizan-zakat` the binary still pulls in
+#    mizan-core, market-data, etc. — so the TOTAL is dominated by
+#    un-targeted crates and the `--fail-under-lines` flag fires
+#    falsely. We use `--json` + Python to compute the per-crate total.
+# 2. GitHub Actions matrix-level `if:` has stricter expression rules
+#    than I'd like — dynamic bracket access on outputs is forbidden,
+#    and multi-line / single-line conditionals against `needs.*` in a
+#    matrix context produced "workflow file issue" runs. So each
+#    gated crate is its own job. Verbose but bulletproof.
+# 3. The detect-changes job emits one boolean per gated crate via
+#    dorny/paths-filter so a PR touching only domain-types triggers
+#    only the domain-types gate.
 
 on:
   pull_request:
     branches: [main]
-    # The OUTER path filter triggers the workflow whenever any
-    # gated crate's files change OR when the gate definition itself
-    # changes. Per-crate enforcement happens inside via the
-    # detect-changes job (below) — so a PR that only edits the
-    # workflow file fires the detect job, which then emits
-    # `false` for every crate output and the matrix is fully
-    # skipped. That's the cheapest re-validation: workflow edits
-    # always get a fresh run, but they don't have to clear the
-    # floor for crates they didn't touch.
     paths:
       - 'mizan-4/crates/financial-truth/**'
       - 'mizan-4/crates/zakat/**'
@@ -60,10 +55,6 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          # On push events `dorny/paths-filter` returns true for
-          # every filter (no base ref to diff against) — which is
-          # exactly what we want for main pushes: re-run every
-          # floor every time.
           filters: |
             financial-truth:
               - 'mizan-4/crates/financial-truth/**'
@@ -74,85 +65,42 @@ jobs:
             domain-types:
               - 'mizan-4/crates/domain-types/**'
 
-  coverage-floor:
-    name: ${{ matrix.crate }} ≥ ${{ matrix.floor }}%
+  financial-truth:
+    name: mizan-financial-truth ≥ 95%
     needs: detect-changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        # First dry-run on 2026-06-13 (PR #184) showed baseline
-        # coverage *below* every target floor:
-        #   financial-truth: 90.39% lines (target 95)
-        #   zakat:            3.85% lines (target 95 — most tests
-        #                                  live in mizan-core's suite
-        #                                  calling into zakat; PR-COV-1
-        #                                  relocates the critical ones)
-        #   csv-import:      87.87% lines (target 90 — gap of 2.13)
-        #   domain-types:     0%   lines  — closed by PR #187 (≥90%)
-        #
-        # The floors below are the *target* values from the production
-        # working agreement (§5). The follow-up PRs add tests to close
-        # each gap, and once each crate reaches its target the floor
-        # holds the line. Per-crate path filtering ensures a PR is
-        # only blocked by the crate(s) it actually touches.
-        include:
-          - crate: mizan-financial-truth
-            slug: financial-truth
-            path: crates/financial-truth
-            floor: 95
-          - crate: mizan-zakat
-            slug: zakat
-            path: crates/zakat
-            floor: 95
-          - crate: mizan-csv-import
-            slug: csv-import
-            path: crates/csv-import
-            floor: 90
-          - crate: mizan-domain-types
-            slug: domain-types
-            path: crates/domain-types
-            floor: 90
-    # Only run this matrix entry if the corresponding crate actually
-    # changed. Skips return `success()`-equivalent so a PR touching
-    # only domain-types doesn't get blocked by the other three crates'
-    # pre-existing under-floor coverage.
-    if: needs.detect-changes.outputs[matrix.slug] == 'true'
-    defaults:
-      run:
-        working-directory: mizan-4
-    steps:
-      - uses: actions/checkout@v4
+    if: needs.detect-changes.outputs.financial-truth == 'true'
+    uses: ./.github/workflows/coverage-floors-job.yml
+    with:
+      crate: mizan-financial-truth
+      slug: financial-truth
+      floor: 95
 
-      - name: Install Rust toolchain (with llvm-tools)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
+  zakat:
+    name: mizan-zakat ≥ 95%
+    needs: detect-changes
+    if: needs.detect-changes.outputs.zakat == 'true'
+    uses: ./.github/workflows/coverage-floors-job.yml
+    with:
+      crate: mizan-zakat
+      slug: zakat
+      floor: 95
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: mizan-4 -> target
+  csv-import:
+    name: mizan-csv-import ≥ 90%
+    needs: detect-changes
+    if: needs.detect-changes.outputs.csv-import == 'true'
+    uses: ./.github/workflows/coverage-floors-job.yml
+    with:
+      crate: mizan-csv-import
+      slug: csv-import
+      floor: 90
 
-      - name: Install cargo-llvm-cov
-        # Pinned version so a tooling regression upstream doesn't
-        # silently change the percentage formula (recent versions
-        # default to per-file rather than per-crate aggregation).
-        run: cargo install cargo-llvm-cov --version 0.6.18 --locked
-
-      - name: Run coverage
-        run: |
-          set -euo pipefail
-          # --summary-only so we only get the table at the end (full
-          # source dump explodes log size). --fail-under-lines enforces
-          # the floor server-side — exit non-zero below the line.
-          cargo llvm-cov \
-            --package ${{ matrix.crate }} \
-            --summary-only \
-            --fail-under-lines ${{ matrix.floor }} \
-            --no-fail-fast
-
-      - name: Annotate floor
-        if: failure()
-        run: |
-          echo "::error title=Coverage floor breached::${{ matrix.crate }} dropped below ${{ matrix.floor }}% line coverage. CLAUDE.md §0 + working-agreement §5 require a hard floor here. Add tests for the uncovered lines or contact a maintainer."
+  domain-types:
+    name: mizan-domain-types ≥ 90%
+    needs: detect-changes
+    if: needs.detect-changes.outputs.domain-types == 'true'
+    uses: ./.github/workflows/coverage-floors-job.yml
+    with:
+      crate: mizan-domain-types
+      slug: domain-types
+      floor: 90
