@@ -29,3 +29,11 @@ broker = []
 wiremock = "0.6"
 # Serialise tests that mutate process-global env vars.
 serial_test = "3"
+
+# `mizan-demo-mode` CLI — flips the local install into the
+# investor-pitch entitlement override. Hard-gated by
+# MIZAN_ALLOW_PRODUCTION=1 inside `entitlements::demo_mode_active`
+# so a stray flag in a customer build can't unlock Gold.
+[[bin]]
+name = "mizan-demo-mode"
+path = "src/bin/mizan_demo_mode.rs"

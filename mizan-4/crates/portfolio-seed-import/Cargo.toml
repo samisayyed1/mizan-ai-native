@@ -1,0 +1,15 @@
+[package]
+name = "mizan-portfolio-seed-import"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }

@@ -91,11 +91,29 @@ impl Entitlements {
     }
 }
 
+/// Demo-mode override — when `MIZAN_DEMO_MODE=1` is set in the host
+/// environment, every entitlement lookup returns full Gold-tier so
+/// the investor-pitch flow ("Uncle Feroz" walkthrough) can render
+/// every feature without a paid subscription. The flag is read once
+/// per call (no caching) so a runtime unset re-locks the UI on the
+/// next render. Hard-gated to `non-production` debug builds via the
+/// `MIZAN_ALLOW_PRODUCTION` env — if a release artefact is launched
+/// with `MIZAN_DEMO_MODE=1` but no `MIZAN_ALLOW_PRODUCTION=1`, the
+/// override is silently ignored so a stray flag can't unlock Gold in
+/// a customer install.
+fn demo_mode_active() -> bool {
+    std::env::var("MIZAN_DEMO_MODE").as_deref() == Ok("1")
+        && std::env::var("MIZAN_ALLOW_PRODUCTION").as_deref() == Ok("1")
+}
+
 /// Derive entitlements from a team's `plan` slug + `subscription_status`.
 ///
 /// Inactive/absent subscriptions collapse to Silver. Legacy `free`/`basic`
 /// slugs map to Silver; legacy paid slugs map to Gold.
 pub fn entitlements_for_plan(plan: Option<&str>, status: Option<&str>) -> Entitlements {
+    if demo_mode_active() {
+        return demo_mode_gold();
+    }
     let is_active = matches!(status, Some("active") | Some("trialing"));
     if !is_active {
         return Entitlements::default();
@@ -164,6 +182,31 @@ pub fn entitlements_for_plan(plan: Option<&str>, status: Option<&str>) -> Entitl
             zakat_engine: true,
             advisor_mode: false,
         },
+    }
+}
+
+/// Full Gold-tier entitlements for `MIZAN_DEMO_MODE=1` walkthroughs.
+/// Identical to the canonical `gold` slug branch above; kept as a
+/// dedicated function so the demo path is greppable and the plan
+/// label reads `"gold-demo"` to make telemetry distinguishable.
+fn demo_mode_gold() -> Entitlements {
+    Entitlements {
+        plan: "gold-demo".to_string(),
+        max_portfolios: UNLIMITED,
+        max_holdings: UNLIMITED,
+        max_asset_classes: UNLIMITED,
+        broker_sync: true,
+        max_broker_connections: UNLIMITED,
+        device_sync: true,
+        cloud_backup: true,
+        managed_ai: true,
+        ai_credits_monthly: UNLIMITED,
+        news_daily_limit: UNLIMITED,
+        market_refresh_daily_limit: UNLIMITED,
+        csv_imports_monthly: UNLIMITED,
+        advanced_reports: true,
+        zakat_engine: true,
+        advisor_mode: true,
     }
 }
 
@@ -240,5 +283,60 @@ mod tests {
         assert!(Entitlements::within(0, 1)); // first one allowed
         assert!(!Entitlements::within(1, 1)); // at cap, blocked
         assert!(Entitlements::within(9999, UNLIMITED)); // unlimited always ok
+    }
+
+    // Demo-mode override tests use SAFETY_MUTEX to serialise env
+    // mutation across threads — `std::env::set_var` is process-wide
+    // and Rust's test runner threads tests by default.
+    use std::sync::Mutex;
+    static SAFETY_MUTEX: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn demo_mode_unlocks_full_gold_when_both_envs_set() {
+        let _guard = SAFETY_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("MIZAN_DEMO_MODE", "1");
+        std::env::set_var("MIZAN_ALLOW_PRODUCTION", "1");
+        // Even a free/no-status user sees Gold under demo mode.
+        let e = entitlements_for_plan(None, None);
+        assert_eq!(e.plan, "gold-demo");
+        assert!(e.zakat_engine, "Zakat engine must unlock for demo");
+        assert!(e.advisor_mode, "advisor surface must render for demo");
+        assert!(e.broker_sync);
+        assert_eq!(e.ai_credits_monthly, UNLIMITED);
+        std::env::remove_var("MIZAN_DEMO_MODE");
+        std::env::remove_var("MIZAN_ALLOW_PRODUCTION");
+    }
+
+    #[test]
+    fn demo_mode_without_production_envelope_is_silently_ignored() {
+        // Belt-and-braces: a stray MIZAN_DEMO_MODE=1 in a release
+        // install must NOT unlock Gold. The user has to ALSO have
+        // set MIZAN_ALLOW_PRODUCTION=1, which the binary launcher
+        // never sets in customer builds.
+        let _guard = SAFETY_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("MIZAN_DEMO_MODE", "1");
+        std::env::remove_var("MIZAN_ALLOW_PRODUCTION");
+        let e = entitlements_for_plan(None, None);
+        assert_eq!(
+            e.plan, "free",
+            "demo mode must NOT unlock without prod envelope"
+        );
+        assert!(!e.zakat_engine);
+        std::env::remove_var("MIZAN_DEMO_MODE");
+    }
+
+    #[test]
+    fn demo_mode_overrides_canceled_subscription() {
+        // A user whose subscription was canceled should still see
+        // Gold under demo mode — that's the whole point of the
+        // override.
+        let _guard = SAFETY_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("MIZAN_DEMO_MODE", "1");
+        std::env::set_var("MIZAN_ALLOW_PRODUCTION", "1");
+        let e = entitlements_for_plan(Some("pro"), Some("canceled"));
+        assert_eq!(e.plan, "gold-demo");
+        assert!(e.zakat_engine);
+        std::env::remove_var("MIZAN_DEMO_MODE");
+        std::env::remove_var("MIZAN_ALLOW_PRODUCTION");
     }
 }

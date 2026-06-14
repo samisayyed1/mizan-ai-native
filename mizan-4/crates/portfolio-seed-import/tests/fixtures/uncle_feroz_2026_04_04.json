@@ -1,0 +1,481 @@
+{
+  "owner": {
+    "name": "Feroz Siddiqui",
+    "base_currency": "USD",
+    "secondary_currency": "SGD",
+    "tertiary_currency": "INR",
+    "school": "Hanafi",
+    "as_of": "2026-04-04",
+    "fx_rates": {
+      "USD_SGD": 1.2756,
+      "USD_INR": 93.3919,
+      "USD_SAR": 3.75,
+      "USD_AED": 3.65
+    }
+  },
+  "summary_target_total_usd": 1713968.7,
+  "sukuks": {
+    "asset_class": "Bonds & Sukuks",
+    "total_usd": 690947,
+    "holdings": [
+      {
+        "isin": "XS2052469165",
+        "issuer": "Emaar",
+        "custodian": "OCBC (Seema)",
+        "issue_date": "2019-09-01",
+        "maturity": "2029-10-18",
+        "purchase_value": 201600,
+        "quantity": 2000,
+        "purchase_price": 100.8,
+        "current_price": 94.25,
+        "coupon": 0.03875,
+        "current_value": 188500,
+        "pnl": -13100
+      },
+      {
+        "isin": "XS2124942595",
+        "issuer": "Dar al Arkan",
+        "custodian": "DBS (Feroz)",
+        "issue_date": "2022-06-17",
+        "maturity": "2027-02-26",
+        "purchase_value": 197000,
+        "quantity": 2000,
+        "purchase_price": 98.5,
+        "current_price": 100.067,
+        "coupon": 0.06875,
+        "current_value": 200134,
+        "pnl": 3134
+      },
+      {
+        "isin": "XS2633136234",
+        "issuer": "Sobha",
+        "custodian": "Stan Chart (UAE)",
+        "issue_date": "2023-11-27",
+        "maturity": "2033-07-20",
+        "purchase_value": 292347,
+        "quantity": 3000,
+        "purchase_price": 97.449,
+        "current_price": 95.27,
+        "coupon": 0.0875,
+        "current_value": 285810,
+        "pnl": -6537
+      },
+      {
+        "isin": "XS2753304349",
+        "issuer": "Binghatti",
+        "custodian": "Stan Chart (UAE)",
+        "issue_date": "2026-03-26",
+        "maturity": "2027-02-01",
+        "purchase_value": 185620,
+        "quantity": 2000,
+        "purchase_price": 92.81,
+        "current_price": 98.2,
+        "coupon": 0.09625,
+        "current_value": 196400,
+        "pnl": 10780
+      }
+    ]
+  },
+  "stocks": {
+    "asset_class": "Equities",
+    "total_usd": 367076.68,
+    "subsets": [
+      {
+        "label": "US Stocks",
+        "data_source": "Yahoo Finance",
+        "current_value_usd": 271833.27
+      },
+      {
+        "label": "SG Stocks",
+        "data_source": "Yahoo Finance",
+        "current_value_sgd": 121492.5,
+        "current_value_usd": 95243.41
+      }
+    ]
+  },
+  "etfs": {
+    "asset_class": "ETFs",
+    "custodians": [
+      "Sarwa Invest",
+      "FSMOne"
+    ],
+    "total_usd": 21771.46,
+    "holdings": [
+      {
+        "ticker": "ISDW",
+        "broker": "Sarwa Invest",
+        "qty": 118.43,
+        "current_price": 58.09,
+        "purchase_price": 59.1,
+        "current_value": 6879.6,
+        "rsp_per_week": 1000
+      },
+      {
+        "ticker": "ISDU",
+        "broker": "Sarwa Invest",
+        "qty": 2.3754,
+        "current_price": 84.27,
+        "purchase_price": 84.196,
+        "current_value": 200.17,
+        "rsp_per_week": 250
+      },
+      {
+        "ticker": "ISDE",
+        "broker": "Sarwa Invest",
+        "qty": 53.192,
+        "current_price": 27.235,
+        "purchase_price": 27.26,
+        "current_value": 1448.68,
+        "rsp_per_week": 750
+      },
+      {
+        "ticker": "SPUS",
+        "broker": "Sarwa Invest",
+        "qty": 150,
+        "current_price": 57.54,
+        "purchase_price": 50.028,
+        "current_value": 8631,
+        "rsp_per_week": "Lumpsum"
+      }
+    ]
+  },
+  "private_equity": {
+    "asset_class": "Private Equity",
+    "total_usd": 95859.5,
+    "holdings": [
+      {
+        "vehicle": "Hasan VC (FUND)",
+        "currency": "USD",
+        "amount": 25000,
+        "usd_value": 25000,
+        "date": "2024-10-14",
+        "quantity": 2858800,
+        "remarks": "7 yr lock in period with option to extend by another year"
+      },
+      {
+        "vehicle": "HAPL (Equity)",
+        "currency": "USD",
+        "amount": 25000,
+        "usd_value": 25000,
+        "date": "2025-12-03",
+        "quantity": "1.5% equity",
+        "remarks": "Invested as equity into Hasan VC parent company HAPL"
+      },
+      {
+        "vehicle": "Wholesum Investment",
+        "currency": "AUD",
+        "amount": 25000,
+        "usd_value": 17227.12,
+        "date": "2025-01-01",
+        "quantity": 24872.64,
+        "remarks": "7% returns annually paid monthly, reinvested each month"
+      },
+      {
+        "vehicle": "Stake",
+        "currency": "AED",
+        "amount": 105224,
+        "usd_value": 28632.38,
+        "date": null,
+        "quantity": "4 properties",
+        "remarks": "4.8% annually paid weekly"
+      }
+    ]
+  },
+  "unit_trusts_tiger": {
+    "asset_class": "Unit Trusts",
+    "broker": "Tiger Brokers (072-020246-5)",
+    "total_usd": 13569.46,
+    "holdings": [
+      {
+        "fund": "HSBC ISLAMIC GLOBAL EQUITY INDEX A (USD) ACC",
+        "qty": 397,
+        "avg_cost": 30.855,
+        "current_nav": 34.18,
+        "investment_usd": 12249.435,
+        "current_value_usd": 13569.46,
+        "pnl": 1320.03,
+        "sip": "USD 250/week = USD 1000/month, target USD 31,000"
+      }
+    ],
+    "cash_balance_usd": 8685
+  },
+  "unit_trusts_cpf_phillip": {
+    "asset_class": "Unit Trusts (CPF)",
+    "broker": "Phillip Securities (via CPF)",
+    "total_usd": 69563.6,
+    "total_sgd_approx": 88752,
+    "tranches": [
+      {
+        "date": "2022-01-08",
+        "investment_sgd": 31972.64,
+        "current_sgd": 28338.84,
+        "funds": [
+          "FTIF Franklin US Opportunities A AS (ACC) SGD",
+          "FTSF Templeton Shariah Global Equity A AS (ACC) SGD"
+        ]
+      },
+      {
+        "date": "2022-05-12",
+        "investment_sgd": 43932.27,
+        "current_sgd": 39249.6,
+        "funds": [
+          "FTIF Franklin US Opportunities A AS (ACC) SGD",
+          "FTSF Templeton Shariah Global Equity A AS (ACC) SGD"
+        ]
+      },
+      {
+        "date": "2022-08-05",
+        "investment_sgd": 19999.98,
+        "current_sgd": 18815.94,
+        "funds": [
+          "FTIF Franklin US Opportunities A AS (ACC) SGD",
+          "FTSF Templeton Shariah Global Equity A AS (ACC) SGD"
+        ]
+      },
+      {
+        "date": "2023-08-08",
+        "investment_sgd": 53865.96,
+        "current_sgd": 48424.95,
+        "funds": [
+          "FTIF Franklin US Opportunities A AS (ACC) SGD",
+          "FTSF Templeton Shariah Global Equity A AS (ACC) SGD"
+        ]
+      }
+    ]
+  },
+  "unit_trusts_srs_dbs": {
+    "asset_class": "Unit Trusts (SRS)",
+    "broker": "DBS (via SRS)",
+    "total_usd": 10647.48,
+    "total_sgd_approx": 13580,
+    "holdings_template": [
+      "Allianz GIF Global AI AT H2 SGD",
+      "BlackRock Next Generation Technology Fund A2 SGD Hedged",
+      "FTSF Franklin Global Sukuk Fund A (MDIS) SGD",
+      "MAMG Global Sukuk Income-Islamic Fund Class A (DIST) SGD",
+      "UOB United Global Healthcare Fund"
+    ]
+  },
+  "ulip_india": {
+    "asset_class": "Insurance (ULIPs)",
+    "country": "India",
+    "currency": "INR",
+    "total_invested_inr": 1583247,
+    "total_usd_approx": 16952.72,
+    "policies": [
+      {
+        "company": "Bajaj Pure Stock",
+        "name": "Feroz Siddiqui",
+        "policy": 582643012,
+        "start_date": "2023-12-20",
+        "five_yr": "2028-11-20",
+        "maturity": "2038-12-19",
+        "term": 15,
+        "installment_inr": 20824,
+        "mode": "Monthly",
+        "invested_inr": 541581,
+        "fund_value_inr": 535959,
+        "gain_loss_inr": -5622
+      },
+      {
+        "company": "Bajaj Pure Stock",
+        "name": "Seema Siddiqui",
+        "policy": 597928066,
+        "start_date": "2024-06-11",
+        "five_yr": "2028-06-11",
+        "maturity": "2039-06-11",
+        "term": 15,
+        "installment_inr": 250000,
+        "mode": "Yearly",
+        "invested_inr": 500000,
+        "fund_value_inr": 468453,
+        "gain_loss_inr": -31547
+      },
+      {
+        "company": "Axis Max Pure Growth",
+        "name": "Feroz Siddiqui",
+        "policy": 624769782,
+        "start_date": "2024-10-08",
+        "five_yr": "2028-10-08",
+        "maturity": "2034-10-08",
+        "term": 10,
+        "installment_inr": 20833,
+        "mode": "Monthly",
+        "invested_inr": 291666,
+        "fund_value_inr": 238006,
+        "gain_loss_inr": -53660
+      },
+      {
+        "company": "Axis Max Pure Growth",
+        "name": "Seema Siddiqui",
+        "policy": 638974121,
+        "start_date": "2026-01-30",
+        "five_yr": "2031-01-30",
+        "maturity": "2040-01-30",
+        "term": 15,
+        "installment_inr": 250000,
+        "mode": "Yearly",
+        "invested_inr": 250000,
+        "fund_value_inr": null,
+        "gain_loss_inr": null
+      }
+    ]
+  },
+  "cpf_balance": {
+    "asset_class": "Provident Funds",
+    "country": "Singapore",
+    "total_usd": 327812.01,
+    "note": "CPF balance (cash side, locked)"
+  },
+  "cash": {
+    "asset_class": "Bank Accounts / Cash",
+    "total_usd": 553962.47,
+    "accounts": [
+      {
+        "country": "Singapore",
+        "bank": "DBS SG",
+        "currency": "SGD",
+        "balance": 18147,
+        "usd_equiv": 14226.25
+      },
+      {
+        "country": "Singapore",
+        "bank": "HSBC SG",
+        "currency": "SGD",
+        "balance": 10160,
+        "usd_equiv": 7964.88
+      },
+      {
+        "country": "Singapore",
+        "bank": "Standard Chartered",
+        "currency": "SGD",
+        "balance": 50,
+        "usd_equiv": 39.2
+      },
+      {
+        "country": "Singapore",
+        "bank": "OCBC",
+        "currency": "SGD",
+        "balance": 1100,
+        "usd_equiv": 862.34
+      },
+      {
+        "country": "Singapore",
+        "bank": "WISE",
+        "currency": "SGD",
+        "balance": 2086,
+        "usd_equiv": 1635.31
+      },
+      {
+        "country": "India",
+        "bank": "DBS IN",
+        "currency": "INR",
+        "balance": 1487912,
+        "usd_equiv": 15931.92
+      },
+      {
+        "country": "India",
+        "bank": "Axis Bank",
+        "currency": "INR",
+        "balance": 1269786,
+        "usd_equiv": 13596.32
+      },
+      {
+        "country": "India",
+        "bank": "ICICI Bank",
+        "currency": "INR",
+        "balance": 107583,
+        "usd_equiv": 1151.95
+      },
+      {
+        "country": "India",
+        "bank": "Cash",
+        "currency": "INR",
+        "balance": 2800000,
+        "usd_equiv": 29981.19
+      },
+      {
+        "country": "KSA",
+        "bank": "SAB",
+        "currency": "SAR",
+        "balance": 937832,
+        "usd_equiv": 250088.53
+      },
+      {
+        "country": "UAE",
+        "bank": "Standard Chartered UAE",
+        "currency": "AED",
+        "balance": 10620,
+        "usd_equiv": 218484.59
+      },
+      {
+        "country": "UAE",
+        "bank": "HSBC UAE",
+        "currency": "AED",
+        "balance": 0,
+        "usd_equiv": 0
+      }
+    ]
+  },
+  "real_estate": {
+    "asset_class": "Real Estate",
+    "properties": [
+      {
+        "country": "Singapore",
+        "name": "#02-117 Bukit Batok Street 32",
+        "type": "3BHK",
+        "sqft": 1100,
+        "year": 1997,
+        "current_value_usd": 400000,
+        "intent": "primary_residence"
+      },
+      {
+        "country": "India",
+        "name": "H-104 Aparna Sarovar",
+        "type": "3BHK",
+        "sqft": 1800,
+        "year": null,
+        "current_value_usd": null,
+        "intent": "for_rent"
+      },
+      {
+        "country": "India",
+        "name": "C-103 Aparna Sarovar",
+        "type": "3BHK",
+        "sqft": 1800,
+        "year": null,
+        "current_value_usd": null,
+        "intent": "for_rent"
+      },
+      {
+        "country": "India",
+        "name": "A-1501 Aparna Sarovar Grande",
+        "type": "4BHK",
+        "sqft": 3750,
+        "year": null,
+        "current_value_usd": null,
+        "intent": "for_rent"
+      },
+      {
+        "country": "India",
+        "name": "G-1903 Aparna Sarovar Grande",
+        "type": "3BHK",
+        "sqft": 2100,
+        "year": null,
+        "current_value_usd": null,
+        "intent": "for_rent"
+      },
+      {
+        "country": "UAE",
+        "name": "3-G06 Capria East Ghaff Woods",
+        "type": "2BHK",
+        "sqft": 1512.76,
+        "year": 2025,
+        "purchase_aed": 2885000,
+        "current_aed": 2885000,
+        "current_value_usd": 158082.19,
+        "intent": "for_rent"
+      }
+    ]
+  }
+}
