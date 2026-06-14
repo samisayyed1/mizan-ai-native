@@ -8,7 +8,25 @@ use super::addon_traits::AddonServiceTrait;
 use super::models::*;
 
 // Constants
+//
+// Default addon-store endpoint. Hardcoded as a fallback; an operator
+// running an enterprise / self-hosted deployment can override at
+// runtime via `MIZAN_ADDON_STORE_API_BASE_URL` (read at the call
+// site, not at module load, so a process restart is enough to switch
+// targets without a rebuild).
 pub const ADDON_STORE_API_BASE_URL: &str = "https://mizan.app/api/addons";
+
+/// Resolve the effective addon-store base URL.
+///
+/// Reads `MIZAN_ADDON_STORE_API_BASE_URL` from the environment; falls
+/// back to the public `ADDON_STORE_API_BASE_URL` constant. Documented
+/// in `mizan-4/.env.example` so an operator running a self-hosted
+/// store can point the desktop at their own catalog without code
+/// changes.
+pub fn addon_store_base_url() -> String {
+    std::env::var("MIZAN_ADDON_STORE_API_BASE_URL")
+        .unwrap_or_else(|_| ADDON_STORE_API_BASE_URL.to_string())
+}
 
 /// Helper function to create a request with common headers
 fn create_request_with_headers(
@@ -840,9 +858,10 @@ pub async fn check_addon_update_from_api(
     current_version: &str,
     instance_id: Option<&str>,
 ) -> Result<AddonUpdateCheckResult, String> {
+    let base = addon_store_base_url();
     let api_url = format!(
         "{}/update-check?addonId={}&currentVersion={}",
-        ADDON_STORE_API_BASE_URL, addon_id, current_version
+        base, addon_id, current_version
     );
 
     let client = reqwest::Client::new();
@@ -959,7 +978,7 @@ pub async fn download_addon_from_store(
     addon_id: &str,
     instance_id: &str,
 ) -> Result<Vec<u8>, String> {
-    let download_api_url = format!("{}/{}/download", ADDON_STORE_API_BASE_URL, addon_id);
+    let download_api_url = format!("{}/{}/download", addon_store_base_url(), addon_id);
 
     log::info!(
         "Calling download API for addon '{}' at URL: {}",
@@ -1230,7 +1249,7 @@ pub async fn fetch_addon_store_listings(
     instance_id: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, String> {
     // Fetch all addons and let frontend filter by status
-    let api_url = ADDON_STORE_API_BASE_URL.to_string();
+    let api_url = addon_store_base_url();
 
     let client = reqwest::Client::new();
     let response =
@@ -1300,7 +1319,7 @@ pub async fn submit_addon_rating(
         return Err("Rating must be between 1 and 5".to_string());
     }
 
-    let api_url = format!("{}/{}/ratings", ADDON_STORE_API_BASE_URL, addon_id);
+    let api_url = format!("{}/{}/ratings", addon_store_base_url(), addon_id);
 
     let mut request_body = serde_json::json!({
         "rating": rating
