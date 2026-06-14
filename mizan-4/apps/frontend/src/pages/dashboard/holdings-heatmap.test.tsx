@@ -139,6 +139,14 @@ describe("<HoldingsHeatmap />", () => {
           symbol: "AAPL",
           currency: "USD",
           quoteMode: "MARKET",
+          // The heatmap now filters by classifyHolding(h) === "equities"
+          // (`feat(heatmap): restrict to equities only`, 2026-06-14).
+          // Without an EQUITY_SECURITY classification AAPL falls through
+          // to `brokerage-accounts` and is excluded, leaving the empty
+          // state on screen and the Total/Day toggle absent.
+          classifications: {
+            assetType: { key: "EQUITY_SECURITY" },
+          },
         } as Holding["instrument"],
         marketValue: { local: 10_000, base: 10_000 },
         unrealizedGain: { local: 1_000, base: 1_000 },
