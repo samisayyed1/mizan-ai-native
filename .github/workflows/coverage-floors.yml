@@ -82,12 +82,10 @@ jobs:
     # dynamic bracket access on `needs.x.outputs`, so each combo is
     # spelled out as a static literal. The matrix-expansion runtime
     # evaluates these once per include, so only the entry whose
-    # slug matches a changed crate runs.
-    if: |
-      (matrix.slug == 'financial-truth' && needs.detect-changes.outputs.financial-truth == 'true') ||
-      (matrix.slug == 'zakat' && needs.detect-changes.outputs.zakat == 'true') ||
-      (matrix.slug == 'csv-import' && needs.detect-changes.outputs.csv-import == 'true') ||
-      (matrix.slug == 'domain-types' && needs.detect-changes.outputs.domain-types == 'true')
+    # slug matches a changed crate runs. Single-line because the
+    # YAML `|` block scalar + literal `||` operators confuse GHA's
+    # expression parser (silent "workflow file issue").
+    if: "(matrix.slug == 'financial-truth' && needs.detect-changes.outputs.financial-truth == 'true') || (matrix.slug == 'zakat' && needs.detect-changes.outputs.zakat == 'true') || (matrix.slug == 'csv-import' && needs.detect-changes.outputs.csv-import == 'true') || (matrix.slug == 'domain-types' && needs.detect-changes.outputs.domain-types == 'true')"
     strategy:
       fail-fast: false
       matrix:
