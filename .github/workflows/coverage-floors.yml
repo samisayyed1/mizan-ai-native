@@ -2,9 +2,6 @@ name: Coverage Floors
 
 # Hard-gate line coverage on the financial-truth, zakat, csv-import,
 # and domain-types crates per CLAUDE.md §0 + working-agreement §5.
-# The nightly mutants workflow (nightly-mutants.yml) is the test-
-# quality signal; this one is the structural floor that has to hold
-# on every PR.
 #
 # Floors (from working-agreement §5):
 #   financial-truth → 95%
@@ -12,31 +9,26 @@ name: Coverage Floors
 #   csv-import      → 90%
 #   domain-types    → 90%
 #
-# Why this workflow is not the trivial `cargo llvm-cov --package …
-# --fail-under-lines …`:
+# Design notes:
 #
-# 1. cargo-llvm-cov's TOTAL line in `--summary-only` aggregates
-#    across EVERY file instrumented in the binary, not just the
-#    target crate's files. With `--package mizan-zakat` the binary
-#    still pulls in mizan-core, market-data, etc. — so the TOTAL is
-#    dominated by un-targeted crates and the `--fail-under-lines`
-#    flag fires falsely.
-# 2. GitHub Actions doesn't support dynamic output access
-#    (`needs.x.outputs[matrix.slug]`) — that's silently parsed as a
-#    literal string. We need static `if:` per matrix entry.
-#
-# So we run llvm-cov with `--json`, parse it with a small Python
-# script that filters to the target crate's `crates/{slug}/src/**`
-# files, computes the correct line-coverage percentage on just those
-# files, and exits non-zero below the floor.
+# 1. cargo-llvm-cov's TOTAL line in `--summary-only` aggregates across
+#    EVERY file instrumented in the binary, not just the target
+#    crate. With `--package mizan-zakat` the binary still pulls in
+#    mizan-core, market-data, etc. — so the TOTAL is dominated by
+#    un-targeted crates and the `--fail-under-lines` flag fires
+#    falsely. We use `--json` + Python to compute the per-crate total.
+# 2. GitHub Actions matrix-level `if:` has stricter expression rules
+#    than I'd like — dynamic bracket access on outputs is forbidden,
+#    and multi-line / single-line conditionals against `needs.*` in a
+#    matrix context produced "workflow file issue" runs. So each
+#    gated crate is its own job. Verbose but bulletproof.
+# 3. The detect-changes job emits one boolean per gated crate via
+#    dorny/paths-filter so a PR touching only domain-types triggers
+#    only the domain-types gate.
 
 on:
   pull_request:
     branches: [main]
-    # Outer path filter — the workflow file is in the trigger so
-    # workflow edits get a fresh CI run. The detect-changes job
-    # emits `false` for every crate output when only the workflow
-    # changed, and the per-job `if:` skips the matrix accordingly.
     paths:
       - 'mizan-4/crates/financial-truth/**'
       - 'mizan-4/crates/zakat/**'
@@ -73,105 +65,42 @@ jobs:
             domain-types:
               - 'mizan-4/crates/domain-types/**'
 
-  coverage-floor:
-    name: ${{ matrix.crate }} ≥ ${{ matrix.floor }}%
+  financial-truth:
+    name: mizan-financial-truth ≥ 95%
     needs: detect-changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    # Static `if:` per matrix entry — GitHub Actions doesn't support
-    # dynamic bracket access on `needs.x.outputs`, so each combo is
-    # spelled out as a static literal. The matrix-expansion runtime
-    # evaluates these once per include, so only the entry whose
-    # slug matches a changed crate runs. Single-line because the
-    # YAML `|` block scalar + literal `||` operators confuse GHA's
-    # expression parser (silent "workflow file issue").
-    if: "(matrix.slug == 'financial-truth' && needs.detect-changes.outputs.financial-truth == 'true') || (matrix.slug == 'zakat' && needs.detect-changes.outputs.zakat == 'true') || (matrix.slug == 'csv-import' && needs.detect-changes.outputs.csv-import == 'true') || (matrix.slug == 'domain-types' && needs.detect-changes.outputs.domain-types == 'true')"
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - crate: mizan-financial-truth
-            slug: financial-truth
-            floor: 95
-          - crate: mizan-zakat
-            slug: zakat
-            floor: 95
-          - crate: mizan-csv-import
-            slug: csv-import
-            floor: 90
-          - crate: mizan-domain-types
-            slug: domain-types
-            floor: 90
-    defaults:
-      run:
-        working-directory: mizan-4
-    steps:
-      - uses: actions/checkout@v4
+    if: needs.detect-changes.outputs.financial-truth == 'true'
+    uses: ./.github/workflows/coverage-floors-job.yml
+    with:
+      crate: mizan-financial-truth
+      slug: financial-truth
+      floor: 95
 
-      - name: Install Rust toolchain (with llvm-tools)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
+  zakat:
+    name: mizan-zakat ≥ 95%
+    needs: detect-changes
+    if: needs.detect-changes.outputs.zakat == 'true'
+    uses: ./.github/workflows/coverage-floors-job.yml
+    with:
+      crate: mizan-zakat
+      slug: zakat
+      floor: 95
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: mizan-4 -> target
+  csv-import:
+    name: mizan-csv-import ≥ 90%
+    needs: detect-changes
+    if: needs.detect-changes.outputs.csv-import == 'true'
+    uses: ./.github/workflows/coverage-floors-job.yml
+    with:
+      crate: mizan-csv-import
+      slug: csv-import
+      floor: 90
 
-      - name: Install cargo-llvm-cov
-        # Pinned version so a tooling regression upstream doesn't
-        # silently change the JSON schema or the per-file aggregation.
-        run: cargo install cargo-llvm-cov --version 0.6.18 --locked
-
-      - name: Run coverage + measure floor for ${{ matrix.crate }}
-        run: |
-          set -euo pipefail
-          # Run llvm-cov in JSON mode so we can compute the per-crate
-          # line-coverage percentage ourselves — the built-in
-          # --fail-under-lines flag uses the workspace-wide TOTAL,
-          # which is dominated by un-targeted crates.
-          cargo llvm-cov \
-            --package ${{ matrix.crate }} \
-            --json \
-            --output-path /tmp/cov.json \
-            --no-fail-fast
-
-          python3 <<'PY'
-          import json, sys, os
-
-          floor = float(os.environ['FLOOR'])
-          slug  = os.environ['SLUG']
-
-          with open('/tmp/cov.json') as f:
-              data = json.load(f)
-
-          target_prefix = f'/crates/{slug}/src/'
-          total = covered = 0
-          per_file = []
-          for f in data['data'][0]['files']:
-              if target_prefix in f['filename']:
-                  lines = f['summary']['lines']
-                  total += lines['count']
-                  covered += lines['covered']
-                  per_file.append((f['filename'].split(target_prefix)[-1], lines['percent']))
-
-          if total == 0:
-              print(f'::error::no source files matched {target_prefix} — '
-                    f'workflow path filter is wrong or crate moved')
-              sys.exit(2)
-
-          pct = (covered / total) * 100
-          print(f'\n{slug} per-file line coverage:')
-          for name, p in sorted(per_file):
-              marker = '✓' if p >= floor else '✗'
-              print(f'  {marker} {name:<28} {p:6.2f}%')
-          print(f'\n{slug} TOTAL: {pct:.2f}% (floor {floor}%)\n')
-
-          if pct < floor:
-              print(f'::error title=Coverage floor breached::'
-                    f'{slug} is at {pct:.2f}% line coverage; floor is {floor}%. '
-                    f'CLAUDE.md §0 + working-agreement §5 require a hard floor here.')
-              sys.exit(1)
-          PY
-        env:
-          FLOOR: ${{ matrix.floor }}
-          SLUG: ${{ matrix.slug }}
+  domain-types:
+    name: mizan-domain-types ≥ 90%
+    needs: detect-changes
+    if: needs.detect-changes.outputs.domain-types == 'true'
+    uses: ./.github/workflows/coverage-floors-job.yml
+    with:
+      crate: mizan-domain-types
+      slug: domain-types
+      floor: 90
