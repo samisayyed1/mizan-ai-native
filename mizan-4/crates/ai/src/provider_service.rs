@@ -133,23 +133,39 @@ impl AiProviderService {
 
     /// Check if a provider has an API key stored.
     fn has_api_key(&self, provider_id: &str) -> bool {
-        let secret_key = Self::secret_key_for_provider(provider_id);
-        self.secret_store
-            .get_secret(&secret_key)
-            .ok()
-            .flatten()
-            .map(|s| !s.is_empty())
-            .unwrap_or(false)
+        self.get_api_key(provider_id).is_some()
     }
 
-    /// Get the API key for a provider (internal use only).
+    /// Get the API key for a provider (internal use only). Resolution
+    /// order:
+    /// 1. OS secret store (what the user pasted in Settings → AI
+    ///    Providers; survives across launches; encrypted by the OS
+    ///    keychain).
+    /// 2. The catalog-declared environment variable (e.g.
+    ///    `ANTHROPIC_API_KEY`) — picked up from `.env.local` via the
+    ///    Tauri runner's `dotenvy` load on boot.
+    ///
+    /// The env-var fallback is what makes the Uncle Feroz demo "just
+    /// work" when Sami drops his key in `.env.local`: no Settings
+    /// pane click-through required. The env var is never written
+    /// back to the secret store — if the user later clears the env,
+    /// the provider correctly reports "no key" rather than silently
+    /// remembering the demo-day value.
     fn get_api_key(&self, provider_id: &str) -> Option<String> {
         let secret_key = Self::secret_key_for_provider(provider_id);
-        self.secret_store
-            .get_secret(&secret_key)
-            .ok()
-            .flatten()
-            .filter(|s| !s.is_empty())
+        let from_store = self.secret_store.get_secret(&secret_key).ok().flatten();
+        // `CatalogProvider.env_key` is `String`; an empty string
+        // means "this provider declares no env-var fallback" (e.g.
+        // Ollama). Filter to None so resolve_api_key short-circuits
+        // instead of reading `std::env::var("")` (which always errors
+        // but spends a syscall).
+        let env_key = self
+            .catalog
+            .providers
+            .get(provider_id)
+            .map(|p| p.env_key.as_str())
+            .filter(|k| !k.is_empty());
+        resolve_api_key(from_store.as_deref(), env_key, |k| std::env::var_os(k))
     }
 
     /// Check if provider requires an API key based on catalog.
@@ -703,5 +719,106 @@ impl AiProviderServiceTrait for AiProviderService {
             models,
             supports_listing: true,
         })
+    }
+}
+
+/// Resolve an API key from (in order) the OS secret store value, then
+/// the catalog-declared env var read via `lookup`.
+///
+/// Extracted as a pure function so the precedence rules can be
+/// unit-tested without spinning up a SecretStore + SettingsRepository.
+/// `lookup` is the env-var reader; in production this is
+/// `std::env::var_os`, in tests it's a closure over a HashMap so
+/// process-global env state never leaks between tests.
+///
+/// Returns `None` when neither source has a non-empty value.
+fn resolve_api_key<F>(
+    from_secret_store: Option<&str>,
+    env_key: Option<&str>,
+    lookup: F,
+) -> Option<String>
+where
+    F: Fn(&str) -> Option<std::ffi::OsString>,
+{
+    if let Some(s) = from_secret_store {
+        let trimmed = s.trim();
+        if !trimmed.is_empty() {
+            return Some(s.to_string());
+        }
+    }
+    let key = env_key?;
+    let value = lookup(key)?.to_string_lossy().into_owned();
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+#[cfg(test)]
+mod resolve_api_key_tests {
+    use super::resolve_api_key;
+    use std::collections::HashMap;
+    use std::ffi::OsString;
+
+    fn lookup_with<'a>(
+        env: &'a HashMap<&'a str, &'a str>,
+    ) -> impl Fn(&str) -> Option<OsString> + 'a {
+        move |k| env.get(k).map(|v| OsString::from(*v))
+    }
+
+    #[test]
+    fn secret_store_value_wins_over_env() {
+        let env = HashMap::from([("ANTHROPIC_API_KEY", "from-env")]);
+        let resolved = resolve_api_key(
+            Some("from-store"),
+            Some("ANTHROPIC_API_KEY"),
+            lookup_with(&env),
+        );
+        assert_eq!(resolved.as_deref(), Some("from-store"));
+    }
+
+    #[test]
+    fn falls_back_to_env_when_secret_store_is_empty() {
+        let env = HashMap::from([("ANTHROPIC_API_KEY", "sk-ant-test")]);
+        let resolved = resolve_api_key(None, Some("ANTHROPIC_API_KEY"), lookup_with(&env));
+        assert_eq!(resolved.as_deref(), Some("sk-ant-test"));
+    }
+
+    #[test]
+    fn falls_back_to_env_when_secret_store_is_whitespace_only() {
+        // A whitespace-only secret store value is treated as empty
+        // — protects against an accidental "set key to ' '" wiping
+        // out the env fallback.
+        let env = HashMap::from([("ANTHROPIC_API_KEY", "sk-ant-test")]);
+        let resolved = resolve_api_key(Some("   "), Some("ANTHROPIC_API_KEY"), lookup_with(&env));
+        assert_eq!(resolved.as_deref(), Some("sk-ant-test"));
+    }
+
+    #[test]
+    fn returns_none_when_both_sources_empty() {
+        let env: HashMap<&str, &str> = HashMap::new();
+        let resolved = resolve_api_key(None, Some("ANTHROPIC_API_KEY"), lookup_with(&env));
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn returns_none_when_provider_declares_no_env_key() {
+        // Ollama and other local providers don't declare env_key. A
+        // missing key in the secret store must NOT silently fall
+        // back to some unrelated env var.
+        let env = HashMap::from([("ANTHROPIC_API_KEY", "wrong-provider")]);
+        let resolved = resolve_api_key(None, None, lookup_with(&env));
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn whitespace_only_env_value_treated_as_unset() {
+        // A `ANTHROPIC_API_KEY=    ` line in `.env.local` is almost
+        // certainly a typo, not a real key. Treat as unset.
+        let env = HashMap::from([("ANTHROPIC_API_KEY", "    ")]);
+        let resolved = resolve_api_key(None, Some("ANTHROPIC_API_KEY"), lookup_with(&env));
+        assert!(resolved.is_none());
     }
 }

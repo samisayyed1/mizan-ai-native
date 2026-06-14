@@ -26,7 +26,7 @@ mod updater;
 
 use std::sync::Arc;
 
-use dotenvy::dotenv;
+use dotenvy::{dotenv, from_filename};
 use log::error;
 #[cfg(feature = "device-sync")]
 use log::warn;
@@ -478,6 +478,15 @@ fn get_app_data_dir(handle: &AppHandle) -> Result<String, Box<dyn std::error::Er
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load env in Vite/Next precedence: `.env.local` (user secrets,
+    // gitignored) overrides `.env` (committed defaults).
+    // `dotenvy` does not overwrite already-set env vars, so loading
+    // `.env.local` FIRST means its values win over `.env`'s — matching
+    // the convention every other tool in the project uses. The
+    // ANTHROPIC_API_KEY for the Uncle Feroz demo lives in
+    // `mizan-4/.env.local`; without this line it would be silently
+    // missed and every AI call would 401.
+    from_filename(".env.local").ok();
     dotenv().ok();
 
     let builder = tauri::Builder::default();
