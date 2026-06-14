@@ -443,10 +443,10 @@ impl HoldingsValuationService {
                     // availability story is identical. Each leg falls
                     // back to ZERO with a warn rather than fabricating
                     // a 1.0 conversion.
-                    let prev_value_local =
-                        fx_rate_quote_to_local_opt.map_or(Decimal::ZERO, |r| prev_value_quote_major * r);
-                    let prev_value_base =
-                        fx_rate_quote_to_base_opt.map_or(Decimal::ZERO, |r| prev_value_quote_major * r);
+                    let prev_value_local = fx_rate_quote_to_local_opt
+                        .map_or(Decimal::ZERO, |r| prev_value_quote_major * r);
+                    let prev_value_base = fx_rate_quote_to_base_opt
+                        .map_or(Decimal::ZERO, |r| prev_value_quote_major * r);
 
                     holding.prev_close_value = Some(MonetaryValue {
                         local: prev_value_local,
@@ -454,10 +454,10 @@ impl HoldingsValuationService {
                     });
 
                     let day_change_quote_major = market_value_quote_major - prev_value_quote_major;
-                    let day_change_local =
-                        fx_rate_quote_to_local_opt.map_or(Decimal::ZERO, |r| day_change_quote_major * r);
-                    let day_change_base =
-                        fx_rate_quote_to_base_opt.map_or(Decimal::ZERO, |r| day_change_quote_major * r);
+                    let day_change_local = fx_rate_quote_to_local_opt
+                        .map_or(Decimal::ZERO, |r| day_change_quote_major * r);
+                    let day_change_base = fx_rate_quote_to_base_opt
+                        .map_or(Decimal::ZERO, |r| day_change_quote_major * r);
 
                     holding.day_change = Some(MonetaryValue {
                         local: day_change_local,

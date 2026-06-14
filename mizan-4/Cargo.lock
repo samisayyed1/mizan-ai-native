@@ -3784,6 +3784,7 @@ dependencies = [
  "encoding_rs",
  "log",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -3817,7 +3818,9 @@ version = "3.4.1"
 dependencies = [
  "chrono",
  "rust_decimal",
+ "rust_decimal_macros",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -3883,6 +3886,17 @@ dependencies = [
  "tracing",
  "urlencoding",
  "yahoo_finance_api",
+]
+
+[[package]]
+name = "mizan-portfolio-seed-import"
+version = "3.4.1"
+dependencies = [
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
