@@ -48,7 +48,27 @@
 //!   delivery integration code
 
 pub mod catalog;
+pub mod handlers;
+pub mod repository;
+pub mod state;
 pub mod types;
 
 pub use catalog::{provider_descriptor, ProviderDescriptor, PROVIDERS};
 pub use types::{AuthorizationRequest, OAuthError, OAuthScopes, Provider, TokenSet};
+
+use axum::routing::{get, post};
+use axum::Router;
+
+use crate::state::AppState;
+
+/// `/v1/oauth/*` router. Mounted under the authenticated `/v1` group
+/// by `server.rs`. The callback route is publicly reachable (the user
+/// is on the provider's domain at this point) but verifies the HMAC-
+/// signed `state` token before any DB writes.
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/oauth/connect/:provider", post(handlers::connect))
+        .route("/oauth/callback/:provider", get(handlers::callback))
+        .route("/oauth/disconnect/:provider", post(handlers::disconnect))
+        .route("/oauth/connections", get(handlers::list_connections))
+}

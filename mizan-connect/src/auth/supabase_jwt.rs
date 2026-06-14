@@ -157,6 +157,7 @@ mod tests {
             plaid: None,
             snaptrade: None,
             billing: None,
+            oauth: None,
             admin_token: None,
         }
     }
