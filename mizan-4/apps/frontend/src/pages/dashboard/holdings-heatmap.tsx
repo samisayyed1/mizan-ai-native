@@ -179,6 +179,17 @@ function TreemapTile(props: TreemapTileProps) {
 
   const symbolFontSize = Math.min(16, Math.max(11, Math.min(width, height) / 4.5));
 
+  // Heatmap label truncation guard. SVG text doesn't honour CSS
+  // `text-overflow: ellipsis`, so we have to clip in JS before
+  // rendering. Rough char-budget at the current font size — ~0.55 of
+  // the symbol height per glyph (typical sans-serif average advance).
+  // The seeder now writes tickerised display_codes (EMAAR29, T-May22,
+  // BAJAJ-F, BUKIT-SG…), but third-party imports and CSVs still
+  // produce long names — this clip is the safety net for those too.
+  const maxLabelChars = Math.max(3, Math.floor((width - 8) / (symbolFontSize * 0.55)));
+  const displaySymbol =
+    symbol.length > maxLabelChars ? `${symbol.slice(0, Math.max(1, maxLabelChars - 1))}…` : symbol;
+
   const pctText =
     Math.abs(changePct) < 0.0001
       ? "0.0%"
@@ -210,7 +221,7 @@ function TreemapTile(props: TreemapTileProps) {
           fontWeight={650}
           style={{ letterSpacing: "-0.01em", pointerEvents: "none" }}
         >
-          {symbol}
+          {displaySymbol}
         </text>
       )}
       {showPct && (

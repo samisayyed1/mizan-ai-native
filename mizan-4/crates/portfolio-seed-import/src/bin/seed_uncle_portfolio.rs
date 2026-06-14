@@ -332,12 +332,24 @@ fn apply_operations(
                 summary.accounts += 1;
                 // display_code drives `Instrument.symbol` (set in
                 // holdings_service.rs). The heatmap renders that as
-                // the tile label — so showing the ISIN
-                // (`XS2052469165`) reads as noise. Use the friendlier
-                // `<Issuer> <Year>` form; the ISIN stays in
+                // the tile label — long names (`Dar al Arkan 2027`)
+                // overflow the small tiles. ETFs use 4-letter tickers
+                // (ISDU, SPUS); sukuks should follow the same shape.
+                // Strategy: first-word-uppercased, capped at 6 chars,
+                // plus the 2-digit maturity year suffix — yields
+                // "EMAAR29", "DAR27", "SOBHA33", "BINGH27". Full
+                // issuer name + ISIN stay in `name` and
                 // `metadata.identifiers.isin` for detail pages.
-                let maturity_year = maturity.get(..4).unwrap_or(maturity.as_str());
-                let friendly_code = format!("{issuer} {maturity_year}");
+                let issuer_short = issuer
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or(issuer)
+                    .chars()
+                    .take(5)
+                    .collect::<String>()
+                    .to_uppercase();
+                let maturity_yy = maturity.get(2..4).unwrap_or("");
+                let friendly_code = format!("{issuer_short}{maturity_yy}");
                 let asset_id = insert_asset(
                     tx,
                     AssetIn {
@@ -486,12 +498,16 @@ fn apply_operations(
                 let acct_id =
                     insert_account(tx, vehicle, "SECURITIES", currency, Some("Private Equity"))?;
                 summary.accounts += 1;
+                // PE vehicle names like "Hasan VC (FUND)" or
+                // "HAPL (Equity)" contain noise tokens; strip the
+                // parenthetical and tickerize the rest.
+                let short = short_ticker_strip_parens(vehicle);
                 let asset_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "PRIVATE_EQUITY",
                         name: vehicle,
-                        display_code: vehicle,
+                        display_code: &short,
                         quote_mode: "MANUAL",
                         quote_ccy: currency,
                         instrument_type: None,
@@ -549,12 +565,15 @@ fn apply_operations(
                     true => 1,
                     false => 0,
                 };
+                // Tiger UT fund — "HSBC ISLAMIC GLOBAL EQUITY INDEX A
+                // (USD) ACC" overflows everywhere. Tickerize.
+                let short = short_ticker(fund);
                 let asset_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "INVESTMENT",
                         name: fund,
-                        display_code: fund,
+                        display_code: &short,
                         quote_mode: "MANUAL",
                         quote_ccy: "USD",
                         instrument_type: None,
@@ -609,12 +628,18 @@ fn apply_operations(
                 // with the fund list in metadata so the holdings drill-
                 // down can render the underlying mix without inflating
                 // the per-asset count.
+                // Heatmap label hygiene: "UT-2022-05-12" overflows the
+                // tile. Use the ticker-style "T-MonYY" shape — 6 chars,
+                // distinguishable across Sami's 4 tranches (Jan22 /
+                // May22 / Aug22 / Aug23). Full date stays in `name`
+                // and `metadata.tranche_date` for the detail page.
+                let mon_yy = short_month_year(date);
                 let asset_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "INVESTMENT",
                         name: &format!("{wrapper} Tranche {date}"),
-                        display_code: &format!("UT-{date}"),
+                        display_code: &format!("T-{mon_yy}"),
                         quote_mode: "MANUAL",
                         quote_ccy: native_currency,
                         instrument_type: None,
@@ -659,12 +684,17 @@ fn apply_operations(
                     true => 1,
                     false => 0,
                 };
+                // SRS placeholder funds — names like
+                // "Allianz GIF Global AI AT H2 SGD" don't fit in a
+                // heatmap tile. First-word-uppercased is the closest
+                // thing to a ticker we have.
+                let short = short_ticker(fund);
                 let placeholder_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "INVESTMENT",
                         name: fund,
-                        display_code: fund,
+                        display_code: &short,
                         quote_mode: "MANUAL",
                         quote_ccy: "SGD",
                         instrument_type: None,
@@ -708,12 +738,23 @@ fn apply_operations(
                     Some("Insurance (ULIPs)"),
                 )?;
                 summary.accounts += 1;
+                // ULIP-582643012 (full policy number) is too long for
+                // the heatmap. Use company-first-word + holder-initial,
+                // e.g. "BAJAJ-F" / "BAJAJ-S" / "AXIS-F" / "AXIS-S".
+                let company_short = short_ticker_strip_parens(company);
+                let holder_initial = holder_name
+                    .split_whitespace()
+                    .next()
+                    .and_then(|w| w.chars().next())
+                    .map(|c| c.to_ascii_uppercase())
+                    .unwrap_or('?');
+                let short = format!("{company_short}-{holder_initial}");
                 let asset_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "INVESTMENT",
                         name: &format!("{company} ULIP — {holder_name}"),
-                        display_code: &format!("ULIP-{policy_number}"),
+                        display_code: &short,
                         quote_mode: "MANUAL",
                         quote_ccy: currency,
                         instrument_type: None,
@@ -767,12 +808,15 @@ fn apply_operations(
                     Some("Provident Funds"),
                 )?;
                 summary.accounts += 1;
+                // "PF-Singapore" overflows; "CPF-SG" is a clean
+                // country-code form.
+                let cc = country_code_short(country);
                 let asset_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "INVESTMENT",
                         name: &format!("{country} CPF balance"),
-                        display_code: &format!("PF-{country}"),
+                        display_code: &format!("CPF-{cc}"),
                         quote_mode: "MANUAL",
                         quote_ccy: "USD",
                         instrument_type: None,
@@ -820,12 +864,18 @@ fn apply_operations(
                     Some("Real Estate"),
                 )?;
                 summary.accounts += 1;
+                // Property names like "#02-117 Bukit Batok Street 32"
+                // or "3-G06 Capria East Ghaff Woods" overflow tiles.
+                // Pull out the recognisable estate name + country code.
+                let estate_short = property_short_code(name);
+                let cc = country_code_short(country);
+                let short = format!("{estate_short}-{cc}");
                 let asset_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "PROPERTY",
                         name,
-                        display_code: name,
+                        display_code: &short,
                         quote_mode: "MANUAL",
                         quote_ccy: "USD",
                         instrument_type: None,
@@ -985,6 +1035,160 @@ fn insert_asset(tx: &Transaction<'_>, a: AssetIn<'_>) -> Result<String, rusqlite
 
 fn strip_new_prefix(id: &str) -> String {
     id.strip_prefix("NEW:").unwrap_or(id).to_string()
+}
+
+// ---------------------------------------------------------------------
+// Ticker-shortening helpers for heatmap-friendly display_codes.
+//
+// `Instrument.symbol = asset.display_code` in the holdings_service —
+// the dashboard heatmap renders that as the tile label and cannot
+// gracefully truncate long names without overlapping siblings (small
+// tiles get <7 char budget). Every helper below produces an
+// uppercase, hyphen-friendly token short enough for the tightest
+// tile while keeping enough character to be recognisable.
+//
+// Full readable names always remain on `asset.name` and tooltips /
+// detail pages render those. We're only reshaping the dense surfaces.
+// ---------------------------------------------------------------------
+
+/// Convert a `YYYY-MM-DD` activity date to a 5-char `MMMYY` token
+/// (`Jan22`, `May22`, `Aug22`, `Aug23`). Falls back to the first 5
+/// characters of the input on any parse failure so we never panic on
+/// non-conforming dates.
+fn short_month_year(iso_date: &str) -> String {
+    let parts: Vec<&str> = iso_date.split('-').collect();
+    if parts.len() < 3 {
+        return iso_date.chars().take(5).collect();
+    }
+    let month_abbr = match parts[1] {
+        "01" => "Jan",
+        "02" => "Feb",
+        "03" => "Mar",
+        "04" => "Apr",
+        "05" => "May",
+        "06" => "Jun",
+        "07" => "Jul",
+        "08" => "Aug",
+        "09" => "Sep",
+        "10" => "Oct",
+        "11" => "Nov",
+        "12" => "Dec",
+        _ => return iso_date.chars().take(5).collect(),
+    };
+    let yy = parts[0].get(2..4).unwrap_or("");
+    format!("{month_abbr}{yy}")
+}
+
+/// First whitespace-separated token, uppercased, capped at 7 chars.
+/// Strips trailing/leading punctuation. Empty input → `"ASSET"`.
+fn short_ticker(name: &str) -> String {
+    let token = name
+        .split_whitespace()
+        .next()
+        .unwrap_or(name)
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_uppercase();
+    if token.is_empty() {
+        return "ASSET".into();
+    }
+    token.chars().take(7).collect()
+}
+
+/// Like `short_ticker` but ALSO drops parenthetical suffixes
+/// (`"HAPL (Equity)"` → `"HAPL"`, `"Hasan VC (FUND)"` → `"HASAN"`).
+fn short_ticker_strip_parens(name: &str) -> String {
+    let cleaned = name.split('(').next().unwrap_or(name).trim();
+    short_ticker(cleaned)
+}
+
+/// ISO-3166-like country shortcode for dashboard surfaces.
+/// Maps the long-form country names Uncle's seed uses to 2- or
+/// 3-letter codes that fit anywhere. Falls back to the first 2
+/// uppercase letters of the input.
+fn country_code_short(country: &str) -> String {
+    match country.to_ascii_lowercase().as_str() {
+        "singapore" => "SG",
+        "india" => "IN",
+        "uae" | "united arab emirates" => "UAE",
+        "ksa" | "saudi arabia" => "KSA",
+        "united states" | "usa" | "us" => "US",
+        _ => return country.chars().take(2).collect::<String>().to_uppercase(),
+    }
+    .to_string()
+}
+
+/// Property-name shortener: pulls out the recognisable estate name
+/// from formats like `"#02-117 Bukit Batok Street 32"` →
+/// `"BUKIT"`, `"3-G06 Capria East Ghaff Woods"` → `"CAPRIA"`,
+/// `"A-1501 Aparna Sarovar Grande"` → `"APARNA"`. Heuristic:
+/// skip leading unit-number tokens (containing digits or `#`/`-`),
+/// take the first 5 chars of the first all-alpha token, uppercase.
+fn property_short_code(name: &str) -> String {
+    for token in name.split_whitespace() {
+        let cleaned: String = token.chars().filter(|c| c.is_alphabetic()).collect();
+        if cleaned.len() >= 3 && !token.chars().any(|c| c.is_ascii_digit() || c == '#') {
+            return cleaned.chars().take(6).collect::<String>().to_uppercase();
+        }
+    }
+    "PROP".into()
+}
+
+#[cfg(test)]
+mod ticker_helpers_tests {
+    use super::*;
+
+    #[test]
+    fn short_month_year_handles_uncle_tranches() {
+        assert_eq!(short_month_year("2022-01-08"), "Jan22");
+        assert_eq!(short_month_year("2022-05-12"), "May22");
+        assert_eq!(short_month_year("2022-08-05"), "Aug22");
+        assert_eq!(short_month_year("2023-08-08"), "Aug23");
+    }
+
+    #[test]
+    fn short_month_year_degrades_on_bad_input() {
+        let r = short_month_year("garbage");
+        assert!(r.len() <= 5);
+    }
+
+    #[test]
+    fn short_ticker_caps_at_seven_chars() {
+        assert_eq!(short_ticker("Allianz GIF Global AI"), "ALLIANZ");
+        assert_eq!(short_ticker("HSBC ISLAMIC GLOBAL"), "HSBC");
+    }
+
+    #[test]
+    fn short_ticker_strip_parens_removes_suffix() {
+        assert_eq!(short_ticker_strip_parens("HAPL (Equity)"), "HAPL");
+        assert_eq!(short_ticker_strip_parens("Hasan VC (FUND)"), "HASAN");
+        assert_eq!(short_ticker_strip_parens("Bajaj Pure Stock"), "BAJAJ");
+        assert_eq!(short_ticker_strip_parens("Axis Max Pure Growth"), "AXIS");
+    }
+
+    #[test]
+    fn country_code_short_maps_uncle_countries() {
+        assert_eq!(country_code_short("Singapore"), "SG");
+        assert_eq!(country_code_short("India"), "IN");
+        assert_eq!(country_code_short("UAE"), "UAE");
+        assert_eq!(country_code_short("KSA"), "KSA");
+    }
+
+    #[test]
+    fn property_short_code_strips_unit_numbers() {
+        assert_eq!(
+            property_short_code("#02-117 Bukit Batok Street 32"),
+            "BUKIT"
+        );
+        assert_eq!(
+            property_short_code("3-G06 Capria East Ghaff Woods"),
+            "CAPRIA"
+        );
+        assert_eq!(
+            property_short_code("A-1501 Aparna Sarovar Grande"),
+            "APARNA"
+        );
+        assert_eq!(property_short_code("H-104 Aparna Sarovar"), "APARNA");
+    }
 }
 
 /// Bind an asset to a `taxonomy_categories` row under the
