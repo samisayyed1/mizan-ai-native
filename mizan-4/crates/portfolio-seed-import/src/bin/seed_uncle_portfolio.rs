@@ -361,6 +361,19 @@ fn apply_operations(
                         instrument_type: None,
                         instrument_symbol: None,
                         metadata_json: Some(serde_json::json!({
+                            // Nested `bond` shape per
+                            // `pages/panels/sukuks/rollup.ts::extractMaturityYear`
+                            // (reads `metadata.bond.maturityDate`).
+                            // Without this nesting the panel renders
+                            // an empty maturity-year donut even
+                            // though the holdings are correctly
+                            // classified as BOND_CORPORATE.
+                            "bond": {
+                                "maturityDate": maturity,
+                                "issuer": issuer,
+                                "issueDate": issue_date,
+                                "isin": isin,
+                            },
                             "identifiers": { "isin": isin },
                             "fixed_income": {
                                 "issuer": issuer,
@@ -513,6 +526,18 @@ fn apply_operations(
                         instrument_type: None,
                         instrument_symbol: None,
                         metadata_json: Some(serde_json::json!({
+                            // Nested `privateEquity` shape per
+                            // `pages/panels/private-equity/rollup.ts::extractVintageYear`
+                            // (reads `metadata.privateEquity.purchaseDate`).
+                            // Use today as a stub purchase date — the
+                            // seed file's PE entries carry the real
+                            // date in `Operation::CreatePrivateEquity.date`
+                            // but it's not threaded through this op
+                            // body. Future PR: add date field to the
+                            // Operation enum and propagate here.
+                            "privateEquity": {
+                                "purchaseDate": today_iso(),
+                            },
                             "remarks": remarks,
                             "asset_class_hint": "PRIVATE_EQUITY",
                         })),
@@ -760,6 +785,26 @@ fn apply_operations(
                         instrument_type: None,
                         instrument_symbol: None,
                         metadata_json: Some(serde_json::json!({
+                            // Nested `insurance` shape per
+                            // `pages/panels/insurance/rollup.ts::readInsuranceMeta`.
+                            // Without this nesting the Insurance
+                            // panel's `isInsuranceHolding` predicate
+                            // returns false and the panel renders
+                            // empty even though the dashboard tile
+                            // sums the value correctly.
+                            "insurance": {
+                                "category": "INVESTMENT_LINKED",
+                                "policyNumber": policy_number.to_string(),
+                                // ULIP fund value is best read as
+                                // surrender value (the cashable
+                                // amount). For unstarted policies the
+                                // fund_value can be null — surface as
+                                // 0 so the donut doesn't error.
+                                "surrenderValue": fund_value_native
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "0".into()),
+                                "lastValuedAt": today_iso(),
+                            },
                             "policy_number": policy_number,
                             "holder_name": holder_name,
                             "start_date": start_date,
@@ -822,6 +867,21 @@ fn apply_operations(
                         instrument_type: None,
                         instrument_symbol: None,
                         metadata_json: Some(serde_json::json!({
+                            // Nested `providentFund` shape per
+                            // `pages/panels/provident-funds/rollup.ts::readProvidentFundMeta`.
+                            // `scheme` distinguishes CPF / EPF / 401K
+                            // / NPS / SUPER in the donut. Singapore
+                            // CPF → CPF.
+                            "providentFund": {
+                                "scheme": match country.to_ascii_lowercase().as_str() {
+                                    "singapore" => "CPF",
+                                    "malaysia" => "EPF",
+                                    "india" => "NPS",
+                                    "united states" | "usa" | "us" => "401K",
+                                    "australia" => "SUPER",
+                                    _ => "OTHER",
+                                },
+                            },
                             "country": country,
                             "note": note,
                             "asset_class_hint": "PROVIDENT_FUNDS",
@@ -885,12 +945,31 @@ fn apply_operations(
                             "type": kind,
                             "sqft": sqft.to_string(),
                             "year_built": year_built,
-                            // The `property.intent` shape is what
-                            // mizan-zakat::extract_property_intent reads
-                            // for school-aware Zakat routing (Maliki
-                            // excludes for_rent, Hanbali treats
-                            // primary_residence as fully exempt, etc.).
-                            "property": { "intent": intent },
+                            // `metadata.property.*` serves two
+                            // readers:
+                            //   1. `mizan-zakat::extract_property_intent`
+                            //      reads `intent` for school-aware
+                            //      Zakat routing (Maliki excludes
+                            //      for_rent, Hanbali treats
+                            //      primary_residence as fully exempt).
+                            //   2. `pages/panels/real-estate/rollup.ts`
+                            //      reads `propertyType` for the
+                            //      donut sub-classification (Residence
+                            //      / Rental / Land / Commercial).
+                            // Map seed `intent` to a panel-friendly
+                            // `propertyType` here so both surfaces
+                            // light up from one metadata write.
+                            "property": {
+                                "intent": intent,
+                                "propertyType": match intent.as_str() {
+                                    "primary_residence" => "Residence",
+                                    "for_rent" => "Rental",
+                                    "for_sale" => "Rental",
+                                    "land" => "Land",
+                                    "commercial" => "Commercial",
+                                    _ => "Other",
+                                },
+                            },
                             "asset_class_hint": "REAL_ESTATE",
                         })),
                     },
