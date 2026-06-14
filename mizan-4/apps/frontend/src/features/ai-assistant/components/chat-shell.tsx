@@ -20,7 +20,12 @@ import { ModelPicker } from "./model-picker";
 import {
   AccountsToolUI,
   ActivitiesToolUI,
+  AddAlternativeAssetToolUI,
   AllocationToolUI,
+  CreateAccountToolUI,
+  CreateGoalToolUI,
+  CreateLiabilityToolUI,
+  DeleteAccountToolUI,
   GoalsToolUI,
   HoldingsToolUI,
   ImportCsvToolUI,
@@ -28,6 +33,8 @@ import {
   PerformanceToolUI,
   RecordActivityToolUI,
   RecordActivitiesToolUI,
+  UpdateAccountToolUI,
+  UpdateLiabilityToolUI,
   ValuationToolUI,
 } from "./tool-uis";
 import { ChatModelProvider, useChatModelContext } from "../hooks/use-chat-model-context";
@@ -244,7 +251,17 @@ function ChatShellInner({ className, initialIntent }: ChatShellProps) {
   return (
     <RuntimeProvider runtime={runtime}>
       <AssistantRuntimeProvider runtime={runtime}>
-        {/* Tool UIs - must be children of AssistantRuntimeProvider to register */}
+        {/* Tool UIs — must be children of AssistantRuntimeProvider to register.
+            Each <XxxToolUI /> mounts a side-effect that tells assistant-ui
+            "when a tool-call message of name <X> arrives, render me." Without
+            the JSX mount the registry entry in tool-uis/index.ts is dead code
+            and assistant-ui falls back to the generic <ToolFallback />, which
+            is why the rich confirmation cards (`create_account`, `update_account`,
+            `create_goal`, `create_liability`, `update_liability`,
+            `add_alternative_asset`) were silently invisible despite all the
+            tool-UI code existing. Read tools render inline cards; write tools
+            render confirm-then-commit cards. */}
+        {/* Read */}
         <HoldingsToolUI />
         <AccountsToolUI />
         <ActivitiesToolUI />
@@ -253,9 +270,17 @@ function ChatShellInner({ className, initialIntent }: ChatShellProps) {
         <IncomeToolUI />
         <AllocationToolUI />
         <PerformanceToolUI />
+        {/* Write — confirm-then-commit */}
         <RecordActivityToolUI />
         <RecordActivitiesToolUI />
         <ImportCsvToolUI />
+        <CreateAccountToolUI />
+        <UpdateAccountToolUI />
+        <DeleteAccountToolUI />
+        <CreateGoalToolUI />
+        <CreateLiabilityToolUI />
+        <UpdateLiabilityToolUI />
+        <AddAlternativeAssetToolUI />
 
         <div className={cn("bg-background flex h-full min-h-0 w-full", className)}>
           {/* Desktop Sidebar */}

@@ -264,6 +264,7 @@ mod tests {
                 preferred_provider: None,
                 exchange_mic: None,
                 classifications: None,
+                metadata: None,
             }),
             asset_kind: None,
             quantity: amount,

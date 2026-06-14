@@ -167,6 +167,10 @@ impl<E: AiEnvironment + 'static> AgentToolDispatcher for ToolSetDispatcher<E> {
                 self.tool_set.update_account,
                 crate::tools::update_account::UpdateAccountArgs
             ),
+            "delete_account" => invoke!(
+                self.tool_set.delete_account,
+                crate::tools::delete_account::DeleteAccountArgs
+            ),
             "create_goal" => invoke!(
                 self.tool_set.create_goal,
                 crate::tools::create_goal::CreateGoalArgs

@@ -280,7 +280,10 @@ pub mod test_env {
         }
 
         fn get_activities_by_account_id(&self, _account_id: &str) -> CoreResult<Vec<Activity>> {
-            unimplemented!("MockActivityService::get_activities_by_account_id")
+            // Default to empty so cascade-impact lookups in delete_account
+            // don't panic in test envs that don't seed activities. Tests
+            // that need a specific list can construct a custom mock instead.
+            Ok(Vec::new())
         }
 
         fn get_activities_by_account_ids(

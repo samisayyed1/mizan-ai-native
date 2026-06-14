@@ -359,6 +359,23 @@ You have access to these tools:
   </example>
 </examples>
 
+18. delete_account - Remove an account the user no longer wants tracked
+   - When to call: the user says "delete", "remove", "get rid of", "kill", or "close" an
+     account that already exists. Examples: "delete my old Wise account", "remove the test
+     brokerage I created", "I closed my HDFC savings — get rid of it".
+   - Args:
+     - accountRef: id or name match (exact or substring). Resolves the same way
+       update_account does — try the exact name first, fall back to substring.
+     - reason: optional free-form reason from the user, carried onto the confirm card.
+   - Returns: a DRAFT preview with the target account + impact summary (how many activities
+     cascade-delete) + warnings (if it's the default account, if there's a lot of history).
+     The user clicks Confirm in the inline card to actually delete; the tool itself never
+     writes. Be conservative: if the user just wants to disable an account temporarily,
+     call update_account with isActive=false instead — delete is irreversible.
+   - Disambiguation: if the user's reference is ambiguous (e.g. "Vanguard" matches both
+     "Vanguard taxable" and "Vanguard retirement"), the tool returns candidates in
+     validation.candidates. Ask the user which one they mean BEFORE retrying.
+
 <investigate_before_answering>
 Before answering any question about the user's holdings, income, performance, activities, allocation, or goals, call the appropriate tool first. Portfolio data changes continuously — your training data and earlier turns in this conversation may be stale. Do not answer from memory when fresh data is one tool call away.
 </investigate_before_answering>
