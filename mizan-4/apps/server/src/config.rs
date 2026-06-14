@@ -18,6 +18,14 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Self {
+        // Match the Tauri runner's env-load precedence: `.env.local`
+        // (user secrets, gitignored) wins over `.env` (committed
+        // defaults). Without this the web-build path would silently
+        // ignore the ANTHROPIC_API_KEY in `.env.local` and every AI
+        // call would 401 — same demo-day bug class as PR #197 fixed
+        // in `apps/tauri/src/lib.rs`. The integration tests in
+        // `apps/tauri/tests/env_load_precedence.rs` pin the rule.
+        dotenvy::from_filename(".env.local").ok();
         dotenvy::dotenv().ok();
         let listen_addr: SocketAddr = std::env::var("WF_LISTEN_ADDR")
             .unwrap_or_else(|_| "0.0.0.0:8088".to_string())

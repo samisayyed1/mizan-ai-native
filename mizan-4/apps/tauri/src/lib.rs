@@ -476,18 +476,25 @@ fn get_app_data_dir(handle: &AppHandle) -> Result<String, Box<dyn std::error::Er
 // Application entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    // Load env in Vite/Next precedence: `.env.local` (user secrets,
-    // gitignored) overrides `.env` (committed defaults).
-    // `dotenvy` does not overwrite already-set env vars, so loading
-    // `.env.local` FIRST means its values win over `.env`'s — matching
-    // the convention every other tool in the project uses. The
-    // ANTHROPIC_API_KEY for the Uncle Feroz demo lives in
-    // `mizan-4/.env.local`; without this line it would be silently
-    // missed and every AI call would 401.
+/// Load environment files in Vite/Next precedence: `.env.local`
+/// (user secrets, gitignored) wins over `.env` (committed defaults).
+/// `dotenvy` does not overwrite already-set vars, so the order is
+/// what makes `.env.local` precedence-correct. Both calls are
+/// best-effort (missing files are silently ignored).
+///
+/// Extracted so the integration test in `tests/env_load_precedence.rs`
+/// can exercise the production load path directly against fixture
+/// files — the precedence rule is load-bearing for the demo flow
+/// (ANTHROPIC_API_KEY lives in `.env.local`) and a refactor that
+/// reordered or dropped the local load would silently break AI.
+pub fn load_env_files() {
     from_filename(".env.local").ok();
     dotenv().ok();
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    load_env_files();
 
     let builder = tauri::Builder::default();
 
