@@ -173,6 +173,7 @@ impl HoldingsService {
                             preferred_provider: asset.preferred_provider(),
                             exchange_mic: asset.instrument_exchange_mic.clone(),
                             classifications: None,
+                            metadata: asset.metadata.clone(),
                         };
 
                         let asset_info = AssetInfo {
@@ -329,6 +330,7 @@ impl HoldingsService {
                 preferred_provider: None,
                 exchange_mic: None,
                 classifications: None,
+                metadata: None,
             };
 
             let holding_view = Holding {
@@ -826,6 +828,7 @@ impl HoldingsServiceTrait for HoldingsService {
                 preferred_provider: asset.preferred_provider(),
                 exchange_mic: asset.instrument_exchange_mic.clone(),
                 classifications: None,
+                metadata: asset.metadata.clone(),
             };
 
             let holding = Holding {
@@ -1361,6 +1364,7 @@ mod tests {
                 preferred_provider: None,
                 exchange_mic: None,
                 classifications: None,
+                metadata: None,
             }),
             asset_kind: None,
             quantity: dec!(1),

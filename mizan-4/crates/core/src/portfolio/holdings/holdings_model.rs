@@ -33,6 +33,17 @@ pub struct Instrument {
 
     // Taxonomy-based classifications
     pub classifications: Option<AssetClassifications>,
+
+    // Free-form JSON metadata — mirror of `assets.metadata`. Panel
+    // pages (`apps/frontend/src/pages/panels/*/rollup.ts`) read
+    // domain-specific nested keys here (`metadata.insurance.*`,
+    // `metadata.providentFund.*`, `metadata.bond.*`,
+    // `metadata.property.*`, `metadata.privateEquity.*`) to drive
+    // donut sub-classification, lease/policy/maturity details, and
+    // school-aware Zakat routing. Without this field surfaced on the
+    // wire every sub-panel renders empty even when the dashboard
+    // tile sums the value correctly via the classifications path.
+    pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
