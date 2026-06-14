@@ -316,12 +316,20 @@ fn apply_operations(
                     Some("Bonds & Sukuks"),
                 )?;
                 summary.accounts += 1;
+                // display_code drives `Instrument.symbol` (set in
+                // holdings_service.rs). The heatmap renders that as
+                // the tile label — so showing the ISIN
+                // (`XS2052469165`) reads as noise. Use the friendlier
+                // `<Issuer> <Year>` form; the ISIN stays in
+                // `metadata.identifiers.isin` for detail pages.
+                let maturity_year = maturity.get(..4).unwrap_or(maturity.as_str());
+                let friendly_code = format!("{issuer} {maturity_year}");
                 let asset_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "INVESTMENT",
                         name: &format!("{issuer} {maturity} Sukuk"),
-                        display_code: isin,
+                        display_code: &friendly_code,
                         quote_mode: "MANUAL",
                         quote_ccy: "USD",
                         instrument_type: None,
@@ -338,6 +346,12 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                // Route to the Bonds & Sukuks tile via the taxonomy
+                // classifier (taxonomy.ts matches `BOND_*`). No SUKUK
+                // category is seeded; BOND_CORPORATE is the right
+                // generic — Emaar / Dar al Arkan / Sobha / Binghatti
+                // are corporate issuers.
+                insert_taxonomy_assignment(tx, &asset_id, "BOND_CORPORATE")?;
                 insert_activity_transfer_in(
                     tx,
                     &acct_id,
@@ -382,6 +396,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                insert_taxonomy_assignment(tx, &asset_id, "EQUITY_SECURITY")?;
                 insert_activity_transfer_in(
                     tx,
                     &acct_id,
@@ -429,6 +444,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                insert_taxonomy_assignment(tx, &asset_id, "ETF")?;
                 insert_activity_transfer_in(
                     tx,
                     &acct_id,
@@ -473,6 +489,11 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                // PRIVATE_EQUITY kind already routes via the
+                // assetKind check in classifyHolding(), but assign
+                // the taxonomy too so the drill-down panel + asset
+                // detail view show the right sub-class.
+                insert_taxonomy_assignment(tx, &asset_id, "PRIVATE_VEHICLE")?;
                 insert_activity_transfer_in(
                     tx,
                     &acct_id,
@@ -531,6 +552,10 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                // Unit trusts ARE managed funds — taxonomy.ts routes
+                // FUND_MUTUAL → equities. The Equities panel will show
+                // them as a sub-section under the asset-class drill-down.
+                insert_taxonomy_assignment(tx, &asset_id, "FUND_MUTUAL")?;
                 insert_activity_transfer_in(
                     tx,
                     &acct_id,
@@ -589,6 +614,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                insert_taxonomy_assignment(tx, &asset_id, "FUND_MUTUAL")?;
                 insert_activity_transfer_in(
                     tx,
                     &acct_id,
@@ -619,7 +645,7 @@ fn apply_operations(
                     true => 1,
                     false => 0,
                 };
-                let _asset_id = insert_asset(
+                let placeholder_id = insert_asset(
                     tx,
                     AssetIn {
                         kind: "INVESTMENT",
@@ -637,6 +663,13 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                // Same taxonomy as the valued UT entries so the
+                // placeholder shows up in the right panel section
+                // (Equities → Unit Trusts) with an "Add valuation"
+                // affordance instead of being orphaned in
+                // "brokerage-accounts" via the kind=INVESTMENT
+                // fallback.
+                insert_taxonomy_assignment(tx, &placeholder_id, "FUND_MUTUAL")?;
                 // No activity, no quote — surfaces as "Add valuation".
             }
 
@@ -684,6 +717,11 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                // INSURANCE_PRODUCT is the new root category seeded by
+                // migration 2026-06-14-000001 and read by the
+                // classifier branch added in the same PR. Routes the
+                // 4 ULIP policies to the Insurance tile.
+                insert_taxonomy_assignment(tx, &asset_id, "INSURANCE_PRODUCT")?;
                 insert_activity_transfer_in(
                     tx,
                     &acct_id,
@@ -733,6 +771,10 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                // PROVIDENT_FUND is the new root category seeded by
+                // migration 2026-06-14-000001. Routes the CPF balance
+                // to the Provident Funds tile.
+                insert_taxonomy_assignment(tx, &asset_id, "PROVIDENT_FUND")?;
                 insert_activity_transfer_in(
                     tx,
                     &acct_id,
@@ -790,10 +832,16 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
+                // PROPERTY kind already routes via the assetKind check
+                // in classifyHolding(), but assign the taxonomy too so
+                // the Real Estate panel can sub-section by intent
+                // (primary residence vs for-rent) via the same
+                // metadata.property.intent the Zakat engine reads.
+                insert_taxonomy_assignment(tx, &asset_id, "DIRECT_REAL_ESTATE")?;
                 // Some Indian properties have no valuation (Sami needs
                 // an appraisal). Surface them via the asset row + an
-                // empty BUY at zero so they appear in the panel but
-                // signal "Add valuation".
+                // empty TRANSFER_IN at zero so they appear in the panel
+                // but signal "Add valuation".
                 let value = current_value_usd.unwrap_or(Decimal::ZERO);
                 insert_activity_transfer_in(
                     tx,
@@ -923,6 +971,42 @@ fn insert_asset(tx: &Transaction<'_>, a: AssetIn<'_>) -> Result<String, rusqlite
 
 fn strip_new_prefix(id: &str) -> String {
     id.strip_prefix("NEW:").unwrap_or(id).to_string()
+}
+
+/// Bind an asset to a `taxonomy_categories` row under the
+/// `instrument_type` taxonomy. The dashboard's classifier
+/// (`apps/frontend/src/components/asset-class-panels/taxonomy.ts::classifyHolding`)
+/// reads `holding.instrument.classifications.assetType.key`, which is
+/// populated by the classification service joining this assignment
+/// table to `taxonomy_categories`. Without this row every seeded
+/// asset falls through to the `INVESTMENT → brokerage-accounts`
+/// fallback and the 12 dashboard tiles render "No holdings".
+///
+/// `category_id` must match an existing row in `taxonomy_categories`
+/// for `taxonomy_id='instrument_type'`. See
+/// `migrations/2026-01-01-000002_taxonomies/up.sql` for the seeded
+/// categories, and `migrations/2026-06-14-000001_insurance_provident_categories`
+/// for the two demo-required additions (`INSURANCE_PRODUCT`,
+/// `PROVIDENT_FUND`).
+///
+/// `weight=10000` is the 100% basis-points convention the
+/// classification service uses for single-class assignments. `source`
+/// flags the row as seed-generated so reconciliation tools can
+/// distinguish from user-edited assignments.
+fn insert_taxonomy_assignment(
+    tx: &Transaction<'_>,
+    asset_id: &str,
+    category_id: &str,
+) -> Result<(), rusqlite::Error> {
+    let id = Uuid::new_v4().to_string();
+    let now = now_iso();
+    let asset = strip_new_prefix(asset_id);
+    tx.execute(
+        "INSERT INTO asset_taxonomy_assignments (id, asset_id, taxonomy_id, category_id, weight, source, created_at, updated_at) \
+         VALUES (?1, ?2, 'instrument_type', ?3, 10000, 'seed', ?4, ?4)",
+        params![id, asset, category_id, now],
+    )?;
+    Ok(())
 }
 
 /// Insert an "I already held this position when I started tracking"

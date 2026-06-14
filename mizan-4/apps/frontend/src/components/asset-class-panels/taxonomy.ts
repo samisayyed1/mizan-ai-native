@@ -199,10 +199,27 @@ export function classifyHolding(holding: Holding): AssetClassPanelId {
     assetTypeKey === "STOCK" ||
     assetTypeKey === "ETF" ||
     assetTypeKey === "MUTUAL_FUND" ||
+    assetTypeKey === "FUND_MUTUAL" ||
+    assetTypeKey === "EQUITY_SECURITY" ||
     assetTypeKey === "OPTION"
   ) {
     return "equities";
   }
+  // Insurance products (ULIPs, term plans, endowment policies) — the
+  // INSURANCE_PRODUCT category was added in migration
+  // 2026-06-14-000001 alongside this branch. Without it ULIPs fell
+  // through to `brokerage-accounts` and never reached the Insurance
+  // tile (which has a descriptor but had no classifier rule until
+  // now). The migration is forward-only; old DBs that never had
+  // INSURANCE_PRODUCT just never return this key from the join, so
+  // this branch is dead code for them — safe.
+  if (assetTypeKey === "INSURANCE_PRODUCT") return "insurance";
+  // Provident-fund balances (CPF, EPF, NPS, 401(k) viewed as a single
+  // employer-managed pool) — same migration. Distinct from a
+  // retirement BROKERAGE account (which would route to brokerage with
+  // sub-classifications), and distinct from a private fund (which
+  // would be `FUND_PRIVATE`).
+  if (assetTypeKey === "PROVIDENT_FUND") return "provident-funds";
 
   // INVESTMENT-kind without a recognized assetType lands in brokerage-accounts
   // (the broadest bucket — matches what SnapTrade returns for un-classified

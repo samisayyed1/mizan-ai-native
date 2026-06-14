@@ -168,6 +168,32 @@ describe("classifyHolding", () => {
       { assetKind: "INVESTMENT" },
       "brokerage-accounts",
     ],
+    [
+      "EQUITY_SECURITY → equities (per-segment rollups from CSV / smart-import)",
+      { assetKind: "INVESTMENT", instrument: makeInstrument("US Stocks", "EQUITY_SECURITY") },
+      "equities",
+    ],
+    [
+      "FUND_MUTUAL → equities (unit trusts / mutual funds)",
+      { assetKind: "INVESTMENT", instrument: makeInstrument("VFINX", "FUND_MUTUAL") },
+      "equities",
+    ],
+    [
+      "INSURANCE_PRODUCT → insurance (ULIPs, term plans)",
+      {
+        assetKind: "INVESTMENT",
+        instrument: makeInstrument("Bajaj-ULIP-Feroz", "INSURANCE_PRODUCT"),
+      },
+      "insurance",
+    ],
+    [
+      "PROVIDENT_FUND → provident-funds (CPF, EPF, 401k pool)",
+      {
+        assetKind: "INVESTMENT",
+        instrument: makeInstrument("Singapore CPF", "PROVIDENT_FUND"),
+      },
+      "provident-funds",
+    ],
   ];
 
   for (const [name, holding, expected] of cases) {
