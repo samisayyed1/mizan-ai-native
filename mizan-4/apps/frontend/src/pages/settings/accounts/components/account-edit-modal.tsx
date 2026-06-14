@@ -29,7 +29,15 @@ export function AccountEditModal({ account, open, onClose }: AccountEditModalPro
 
   return (
     <Dialog open={open} onOpenChange={onClose} useIsMobile={useIsMobileViewport}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[625px]">
+      {/* Scrollable form body + sticky footer.
+          The previous implementation put `overflow-y-auto` on the
+          DialogContent itself, which scrolled the Save / Cancel buttons
+          off-screen on tall forms (long account groups, alert banners,
+          etc.) — users couldn't see the action they needed to take.
+          Switching the modal to a flex column with the fields body
+          scrolling internally keeps the footer always visible at the
+          bottom of the dialog regardless of form length. */}
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[625px]">
         <AccountForm defaultValues={defaultValues} onSuccess={onClose} />
       </DialogContent>
     </Dialog>

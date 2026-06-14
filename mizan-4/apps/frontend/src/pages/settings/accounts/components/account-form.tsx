@@ -143,8 +143,11 @@ export function AccountForm({ defaultValues, onSuccess = () => undefined }: Acco
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        <DialogHeader>
+      <form
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>{defaultValues?.id ? "Edit Portfolio" : "Add Portfolio"}</DialogTitle>
           <DialogDescription>
             {defaultValues?.id
@@ -153,7 +156,9 @@ export function AccountForm({ defaultValues, onSuccess = () => undefined }: Acco
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 p-4">
+        {/* Scrollable body — Save / Cancel stay pinned in the footer
+            below regardless of field length. */}
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-6">
           <input type="hidden" name="id" />
           <FormField
             control={form.control}
@@ -367,7 +372,7 @@ export function AccountForm({ defaultValues, onSuccess = () => undefined }: Acco
             />
           )}
         </div>
-        <DialogFooter className="gap-2">
+        <DialogFooter className="border-t bg-background gap-2 px-6 py-4">
           <DialogTrigger asChild>
             <Button variant="outline">Cancel</Button>
           </DialogTrigger>
