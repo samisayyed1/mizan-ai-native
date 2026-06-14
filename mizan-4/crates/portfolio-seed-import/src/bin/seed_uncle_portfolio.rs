@@ -1037,4 +1037,3 @@ fn upsert_setting(tx: &Transaction<'_>, key: &str, value: &str) -> Result<(), ru
     )?;
     Ok(())
 }
-
