@@ -1,17 +1,17 @@
-//! Per-user rate limiter for expensive authenticated endpoints (notably
-//! `/ai/chat`). The per-IP governor at the edge of the router stops
-//! anonymous floods; this layer stops a *single* authenticated user
-//! from burning their plan's AI credits — or our upstream OpenAI quota
-//! — by hammering the chat endpoint from one terminal.
+//! Per-user rate limiters for expensive authenticated endpoints.
 //!
-//! Each user_id gets a token bucket with `burst` capacity refilling at
-//! `tokens_per_minute / 60` per second. When the bucket is empty, the
-//! handler returns 429 with the §A24 envelope so the desktop can render
-//! a "you've hit the AI throttle, try again in a minute" toast.
+//! The per-IP governor at the edge of the router (`tower_governor`)
+//! stops anonymous floods; this layer stops a *single* authenticated
+//! user from burning their plan's quotas — or our upstream third-party
+//! quotas — by hammering a hot endpoint from one terminal.
 //!
-//! The buckets live in a `DashMap` keyed by `Uuid` so concurrent
-//! requests from different users never contend on a global lock. A
-//! background sweep evicts buckets idle for > 1h to bound memory.
+//! Each user_id gets a token bucket *per endpoint family*. AI chat,
+//! billing, Plaid, OAuth connect, and MCP gateway each have their own
+//! limiter so saturating one path doesn't punch through the others'
+//! headroom. The buckets live in a `DashMap` keyed by `Uuid` so
+//! concurrent requests from different users never contend on a global
+//! lock. A background sweep evicts buckets idle for > 1h to bound
+//! memory.
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -30,9 +30,11 @@ use crate::state::AppState;
 
 type UserLimiter = RateLimiter<Uuid, DefaultKeyedStateStore<Uuid>, DefaultClock>;
 
-/// Per-user limiter handle shared by every request. Inserted into
-/// `AppState` so any middleware/handler that wants to gate by user can
-/// reach it cheaply.
+/// Per-user limiter handle shared by every request.
+///
+/// One instance covers exactly one endpoint family. `purpose` is the
+/// short human-readable label woven into the 429 error message so the
+/// desktop can render a context-appropriate toast.
 #[derive(Clone)]
 pub struct UserRateLimiter {
     inner: Arc<UserLimiter>,
@@ -41,13 +43,16 @@ pub struct UserRateLimiter {
     /// already cleans up zero-tokens buckets — but caps memory under
     /// adversarial load (e.g. churn through many fake JWTs).
     last_seen: Arc<DashMap<Uuid, Instant>>,
+    purpose: &'static str,
 }
 
 impl UserRateLimiter {
     /// Build a limiter allowing `tokens_per_minute` tokens with a
     /// burst of `burst`. Inputs are clamped to ≥ 1 by saturating to
     /// `NonZeroU32::MIN` when zero is passed — no panics on bad input.
-    pub fn new(tokens_per_minute: u32, burst: u32) -> Self {
+    /// `purpose` is the label folded into the 429 error message
+    /// (e.g. `"AI"`, `"billing"`, `"Plaid"`).
+    pub fn new(purpose: &'static str, tokens_per_minute: u32, burst: u32) -> Self {
         // `NonZeroU32::new` returns Option; `.unwrap_or(MIN)` saturates
         // the zero case to 1 instead of panicking. Both inputs are
         // user-configurable so a misconfigured env var must not crash
@@ -58,6 +63,7 @@ impl UserRateLimiter {
         Self {
             inner: Arc::new(RateLimiter::keyed(quota)),
             last_seen: Arc::new(DashMap::new()),
+            purpose,
         }
     }
 
@@ -66,9 +72,10 @@ impl UserRateLimiter {
     pub fn check(&self, user_id: Uuid) -> Result<(), AppError> {
         self.last_seen.insert(user_id, Instant::now());
         self.inner.check_key(&user_id).map_err(|_not_until| {
-            AppError::too_many_requests(
-                "AI throttle: too many requests in the last minute. Try again shortly.",
-            )
+            AppError::too_many_requests(format!(
+                "{} throttle: too many requests in the last minute. Try again shortly.",
+                self.purpose
+            ))
         })
     }
 
@@ -86,8 +93,30 @@ impl UserRateLimiter {
     }
 }
 
+/// Five named limiter families. Cheap to clone — every field is an
+/// `Arc`-backed handle.
+#[derive(Clone)]
+pub struct EndpointLimiters {
+    pub ai_chat: UserRateLimiter,
+    pub billing: UserRateLimiter,
+    pub plaid: UserRateLimiter,
+    pub oauth: UserRateLimiter,
+    pub mcp: UserRateLimiter,
+}
+
+impl EndpointLimiters {
+    /// Sweep every family's stale buckets in one call.
+    pub fn sweep_all(&self, ttl: Duration) {
+        self.ai_chat.sweep(ttl);
+        self.billing.sweep(ttl);
+        self.plaid.sweep(ttl);
+        self.oauth.sweep(ttl);
+        self.mcp.sweep(ttl);
+    }
+}
+
 /// Axum middleware: extracts AuthenticatedUser, then consults the
-/// limiter pulled from the AppState. Mount via
+/// AI chat limiter pulled from the AppState. Mount via
 /// `.route_layer(axum::middleware::from_fn_with_state(state, ...))`
 /// on the routes that need it (e.g. `/ai/chat`). `route_layer` (as
 /// opposed to `layer`) ensures rejections from the inner extractor
@@ -99,7 +128,64 @@ pub async fn enforce_per_user_limit(
     request: Request,
     next: Next,
 ) -> Result<Response, AppError> {
-    state.user_rate_limiter().check(user.0.id)?;
+    state.endpoint_limiters().ai_chat.check(user.0.id)?;
+    Ok(next.run(request).await)
+}
+
+/// Per-user billing throttle (checkout, portal, usage). Default
+/// 10/min burst 5 — billing endpoints are inherently low-cadence;
+/// anyone hammering them is either a runaway test loop or abuse.
+pub async fn enforce_billing_limit(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    user: AuthenticatedUser,
+    request: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    state.endpoint_limiters().billing.check(user.0.id)?;
+    Ok(next.run(request).await)
+}
+
+/// Per-user Plaid throttle (link-token, public-token exchange,
+/// account sync). Plaid charges per call and rate-limits us at the
+/// edge; this layer keeps a single client from burning the whole
+/// account's Plaid budget.
+pub async fn enforce_plaid_limit(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    user: AuthenticatedUser,
+    request: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    state.endpoint_limiters().plaid.check(user.0.id)?;
+    Ok(next.run(request).await)
+}
+
+/// Per-user OAuth throttle (provider connect, disconnect). The
+/// callback endpoint is gated by the signed state nonce already, so
+/// repeated callbacks are self-rejecting; this layer covers the
+/// initiating endpoints where a misbehaving client could flood
+/// upstream OAuth providers.
+pub async fn enforce_oauth_limit(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    user: AuthenticatedUser,
+    request: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    state.endpoint_limiters().oauth.check(user.0.id)?;
+    Ok(next.run(request).await)
+}
+
+/// Per-user MCP gateway throttle. The MCP module already enforces
+/// per-trust-level caps on `/servers/:id/call` (60/min Vetted, 10/min
+/// SelfRegistered) inside the handler — this layer adds the orthogonal
+/// per-user dimension so one user with multiple Vetted servers can't
+/// aggregate them into an effective 60×N call rate.
+pub async fn enforce_mcp_limit(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    user: AuthenticatedUser,
+    request: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    state.endpoint_limiters().mcp.check(user.0.id)?;
     Ok(next.run(request).await)
 }
 
@@ -110,14 +196,14 @@ mod tests {
 
     #[test]
     fn first_request_passes() {
-        let limiter = UserRateLimiter::new(60, 1);
+        let limiter = UserRateLimiter::new("AI", 60, 1);
         let user = Uuid::new_v4();
         assert!(limiter.check(user).is_ok());
     }
 
     #[test]
     fn second_immediate_request_fails_when_burst_is_one() {
-        let limiter = UserRateLimiter::new(60, 1);
+        let limiter = UserRateLimiter::new("AI", 60, 1);
         let user = Uuid::new_v4();
         limiter.check(user).unwrap();
         let err = limiter.check(user).unwrap_err();
@@ -130,7 +216,7 @@ mod tests {
 
     #[test]
     fn distinct_users_have_independent_buckets() {
-        let limiter = UserRateLimiter::new(60, 1);
+        let limiter = UserRateLimiter::new("AI", 60, 1);
         let a = Uuid::new_v4();
         let b = Uuid::new_v4();
         limiter.check(a).unwrap();
@@ -140,7 +226,7 @@ mod tests {
 
     #[test]
     fn sweep_removes_idle_users() {
-        let limiter = UserRateLimiter::new(60, 5);
+        let limiter = UserRateLimiter::new("AI", 60, 5);
         let user = Uuid::new_v4();
         limiter.check(user).unwrap();
         assert_eq!(limiter.last_seen.len(), 1);
@@ -148,5 +234,67 @@ mod tests {
         std::thread::sleep(Duration::from_millis(2));
         limiter.sweep(Duration::from_millis(1));
         assert_eq!(limiter.last_seen.len(), 0);
+    }
+
+    #[test]
+    fn purpose_label_is_woven_into_error_message() {
+        // Each endpoint-family limiter emits its own label so the
+        // desktop can render the right toast (an "AI throttle" toast
+        // would be misleading if the user hit the billing path).
+        let billing = UserRateLimiter::new("billing", 60, 1);
+        let user = Uuid::new_v4();
+        billing.check(user).unwrap();
+        let err = billing.check(user).unwrap_err();
+        assert!(
+            err.message().contains("billing throttle"),
+            "expected billing-labelled throttle message, got: {}",
+            err.message()
+        );
+    }
+
+    #[test]
+    fn endpoint_limiters_are_independent_families() {
+        // Burning the AI bucket must NOT consume the Plaid bucket —
+        // the whole point of the per-endpoint split.
+        let limiters = EndpointLimiters {
+            ai_chat: UserRateLimiter::new("AI", 60, 1),
+            billing: UserRateLimiter::new("billing", 60, 1),
+            plaid: UserRateLimiter::new("Plaid", 60, 1),
+            oauth: UserRateLimiter::new("OAuth", 60, 1),
+            mcp: UserRateLimiter::new("MCP", 60, 1),
+        };
+        let user = Uuid::new_v4();
+        limiters.ai_chat.check(user).unwrap();
+        // AI bucket is empty now (burst=1, consumed).
+        assert!(limiters.ai_chat.check(user).is_err());
+        // Every other family has untouched headroom.
+        assert!(limiters.billing.check(user).is_ok());
+        assert!(limiters.plaid.check(user).is_ok());
+        assert!(limiters.oauth.check(user).is_ok());
+        assert!(limiters.mcp.check(user).is_ok());
+    }
+
+    #[test]
+    fn sweep_all_clears_every_family() {
+        let limiters = EndpointLimiters {
+            ai_chat: UserRateLimiter::new("AI", 60, 5),
+            billing: UserRateLimiter::new("billing", 60, 5),
+            plaid: UserRateLimiter::new("Plaid", 60, 5),
+            oauth: UserRateLimiter::new("OAuth", 60, 5),
+            mcp: UserRateLimiter::new("MCP", 60, 5),
+        };
+        let user = Uuid::new_v4();
+        limiters.ai_chat.check(user).unwrap();
+        limiters.billing.check(user).unwrap();
+        limiters.plaid.check(user).unwrap();
+        limiters.oauth.check(user).unwrap();
+        limiters.mcp.check(user).unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        limiters.sweep_all(Duration::from_millis(1));
+        assert_eq!(limiters.ai_chat.last_seen.len(), 0);
+        assert_eq!(limiters.billing.last_seen.len(), 0);
+        assert_eq!(limiters.plaid.last_seen.len(), 0);
+        assert_eq!(limiters.oauth.last_seen.len(), 0);
+        assert_eq!(limiters.mcp.last_seen.len(), 0);
     }
 }

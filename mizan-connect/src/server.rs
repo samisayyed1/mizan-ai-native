@@ -90,14 +90,34 @@ pub fn build_app(state: AppState) -> Router {
             },
         );
 
-    // Per-user AI throttle layer. Cloned `state` for the inner router
-    // mount (the v1 + api_v1 mounts each get an independent layer
-    // application — both target the SAME UserRateLimiter inside the
-    // shared AppState, so buckets are coherent across mount points).
+    // Per-user throttle layers. Each endpoint family (AI chat,
+    // billing, Plaid, OAuth, MCP) gets its own bucket inside the
+    // shared `EndpointLimiters` so saturating one path doesn't punch
+    // through another's headroom. The /v1 + /api/v1 mounts each apply
+    // their own layer instance but target the SAME limiter struct
+    // inside AppState, so buckets are coherent across mount points.
     let v1_ai_chat = crate::billing::ai_chat_router()
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             crate::middleware::user_rate_limit::enforce_per_user_limit,
+        ))
+        .with_state(state.clone());
+    let v1_billing = crate::billing::router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_billing_limit,
+        ))
+        .with_state(state.clone());
+    let v1_oauth = crate::oauth::router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_oauth_limit,
+        ))
+        .with_state(state.clone());
+    let v1_mcp = crate::mcp::router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_mcp_limit,
         ))
         .with_state(state.clone());
 
@@ -105,10 +125,10 @@ pub fn build_app(state: AppState) -> Router {
     let v1 = Router::new()
         .merge(crate::users::router())
         .merge(crate::teams::router())
-        .merge(crate::billing::router())
+        .merge(v1_billing)
         .merge(crate::admin::router())
-        .merge(crate::oauth::router())
-        .merge(crate::mcp::router())
+        .merge(v1_oauth)
+        .merge(v1_mcp)
         .merge(crate::advisor::router())
         .merge(v1_ai_chat)
         .with_state(state.clone());
@@ -136,6 +156,30 @@ pub fn build_app(state: AppState) -> Router {
             crate::middleware::user_rate_limit::enforce_per_user_limit,
         ))
         .with_state(state.clone());
+    let api_v1_billing = crate::billing::router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_billing_limit,
+        ))
+        .with_state(state.clone());
+    let api_v1_plaid = crate::plaid::router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_plaid_limit,
+        ))
+        .with_state(state.clone());
+    let api_v1_oauth = crate::oauth::router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_oauth_limit,
+        ))
+        .with_state(state.clone());
+    let api_v1_mcp = crate::mcp::router()
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::user_rate_limit::enforce_mcp_limit,
+        ))
+        .with_state(state.clone());
 
     let api_v1 = Router::new()
         .merge(crate::users::router())
@@ -145,13 +189,13 @@ pub fn build_app(state: AppState) -> Router {
         )
         .merge(crate::teams::router())
         .merge(crate::billing::plans_router())
-        .merge(crate::billing::router())
-        .merge(crate::plaid::router())
+        .merge(api_v1_billing)
+        .merge(api_v1_plaid)
         .merge(crate::snaptrade::router())
         .merge(crate::sharia::router())
         .merge(crate::news::router())
-        .merge(crate::oauth::router())
-        .merge(crate::mcp::router())
+        .merge(api_v1_oauth)
+        .merge(api_v1_mcp)
         .merge(crate::advisor::router())
         // Public self-discovery endpoint for the desktop: returns
         // Supabase URL + anon key + feature flags so a fresh install

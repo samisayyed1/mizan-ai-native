@@ -140,11 +140,33 @@ pub struct Config {
 
     pub cors_allowed_origins: Vec<String>,
     pub rate_limit_per_minute: u32,
-    /// Per-authenticated-user request cap. `None` falls back to a
-    /// sensible default (60/min, burst 20) — see `AppState::new`.
+    /// Per-authenticated-user request cap for `/ai/chat`. `None`
+    /// falls back to a sensible default (60/min, burst 20) — see
+    /// `AppState::new`. (Legacy name; covers the AI endpoint only.)
     pub user_rate_limit_per_minute: Option<u32>,
-    /// Burst capacity for the per-user limiter. `None` → default.
+    /// Burst capacity for the AI per-user limiter. `None` → default.
     pub user_rate_limit_burst: Option<u32>,
+
+    /// Per-user rate-limit overrides for the billing endpoints.
+    /// Defaults to 10/min burst 5.
+    pub billing_rate_limit_per_minute: Option<u32>,
+    pub billing_rate_limit_burst: Option<u32>,
+
+    /// Per-user rate-limit overrides for Plaid endpoints.
+    /// Defaults to 30/min burst 10.
+    pub plaid_rate_limit_per_minute: Option<u32>,
+    pub plaid_rate_limit_burst: Option<u32>,
+
+    /// Per-user rate-limit overrides for OAuth connect/disconnect
+    /// endpoints. Defaults to 10/min burst 5.
+    pub oauth_rate_limit_per_minute: Option<u32>,
+    pub oauth_rate_limit_burst: Option<u32>,
+
+    /// Per-user rate-limit overrides for MCP gateway endpoints.
+    /// Orthogonal to the per-trust-level caps the MCP module already
+    /// enforces inside the handler. Defaults to 60/min burst 20.
+    pub mcp_rate_limit_per_minute: Option<u32>,
+    pub mcp_rate_limit_burst: Option<u32>,
 
     pub sentry: SentryConfig,
 
@@ -369,6 +391,14 @@ struct RawConfig {
     rate_limit_per_minute: Option<u32>,
     user_rate_limit_per_minute: Option<u32>,
     user_rate_limit_burst: Option<u32>,
+    billing_rate_limit_per_minute: Option<u32>,
+    billing_rate_limit_burst: Option<u32>,
+    plaid_rate_limit_per_minute: Option<u32>,
+    plaid_rate_limit_burst: Option<u32>,
+    oauth_rate_limit_per_minute: Option<u32>,
+    oauth_rate_limit_burst: Option<u32>,
+    mcp_rate_limit_per_minute: Option<u32>,
+    mcp_rate_limit_burst: Option<u32>,
 
     sentry_dsn: Option<String>,
     sentry_environment: Option<String>,
@@ -525,6 +555,14 @@ impl Config {
             rate_limit_per_minute: raw.rate_limit_per_minute.unwrap_or(100).max(1),
             user_rate_limit_per_minute: raw.user_rate_limit_per_minute,
             user_rate_limit_burst: raw.user_rate_limit_burst,
+            billing_rate_limit_per_minute: raw.billing_rate_limit_per_minute,
+            billing_rate_limit_burst: raw.billing_rate_limit_burst,
+            plaid_rate_limit_per_minute: raw.plaid_rate_limit_per_minute,
+            plaid_rate_limit_burst: raw.plaid_rate_limit_burst,
+            oauth_rate_limit_per_minute: raw.oauth_rate_limit_per_minute,
+            oauth_rate_limit_burst: raw.oauth_rate_limit_burst,
+            mcp_rate_limit_per_minute: raw.mcp_rate_limit_per_minute,
+            mcp_rate_limit_burst: raw.mcp_rate_limit_burst,
             sentry,
             test_jwt_secret,
             plaid,
