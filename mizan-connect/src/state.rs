@@ -7,7 +7,7 @@ use sqlx::PgPool;
 use crate::auth::jwks::JwksCache;
 use crate::billing::BillingContext;
 use crate::config::Config;
-use crate::middleware::user_rate_limit::UserRateLimiter;
+use crate::middleware::user_rate_limit::{EndpointLimiters, UserRateLimiter};
 use crate::plaid::types::PlaidContext;
 
 /// Application state cloned into every handler.
@@ -26,10 +26,10 @@ struct Inner {
     /// Optional — present only when Stripe + billing env vars are configured.
     /// Handlers fall back to `not_implemented` when this is `None`.
     billing: Option<BillingContext>,
-    /// Per-authenticated-user throttle, used by `/ai/chat` (and any
-    /// future expensive endpoint that should not be hammerable by a
-    /// single client even when the global IP bucket has headroom).
-    user_rate_limiter: UserRateLimiter,
+    /// Per-authenticated-user throttle families. AI chat, billing,
+    /// Plaid, OAuth, and MCP each get their own bucket so saturating
+    /// one path doesn't punch through the others' headroom.
+    endpoint_limiters: EndpointLimiters,
 }
 
 impl AppState {
@@ -40,13 +40,38 @@ impl AppState {
         plaid: Option<PlaidContext>,
         billing: Option<BillingContext>,
     ) -> Self {
-        // 60/min per user with a burst of 20 by default — generous
-        // enough for a conversational AI session but firm enough to
-        // stop a single client from churning OpenAI quota.
-        let user_rate_limiter = UserRateLimiter::new(
-            config.user_rate_limit_per_minute.unwrap_or(60),
-            config.user_rate_limit_burst.unwrap_or(20),
-        );
+        // Per-endpoint quotas — each family gets its own bucket so
+        // saturating one path leaves the others untouched. Defaults
+        // are tuned to the workload shape: AI chat is conversational
+        // (60/20 burst); billing + OAuth are inherently low-cadence
+        // (10/5); Plaid is medium (30/10); MCP is high (60/20) because
+        // a power user with several Vetted servers will legitimately
+        // proxy at that rate.
+        let ai_per_min = config.user_rate_limit_per_minute.unwrap_or(60);
+        let ai_burst = config.user_rate_limit_burst.unwrap_or(20);
+        let endpoint_limiters = EndpointLimiters {
+            ai_chat: UserRateLimiter::new("AI", ai_per_min, ai_burst),
+            billing: UserRateLimiter::new(
+                "billing",
+                config.billing_rate_limit_per_minute.unwrap_or(10),
+                config.billing_rate_limit_burst.unwrap_or(5),
+            ),
+            plaid: UserRateLimiter::new(
+                "Plaid",
+                config.plaid_rate_limit_per_minute.unwrap_or(30),
+                config.plaid_rate_limit_burst.unwrap_or(10),
+            ),
+            oauth: UserRateLimiter::new(
+                "OAuth",
+                config.oauth_rate_limit_per_minute.unwrap_or(10),
+                config.oauth_rate_limit_burst.unwrap_or(5),
+            ),
+            mcp: UserRateLimiter::new(
+                "MCP",
+                config.mcp_rate_limit_per_minute.unwrap_or(60),
+                config.mcp_rate_limit_burst.unwrap_or(20),
+            ),
+        };
         Self {
             inner: Arc::new(Inner {
                 config,
@@ -54,7 +79,7 @@ impl AppState {
                 jwks,
                 plaid,
                 billing,
-                user_rate_limiter,
+                endpoint_limiters,
             }),
         }
     }
@@ -81,9 +106,9 @@ impl AppState {
         self.inner.billing.as_ref()
     }
 
-    /// Per-authenticated-user rate limiter for expensive endpoints
-    /// (notably `/ai/chat`). Cloning is cheap — buckets are behind Arc.
-    pub fn user_rate_limiter(&self) -> &UserRateLimiter {
-        &self.inner.user_rate_limiter
+    /// Per-authenticated-user rate-limiter families. Cloning is cheap
+    /// — every field is `Arc`-backed.
+    pub fn endpoint_limiters(&self) -> &EndpointLimiters {
+        &self.inner.endpoint_limiters
     }
 }
