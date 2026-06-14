@@ -234,6 +234,20 @@ fn wipe_user_tables(tx: &Transaction<'_>) -> Result<(), rusqlite::Error> {
             warn!("DELETE FROM {t} failed (may not exist yet): {e}");
         }
     }
+    // CRITICAL: restore the synthetic TOTAL account that the snapshot
+    // service writes "All Portfolios" aggregates against. Migration
+    // 2026-05-25-000002 created it as a stable FK target for
+    // `holdings_snapshots.account_id = 'TOTAL'` and the desktop's
+    // Net Worth tile reads from it. Wiping the accounts table above
+    // also drops it, leaving the dashboard's headline number empty
+    // and every asset-class tile rendering "No holdings" even when
+    // the per-account valuations are healthy. Verified live on
+    // 2026-06-14: re-seed without this insert → dashboard $0.00.
+    tx.execute(
+        "INSERT OR IGNORE INTO accounts (id, name, account_type, \"group\", currency, is_default, is_active, tracking_mode, is_archived, created_at, updated_at) \
+         VALUES ('TOTAL', 'All Portfolios (synthetic aggregate — do not edit)', 'SECURITIES', NULL, 'USD', 0, 1, 'NOT_SET', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        [],
+    )?;
     Ok(())
 }
 
