@@ -26,6 +26,9 @@ pub mod create_goal;
 pub mod create_liability;
 pub mod csv_intel;
 pub mod delete_account;
+pub mod delete_alternative_asset;
+pub mod delete_goal;
+pub mod delete_liability;
 pub mod goals;
 pub mod health;
 pub mod holding_safety;
@@ -55,6 +58,9 @@ pub use create_account::CreateAccountTool;
 pub use create_goal::CreateGoalTool;
 pub use create_liability::CreateLiabilityTool;
 pub use delete_account::DeleteAccountTool;
+pub use delete_alternative_asset::DeleteAlternativeAssetTool;
+pub use delete_goal::DeleteGoalTool;
+pub use delete_liability::DeleteLiabilityTool;
 pub use goals::GetGoalsTool;
 pub use health::GetHealthStatusTool;
 pub use holdings::GetHoldingsTool;
@@ -90,9 +96,12 @@ pub struct ToolSet<E: AiEnvironment> {
     pub update_account: UpdateAccountTool<E>,
     pub delete_account: DeleteAccountTool<E>,
     pub create_goal: CreateGoalTool<E>,
+    pub delete_goal: DeleteGoalTool<E>,
     pub create_liability: CreateLiabilityTool<E>,
-    pub add_alternative_asset: AddAlternativeAssetTool<E>,
     pub update_liability: UpdateLiabilityTool<E>,
+    pub delete_liability: DeleteLiabilityTool<E>,
+    pub add_alternative_asset: AddAlternativeAssetTool<E>,
+    pub delete_alternative_asset: DeleteAlternativeAssetTool<E>,
 }
 
 impl<E: AiEnvironment> ToolSet<E> {
@@ -116,9 +125,12 @@ impl<E: AiEnvironment> ToolSet<E> {
             update_account: UpdateAccountTool::new(env.clone()),
             delete_account: DeleteAccountTool::new(env.clone()),
             create_goal: CreateGoalTool::new(env.clone()),
+            delete_goal: DeleteGoalTool::new(env.clone()),
             create_liability: CreateLiabilityTool::new(env.clone()),
+            update_liability: UpdateLiabilityTool::new(env.clone()),
+            delete_liability: DeleteLiabilityTool::new(env.clone()),
             add_alternative_asset: AddAlternativeAssetTool::new(env.clone()),
-            update_liability: UpdateLiabilityTool::new(env),
+            delete_alternative_asset: DeleteAlternativeAssetTool::new(env),
         }
     }
 }

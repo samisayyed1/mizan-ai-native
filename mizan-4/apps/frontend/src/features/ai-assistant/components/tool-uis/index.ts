@@ -13,6 +13,9 @@ import { CreateAccountToolUI } from "./create-account-tool-ui";
 import { CreateGoalToolUI } from "./create-goal-tool-ui";
 import { CreateLiabilityToolUI } from "./create-liability-tool-ui";
 import { DeleteAccountToolUI } from "./delete-account-tool-ui";
+import { DeleteAlternativeAssetToolUI } from "./delete-alternative-asset-tool-ui";
+import { DeleteGoalToolUI } from "./delete-goal-tool-ui";
+import { DeleteLiabilityToolUI } from "./delete-liability-tool-ui";
 import { GoalsToolUI } from "./goals-tool-ui";
 import { UpdateAccountToolUI } from "./update-account-tool-ui";
 import { HoldingsToolUI } from "./holdings-tool-ui";
@@ -34,6 +37,9 @@ export const toolUIs = {
   create_goal: CreateGoalToolUI,
   create_liability: CreateLiabilityToolUI,
   delete_account: DeleteAccountToolUI,
+  delete_alternative_asset: DeleteAlternativeAssetToolUI,
+  delete_goal: DeleteGoalToolUI,
+  delete_liability: DeleteLiabilityToolUI,
   get_accounts: AccountsToolUI,
   get_asset_allocation: AllocationToolUI,
   get_goals: GoalsToolUI,
@@ -61,6 +67,9 @@ export {
   CreateGoalToolUI,
   CreateLiabilityToolUI,
   DeleteAccountToolUI,
+  DeleteAlternativeAssetToolUI,
+  DeleteGoalToolUI,
+  DeleteLiabilityToolUI,
   GoalsToolUI,
   HoldingsToolUI,
   ImportCsvToolUI,

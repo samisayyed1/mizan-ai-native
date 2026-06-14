@@ -26,6 +26,9 @@ import {
   CreateGoalToolUI,
   CreateLiabilityToolUI,
   DeleteAccountToolUI,
+  DeleteAlternativeAssetToolUI,
+  DeleteGoalToolUI,
+  DeleteLiabilityToolUI,
   GoalsToolUI,
   HoldingsToolUI,
   ImportCsvToolUI,
@@ -278,9 +281,12 @@ function ChatShellInner({ className, initialIntent }: ChatShellProps) {
         <UpdateAccountToolUI />
         <DeleteAccountToolUI />
         <CreateGoalToolUI />
+        <DeleteGoalToolUI />
         <CreateLiabilityToolUI />
         <UpdateLiabilityToolUI />
+        <DeleteLiabilityToolUI />
         <AddAlternativeAssetToolUI />
+        <DeleteAlternativeAssetToolUI />
 
         <div className={cn("bg-background flex h-full min-h-0 w-full", className)}>
           {/* Desktop Sidebar */}

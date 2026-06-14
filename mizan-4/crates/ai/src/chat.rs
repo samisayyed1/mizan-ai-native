@@ -1555,14 +1555,23 @@ async fn spawn_chat_stream<E: AiEnvironment + 'static>(
             if is_allowed("create_goal") {
                 allowed_tools.push(Box::new(tool_set.create_goal));
             }
+            if is_allowed("delete_goal") {
+                allowed_tools.push(Box::new(tool_set.delete_goal));
+            }
             if is_allowed("create_liability") {
                 allowed_tools.push(Box::new(tool_set.create_liability));
             }
             if is_allowed("update_liability") {
                 allowed_tools.push(Box::new(tool_set.update_liability));
             }
+            if is_allowed("delete_liability") {
+                allowed_tools.push(Box::new(tool_set.delete_liability));
+            }
             if is_allowed("add_alternative_asset") {
                 allowed_tools.push(Box::new(tool_set.add_alternative_asset));
+            }
+            if is_allowed("delete_alternative_asset") {
+                allowed_tools.push(Box::new(tool_set.delete_alternative_asset));
             }
 
             let mut builder = $client
