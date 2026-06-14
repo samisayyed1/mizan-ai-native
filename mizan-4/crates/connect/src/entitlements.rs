@@ -91,6 +91,22 @@ impl Entitlements {
     }
 }
 
+/// Resolve the entitlements to use when no cloud lookup is available
+/// — signed out, offline, network error, dev environment. Honors the
+/// `MIZAN_DEMO_MODE=1` override (gated by `MIZAN_ALLOW_PRODUCTION=1`)
+/// so the investor-pitch walkthrough sees Gold-tier even when the
+/// Connect cloud is unreachable.
+///
+/// Callers should prefer this over `Entitlements::default()`
+/// directly: the default path bypasses the demo override, which
+/// silently breaks the Uncle Feroz pitch flow when the laptop is
+/// offline or the Connect API errors. Verified live on
+/// 2026-06-14 — pre-fix, the headless server returned `plan="free"`
+/// despite both env vars set.
+pub fn resolve_offline_entitlements() -> Entitlements {
+    entitlements_for_plan(None, None)
+}
+
 /// Demo-mode override — when `MIZAN_DEMO_MODE=1` is set in the host
 /// environment, every entitlement lookup returns full Gold-tier so
 /// the investor-pitch flow ("Uncle Feroz" walkthrough) can render
@@ -338,5 +354,34 @@ mod tests {
         assert!(e.zakat_engine);
         std::env::remove_var("MIZAN_DEMO_MODE");
         std::env::remove_var("MIZAN_ALLOW_PRODUCTION");
+    }
+
+    #[test]
+    fn resolve_offline_returns_gold_demo_when_env_set() {
+        // Regression: previously the offline path (signed out / cloud
+        // unreachable / Free tier with no team) called
+        // `Entitlements::default()` directly, bypassing the demo
+        // override. The Uncle Feroz pitch flow rendered with plan=free
+        // until this fix — verified live on a headless server boot
+        // 2026-06-14.
+        let _guard = SAFETY_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::set_var("MIZAN_DEMO_MODE", "1");
+        std::env::set_var("MIZAN_ALLOW_PRODUCTION", "1");
+        let e = resolve_offline_entitlements();
+        assert_eq!(e.plan, "gold-demo");
+        assert!(e.zakat_engine);
+        assert!(e.advisor_mode);
+        std::env::remove_var("MIZAN_DEMO_MODE");
+        std::env::remove_var("MIZAN_ALLOW_PRODUCTION");
+    }
+
+    #[test]
+    fn resolve_offline_returns_free_when_no_demo_env() {
+        let _guard = SAFETY_MUTEX.lock().unwrap_or_else(|p| p.into_inner());
+        std::env::remove_var("MIZAN_DEMO_MODE");
+        std::env::remove_var("MIZAN_ALLOW_PRODUCTION");
+        let e = resolve_offline_entitlements();
+        assert_eq!(e.plan, "free");
+        assert!(!e.zakat_engine);
     }
 }
