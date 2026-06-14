@@ -10,7 +10,7 @@ import {
 
 import type { FC, ReactNode } from "react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { AgentProgressCard } from "./agent-progress-card";
@@ -324,18 +324,25 @@ const TypingIndicator: FC<TypingIndicatorProps> = ({ position }) => {
  * alongside text/reasoning/toolCall parts.
  */
 const AgentParts: FC = () => {
-  const agentParts = useAssistantState(({ message }) => {
-    const parts = message?.content as
-      | readonly { type: string; runId?: string; events?: AgentInnerEvent[] }[]
-      | undefined;
-    if (!parts || !Array.isArray(parts)) return [];
-    return parts.filter(
-      (p): p is { type: "agent"; runId: string; events: AgentInnerEvent[] } =>
-        p?.type === "agent" && typeof p.runId === "string" && Array.isArray(p.events)
-    );
-  });
+  // assistant-ui's useAssistantState uses useSyncExternalStore — the
+  // selector MUST return a reference-stable value when the underlying
+  // store state is unchanged, otherwise React tears in an infinite
+  // re-render loop ("Maximum update depth exceeded"). Returning a
+  // freshly-allocated `.filter(...)` array here was exactly that bug.
+  // Pull the raw `message.content` reference (stable) and do the
+  // shape-narrowing filter in a `useMemo` keyed on that reference.
+  const rawParts = useAssistantState(({ message }) => message?.content);
 
-  if (!agentParts || agentParts.length === 0) return null;
+  const agentParts = useMemo(() => {
+    if (!Array.isArray(rawParts)) return [];
+    return (rawParts as readonly { type: string; runId?: string; events?: AgentInnerEvent[] }[])
+      .filter(
+        (p): p is { type: "agent"; runId: string; events: AgentInnerEvent[] } =>
+          p?.type === "agent" && typeof p.runId === "string" && Array.isArray(p.events)
+      );
+  }, [rawParts]);
+
+  if (agentParts.length === 0) return null;
 
   return (
     <>
