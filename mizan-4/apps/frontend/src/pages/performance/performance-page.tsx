@@ -51,6 +51,9 @@ import {
   DropdownMenuTrigger,
   GainPercent,
   Icons,
+  Page,
+  PageContent,
+  PageHeader,
   Separator,
 } from "@mizan/ui";
 import { endOfDay, startOfDay, subMonths } from "date-fns";
@@ -368,14 +371,20 @@ export default function PerformancePage() {
     }
   };
 
-  return (
-    <>
-      {/* Date range selector - fixed position in header area */}
-      <div className="pointer-events-auto fixed right-2 top-4 z-20 hidden md:block lg:right-4">
-        <DateRangeSelector value={dateRange} onChange={setDateRange} />
-      </div>
+  // Pull the desktop DateRangeSelector out of the `fixed right-2 top-4`
+  // floating placement (which clipped on narrow viewports and visually
+  // floated above the chrome on its own) and into the canonical
+  // `<PageHeader actions>` slot — matches Health / Goals / Account.
+  const headerActions = (
+    <div className="hidden md:block">
+      <DateRangeSelector value={dateRange} onChange={setDateRange} />
+    </div>
+  );
 
-      <div className="flex h-full flex-col space-y-4">
+  return (
+    <Page>
+      <PageHeader heading="Performance" actions={headerActions} />
+      <PageContent className="flex h-full flex-col space-y-4">
         <div className="flex justify-end md:hidden">
           <DateRangeSelector value={dateRange} onChange={setDateRange} />
         </div>
@@ -673,7 +682,7 @@ export default function PerformancePage() {
             </CardContent>
           </Card>
         </div>
-      </div>
-    </>
+      </PageContent>
+    </Page>
   );
 }

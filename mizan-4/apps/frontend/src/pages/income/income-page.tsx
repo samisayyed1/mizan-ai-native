@@ -15,7 +15,7 @@ import { useSettingsContext } from "@/lib/settings-provider";
 import { QueryKeys } from "@/lib/query-keys";
 import type { IncomeSummary } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
-import { AmountDisplay, AnimatedToggleGroup, GainPercent, PrivacyAmount } from "@mizan/ui";
+import { AmountDisplay, AnimatedToggleGroup, GainPercent, Page, PageContent, PageHeader, PrivacyAmount } from "@mizan/ui";
 import React, { useState } from "react";
 import { Cell, Pie, PieChart } from "recharts";
 import { IncomeHistoryChart } from "./income-history-chart";
@@ -92,53 +92,67 @@ export default function IncomePage() {
   const periodSummary = incomeData.find((summary) => summary.period === selectedPeriod);
   const totalSummary = incomeData.find((summary) => summary.period === "TOTAL");
 
+  // Page-header chrome shared between the empty + populated paths.
+  // The previous implementation positioned the period + account toggles
+  // as `fixed right-2 top-4 z-20`, which clipped on narrow viewports and
+  // floated above the rest of the chrome inconsistently. Folding them
+  // into the canonical `<PageHeader actions>` slot brings Income into
+  // line with Health / Goals / Account and removes the clip risk.
+  const headerActions = (
+    <>
+      <div className="hidden items-center gap-2 md:flex">
+        <AccountSelector
+          selectedAccount={selectedAccount}
+          setSelectedAccount={setSelectedAccount}
+          variant="dropdown"
+          includePortfolio
+          className="h-9"
+        />
+        <IncomePeriodSelector
+          selectedPeriod={selectedPeriod}
+          onPeriodSelect={setSelectedPeriod}
+        />
+      </div>
+      <div className="flex items-center gap-2 md:hidden">
+        <IncomePeriodSelector
+          selectedPeriod={selectedPeriod}
+          onPeriodSelect={setSelectedPeriod}
+        />
+        <Button
+          variant="outline"
+          size="icon"
+          className="bg-secondary/30 relative h-9 w-9 rounded-full border-none"
+          onClick={() => setIsFilterSheetOpen(true)}
+          aria-label="Open filters"
+        >
+          <Icons.ListFilter className="h-4 w-4" />
+          {selectedAccount?.id !== PORTFOLIO_ACCOUNT_ID && (
+            <span className="bg-destructive absolute -right-1 -top-1 h-2 w-2 rounded-full" />
+          )}
+        </Button>
+      </div>
+    </>
+  );
+
   if (!periodSummary || !totalSummary) {
     return (
-      <>
-        <div className="pointer-events-auto fixed right-2 top-4 z-20 hidden items-center gap-2 md:flex lg:right-4">
-          <AccountSelector
-            selectedAccount={selectedAccount}
-            setSelectedAccount={setSelectedAccount}
-            variant="dropdown"
-            includePortfolio
-            className="h-9"
+      <Page>
+        <PageHeader heading="Income" actions={headerActions} />
+        <PageContent>
+          <EmptyPlaceholder
+            className="mx-auto flex max-w-[420px] items-center justify-center pt-12"
+            icon={<Icons.DollarSign className="h-10 w-10" />}
+            title="No income data available"
+            description="There is no income data for the selected period. Try selecting a different time range or check back later."
           />
-          <IncomePeriodSelector
-            selectedPeriod={selectedPeriod}
-            onPeriodSelect={setSelectedPeriod}
-          />
-        </div>
-        <div className="flex items-center justify-end gap-2 md:hidden">
-          <IncomePeriodSelector
-            selectedPeriod={selectedPeriod}
-            onPeriodSelect={setSelectedPeriod}
-          />
-          <Button
-            variant="outline"
-            size="icon"
-            className="bg-secondary/30 relative h-9 w-9 rounded-full border-none"
-            onClick={() => setIsFilterSheetOpen(true)}
-            aria-label="Open filters"
-          >
-            <Icons.ListFilter className="h-4 w-4" />
-            {selectedAccount?.id !== PORTFOLIO_ACCOUNT_ID && (
-              <span className="bg-destructive absolute -right-1 -top-1 h-2 w-2 rounded-full" />
-            )}
-          </Button>
-        </div>
-        <EmptyPlaceholder
-          className="mx-auto flex max-w-[420px] items-center justify-center pt-12"
-          icon={<Icons.DollarSign className="h-10 w-10" />}
-          title="No income data available"
-          description="There is no income data for the selected period. Try selecting a different time range or check back later."
-        />
+        </PageContent>
         <IncomeMobileFilterSheet
           open={isFilterSheetOpen}
           onOpenChange={setIsFilterSheetOpen}
           selectedAccount={selectedAccount}
           onAccountChange={setSelectedAccount}
         />
-      </>
+      </Page>
     );
   }
 
@@ -218,39 +232,9 @@ export default function IncomePage() {
   }));
 
   return (
-    <>
-      {/* Desktop: fixed header with account selector + period toggle */}
-      <div className="pointer-events-auto fixed right-2 top-4 z-20 hidden items-center gap-2 md:flex lg:right-4">
-        <AccountSelector
-          selectedAccount={selectedAccount}
-          setSelectedAccount={setSelectedAccount}
-          variant="dropdown"
-          includePortfolio
-          className="h-9"
-        />
-        <IncomePeriodSelector selectedPeriod={selectedPeriod} onPeriodSelect={setSelectedPeriod} />
-      </div>
-
-      <div className="space-y-6">
-        {/* Mobile: filter icon button + period toggle */}
-        <div className="flex items-center justify-end gap-2 md:hidden">
-          <IncomePeriodSelector
-            selectedPeriod={selectedPeriod}
-            onPeriodSelect={setSelectedPeriod}
-          />
-          <Button
-            variant="outline"
-            size="icon"
-            className="bg-secondary/30 relative h-9 w-9 rounded-full border-none"
-            onClick={() => setIsFilterSheetOpen(true)}
-            aria-label="Open filters"
-          >
-            <Icons.ListFilter className="h-4 w-4" />
-            {selectedAccount?.id !== PORTFOLIO_ACCOUNT_ID && (
-              <span className="bg-destructive absolute -right-1 -top-1 h-2 w-2 rounded-full" />
-            )}
-          </Button>
-        </div>
+    <Page>
+      <PageHeader heading="Income" actions={headerActions} />
+      <PageContent className="space-y-6">
         <div className="grid gap-6 md:grid-cols-3">
           <Card className="border-yellow-500/10 bg-yellow-500/10">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -560,7 +544,7 @@ export default function IncomePage() {
             </CardContent>
           </Card>
         </div>
-      </div>
+      </PageContent>
 
       <IncomeMobileFilterSheet
         open={isFilterSheetOpen}
@@ -568,7 +552,7 @@ export default function IncomePage() {
         selectedAccount={selectedAccount}
         onAccountChange={setSelectedAccount}
       />
-    </>
+    </Page>
   );
 }
 
