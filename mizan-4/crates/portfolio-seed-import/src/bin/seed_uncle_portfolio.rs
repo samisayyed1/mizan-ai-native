@@ -27,16 +27,16 @@
 //!    suite against the real Uncle Feroz fixture guarantees shape.
 //! 4. Applies each `Operation` in a single transaction:
 //!    - `CreateCashAccount`   → `accounts(CASH)` + `DEPOSIT` activity
-//!    - `CreateSukuk`         → `accounts(SECURITIES)` + `assets(INVESTMENT, MANUAL, ISIN in metadata)` + `BUY` + manual `quotes` row
-//!    - `CreateEquitySubset`  → `accounts(SECURITIES)` + `assets(INVESTMENT, MANUAL)` + `BUY` + manual quote
-//!    - `CreateEtf`           → `accounts(SECURITIES)` + `assets(INVESTMENT, MARKET, ticker)` + `BUY` (MARKET so the Twelve Data / Yahoo path picks up live quotes)
-//!    - `CreatePrivateEquity` → `accounts(SECURITIES)` + `assets(PRIVATE_EQUITY, MANUAL)` + `BUY` + manual quote
-//!    - `CreateUnitTrust`     → `accounts(SECURITIES)` + `assets(INVESTMENT, MANUAL)` + `BUY` + manual quote
+//!    - `CreateSukuk`         → `accounts(SECURITIES)` + `assets(INVESTMENT, MANUAL, ISIN in metadata)` + `TRANSFER_IN` + manual `quotes` row
+//!    - `CreateEquitySubset`  → `accounts(SECURITIES)` + `assets(INVESTMENT, MANUAL)` + `TRANSFER_IN` + manual quote
+//!    - `CreateEtf`           → `accounts(SECURITIES)` + `assets(INVESTMENT, MARKET, ticker)` + `TRANSFER_IN` (MARKET so the Twelve Data / Yahoo path picks up live quotes)
+//!    - `CreatePrivateEquity` → `accounts(SECURITIES)` + `assets(PRIVATE_EQUITY, MANUAL)` + `TRANSFER_IN` + manual quote
+//!    - `CreateUnitTrust`     → `accounts(SECURITIES)` + `assets(INVESTMENT, MANUAL)` + `TRANSFER_IN` + manual quote
 //!    - `CreateUnitTrustTranche`     → one asset per tranche (multi-fund grouped under the tranche date), `BUY` per tranche
 //!    - `CreateUnitTrustPlaceholder` → `assets(INVESTMENT, MANUAL)` only — no value, surfaces as "Add valuation" tile
-//!    - `CreateUlipPolicy`    → `accounts(SECURITIES, INR)` + `assets(INVESTMENT, MANUAL)` + `BUY` + manual quote
+//!    - `CreateUlipPolicy`    → `accounts(SECURITIES, INR)` + `assets(INVESTMENT, MANUAL)` + `TRANSFER_IN` + manual quote
 //!    - `CreateProvidentFundBalance` → `accounts(SECURITIES)` + `assets(INVESTMENT, MANUAL)` placeholder + manual quote
-//!    - `CreateRealEstateProperty`   → `accounts(SECURITIES)` + `assets(PROPERTY, MANUAL, metadata.property.intent for Maliki/Hanbali school routing)` + `BUY` + manual quote
+//!    - `CreateRealEstateProperty`   → `accounts(SECURITIES)` + `assets(PROPERTY, MANUAL, metadata.property.intent for Maliki/Hanbali school routing)` + `TRANSFER_IN` + manual quote
 //!    - `SetOwnerProfile`     → `app_settings` rows for base_currency + school
 //!    - `SetFxSnapshot`       → noop here (FX cache is rebuilt from quotes on next launch; the seed's USD-equivalent fields are authoritative)
 //!
@@ -338,7 +338,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -382,7 +382,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -429,7 +429,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -473,7 +473,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -531,7 +531,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -589,7 +589,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -684,7 +684,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -733,7 +733,7 @@ fn apply_operations(
                     },
                 )?;
                 summary.assets += 1;
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -795,7 +795,7 @@ fn apply_operations(
                 // empty BUY at zero so they appear in the panel but
                 // signal "Add valuation".
                 let value = current_value_usd.unwrap_or(Decimal::ZERO);
-                insert_activity_buy(
+                insert_activity_transfer_in(
                     tx,
                     &acct_id,
                     &asset_id,
@@ -925,7 +925,25 @@ fn strip_new_prefix(id: &str) -> String {
     id.strip_prefix("NEW:").unwrap_or(id).to_string()
 }
 
-fn insert_activity_buy(
+/// Insert an "I already held this position when I started tracking"
+/// activity. Uses `TRANSFER_IN` (not `BUY`) so the
+/// holdings_valuation_service does NOT deduct an offsetting cash
+/// amount — the seed positions are imported from a snapshot, not
+/// purchased from cash in the tracked timeline.
+///
+/// This is the same shape the 2026-01-01 v2 refactor migration uses
+/// to migrate legacy `ADD_HOLDING` rows (see Step 5 of
+/// `refactor_asset_model/up.sql`: `ADD_HOLDING → TRANSFER_IN`). The
+/// `flow.is_external` metadata flag matches the legacy-transfer
+/// convention so balance reports treat the inception lot as
+/// brought-in capital rather than a self-funded buy.
+///
+/// Without this, a $271k US-equities BUY against an account with no
+/// prior DEPOSIT produces a snapshot with `cash_total_base_currency
+/// = -271_833.27`, the dashboard nets long-and-short positions
+/// against this phantom debt, and Net Worth renders as $0 — exactly
+/// the regression Sami caught on 2026-06-14 first launch.
+fn insert_activity_transfer_in(
     tx: &Transaction<'_>,
     account_id: &str,
     asset_id: &str,
@@ -943,9 +961,12 @@ fn insert_activity_buy(
     } else {
         format!("{activity_date}T00:00:00Z")
     };
+    // metadata.flow.is_external=true mirrors the seed pattern the
+    // refactor migration writes for migrated legacy ADD_HOLDINGs.
+    let metadata = r#"{"flow":{"is_external":true}}"#;
     tx.execute(
-        "INSERT INTO activities (id, account_id, asset_id, activity_type, status, activity_date, quantity, unit_price, currency, created_at, updated_at, is_user_modified, needs_review) \
-         VALUES (?1, ?2, ?3, 'BUY', 'POSTED', ?4, ?5, ?6, ?7, ?8, ?8, 0, 0)",
+        "INSERT INTO activities (id, account_id, asset_id, activity_type, status, activity_date, quantity, unit_price, currency, metadata, created_at, updated_at, is_user_modified, needs_review) \
+         VALUES (?1, ?2, ?3, 'TRANSFER_IN', 'POSTED', ?4, ?5, ?6, ?7, ?8, ?9, ?9, 0, 0)",
         params![
             id,
             acct,
@@ -954,6 +975,7 @@ fn insert_activity_buy(
             quantity.to_string(),
             unit_price.to_string(),
             currency,
+            metadata,
             now,
         ],
     )?;
