@@ -123,6 +123,9 @@ impl TestApp {
             // SnapTrade left unconfigured by default — tests that need it
             // wire a `SnapTradeConfig` directly via a config override.
             snaptrade: None,
+            // OAuth connector framework left unconfigured by default —
+            // tests that need it inject env vars before calling boot().
+            oauth: None,
             // Admin surface disabled by default — every test runs with a
             // hermetic config that has no QA break-glass. Tests that need
             // to exercise the admin endpoints set this to Some(...) via

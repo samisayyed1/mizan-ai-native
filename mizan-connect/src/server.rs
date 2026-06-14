@@ -107,6 +107,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(crate::teams::router())
         .merge(crate::billing::router())
         .merge(crate::admin::router())
+        .merge(crate::oauth::router())
         .merge(v1_ai_chat)
         .with_state(state.clone());
 
@@ -147,6 +148,7 @@ pub fn build_app(state: AppState) -> Router {
         .merge(crate::snaptrade::router())
         .merge(crate::sharia::router())
         .merge(crate::news::router())
+        .merge(crate::oauth::router())
         // Public self-discovery endpoint for the desktop: returns
         // Supabase URL + anon key + feature flags so a fresh install
         // can render the sign-in flow without a build-time .env.

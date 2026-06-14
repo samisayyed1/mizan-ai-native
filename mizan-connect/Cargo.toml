@@ -116,6 +116,8 @@ hex = "0.4"
 
 # Build info
 rustc_version_runtime = "0.3"
+rand = "0.8"
+url = "2"
 
 [build-dependencies]
 time = { version = "0.3", features = ["formatting"] }

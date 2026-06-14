@@ -166,6 +166,68 @@ pub struct Config {
     /// clean `not_implemented` response — useful for local dev without Stripe
     /// keys configured.
     pub billing: Option<BillingConfig>,
+
+    /// OAuth connector framework (Track J PR-J1.b). `None` collapses
+    /// `/v1/oauth/*` to `not_implemented` so dev builds boot without
+    /// real provider client secrets.
+    pub oauth: Option<OauthConfig>,
+}
+
+/// OAuth connector framework configuration. All-or-nothing per
+/// PR-J1.b: every gated field must be present or the whole block is
+/// treated as absent.
+#[derive(Debug, Clone)]
+pub struct OauthConfig {
+    /// HMAC-SHA256 key for signing the OAuth `state` parameter.
+    /// Decoded length must be >= 32 bytes. Loaded from
+    /// `OAUTH_STATE_SECRET`.
+    pub state_secret: SecretString,
+    /// AES-256-GCM key for encrypting access + refresh tokens.
+    /// Decoded length must be exactly 32 bytes. Loaded from
+    /// `OAUTH_TOKEN_ENCRYPTION_KEY`. Per-provider keys (one per
+    /// catalog provider) land in PR-J1.b.2 — for now the catalog
+    /// shares this key, matching migration 0015's seed value.
+    pub encryption_key: SecretString,
+    /// Public base URL of this Connect deploy. Used to build the
+    /// per-provider callback URL: `{base}/v1/oauth/callback/{slug}`.
+    /// Loaded from `OAUTH_BASE_URL` (defaults to APP_PUBLIC_URL).
+    pub base_url: String,
+    /// Per-provider (client_id, client_secret) — one entry per catalog
+    /// provider that's been wired with credentials. A missing entry
+    /// causes the connect endpoint to return `not_implemented` for
+    /// that specific provider; the catalog itself stays loaded.
+    pub provider_creds: std::collections::HashMap<crate::oauth::types::Provider, OauthProviderCreds>,
+}
+
+#[derive(Debug, Clone)]
+pub struct OauthProviderCreds {
+    pub client_id: String,
+    pub client_secret: SecretString,
+}
+
+impl OauthConfig {
+    pub fn callback_url(&self, provider: crate::oauth::types::Provider) -> String {
+        format!(
+            "{}/v1/oauth/callback/{}",
+            self.base_url.trim_end_matches('/'),
+            provider.slug()
+        )
+    }
+
+    pub fn client_id_for(&self, provider: crate::oauth::types::Provider) -> String {
+        self.provider_creds
+            .get(&provider)
+            .map(|c| c.client_id.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn client_secret_for(&self, provider: crate::oauth::types::Provider) -> String {
+        use secrecy::ExposeSecret;
+        self.provider_creds
+            .get(&provider)
+            .map(|c| c.client_secret.expose_secret().to_string())
+            .unwrap_or_default()
+    }
 }
 
 /// Billing configuration. All-or-nothing: every field must be present or the
@@ -405,6 +467,7 @@ impl Config {
         let plaid = build_plaid_config(&raw, app_env)?;
         let snaptrade = build_snaptrade_config(&raw)?;
         let billing = build_billing_config(&raw);
+        let oauth = build_oauth_config(&raw);
 
         let test_jwt_secret = if app_env.is_production() {
             None
@@ -466,6 +529,7 @@ impl Config {
             plaid,
             snaptrade,
             billing,
+            oauth,
         })
     }
 
@@ -803,6 +867,76 @@ fn parse_cors(raw: Option<&str>, reject_wildcard: bool) -> Result<Vec<String>, C
     }
 
     Ok(origins)
+}
+
+/// Load the OAuth connector framework config. Returns `None` (which
+/// makes `/v1/oauth/*` return `not_implemented`) when the gating env
+/// vars aren't present.
+///
+/// Required for the block to come up:
+///   - `OAUTH_STATE_SECRET` (≥ 32 chars)
+///   - `OAUTH_TOKEN_ENCRYPTION_KEY` (exactly 32 chars after trim)
+///   - `OAUTH_BASE_URL` OR `APP_PUBLIC_URL` (whichever is set first)
+///
+/// Per-provider credentials are read from per-provider env vars (e.g.
+/// `OAUTH_GOOGLE_DRIVE_CLIENT_ID` / `..._CLIENT_SECRET`). A missing
+/// pair just means the connect handler returns `not_implemented` for
+/// that specific provider — other providers still work.
+///
+/// Reads `std::env` directly rather than threading through the
+/// RawConfig serde struct. The trade-off: less consistent with the
+/// rest of `Config`, but bounded scope (this loader is the only
+/// new env-read site in PR-J1.b).
+fn build_oauth_config(_raw: &RawConfig) -> Option<OauthConfig> {
+    let state_secret = std::env::var("OAUTH_STATE_SECRET")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.len() >= 32)?;
+    let encryption_key = std::env::var("OAUTH_TOKEN_ENCRYPTION_KEY")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| s.len() == 32)?;
+    let base_url = std::env::var("OAUTH_BASE_URL")
+        .ok()
+        .or_else(|| std::env::var("APP_PUBLIC_URL").ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())?;
+
+    let mut provider_creds = std::collections::HashMap::new();
+    for (provider, env_prefix) in [
+        (crate::oauth::types::Provider::GoogleDrive, "OAUTH_GOOGLE_DRIVE"),
+        (crate::oauth::types::Provider::Notion, "OAUTH_NOTION"),
+        (crate::oauth::types::Provider::Slack, "OAUTH_SLACK"),
+        (crate::oauth::types::Provider::Github, "OAUTH_GITHUB"),
+        (crate::oauth::types::Provider::GoogleCalendar, "OAUTH_GOOGLE_CALENDAR"),
+        (crate::oauth::types::Provider::OutlookCalendar, "OAUTH_OUTLOOK_CALENDAR"),
+        (crate::oauth::types::Provider::Zapier, "OAUTH_ZAPIER"),
+    ] {
+        let cid = std::env::var(format!("{env_prefix}_CLIENT_ID"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let csec = std::env::var(format!("{env_prefix}_CLIENT_SECRET"))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        if let (Some(client_id), Some(client_secret)) = (cid, csec) {
+            provider_creds.insert(
+                provider,
+                OauthProviderCreds {
+                    client_id,
+                    client_secret: SecretString::from(client_secret),
+                },
+            );
+        }
+    }
+
+    Some(OauthConfig {
+        state_secret: SecretString::from(state_secret),
+        encryption_key: SecretString::from(encryption_key),
+        base_url,
+        provider_creds,
+    })
 }
 
 #[cfg(test)]
