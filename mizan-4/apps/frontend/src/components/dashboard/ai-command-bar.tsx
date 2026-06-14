@@ -1,42 +1,43 @@
 /**
- * AI Command Bar — Track A PR-A6 / Goal v3 §V Phase 1 step A6.
+ * AI Command Bar — inline streaming variant (Sami feedback 2026-06-14).
  *
- * Pinned, full-width persistent input on the dashboard. Captures a
- * natural-language question (Zakat, net worth, panel drill, anything)
- * and hands it off to the existing `/assistant` route with the prompt
- * pre-seeded. The voice button routes to `/assistant?voice=1` until
- * C-track multi-modal lands (PR-C18+).
+ * Pinned full-width input on the dashboard. Per Sami's direction the
+ * bar now answers IN PLACE — the response streams below the input on
+ * the dashboard itself, no navigation, no context switch. An "Open in
+ * full chat" affordance escalates to `/assistant` when the user wants
+ * the persistent thread + multi-turn history.
  *
- * §23 step advanced: this is the surface through which the Singapore
- * millionaire types or speaks *"What's my Zakat this year?"* and gets
- * routed to the agent that answers it. Track C tools (PR-C4 series)
- * fill in the answer pipeline; this PR delivers the entry point.
+ * Routing:
+ *   - Submit Enter / click send  → inline streaming response on the
+ *     dashboard via the SAME `streamChatResponse` the assistant page
+ *     uses (no duplicate dispatcher, no skew). Single-turn — the
+ *     thread is auto-created server-side so "Open in chat" can
+ *     resume the conversation.
+ *   - Click "Open in full chat" → navigate to `/assistant` with the
+ *     thread_id pre-loaded so the user sees their dashboard answer
+ *     plus the full history surface.
+ *   - Voice button → still navigates to `/assistant?voice=1` until
+ *     PR-C18 wires real transcription.
  *
- * Design choices:
- *   - We DON'T duplicate the chat composer inline on the dashboard.
- *     One canonical chat surface (the assistant page) reduces
- *     state-sync bugs and keeps the dashboard fast.
- *   - The bar reads `?prompt=` round-trips so deep-linking works.
- *   - Voice button is a placeholder navigation target — C-track wires
- *     real voice transcription via `multimodal/voice.rs` (PR-C18).
- *   - "Does not collapse on scroll" per Goal v3 §V step A6 — achieved
- *     via the `sticky` + `top-0` + `z-30` classes when the parent
- *     container is scrollable; on the dashboard the bar is rendered
- *     above the strip so it's persistent in the layout.
+ * Why this shape: per Sami "when I type in dashboard it should respond
+ * THAT area only strictly" — context switching to /assistant breaks
+ * the analytical flow ("looking at my net worth → ask why it
+ * dropped → answer appears next to the number, not on a different
+ * page").
  *
- * Future PRs (tracked, NOT in this skeleton):
- *   - PR-A6.b — escalate to `/v1/ai/agent` SSE for Gold-tier complex
- *     queries (depends on C3.b dispatcher unification)
- *   - PR-C18 — real voice transcription replacing the navigation
- *   - PR-A6.c — slash-commands surface (e.g. `/zakat`, `/net-worth`,
- *     `/sukuks`) that bypass the LLM for known intents
+ * Voice button is unchanged (still navigates) because dictation
+ * surface is qualitatively different from typing — a dedicated chat
+ * surface is the right home for an extended voice session.
  */
 import { Icons } from "@mizan/ui/components/ui/icons";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { streamChatResponse } from "@/features/ai-assistant/api";
+import type { AiStreamEvent } from "@/features/ai-assistant/types";
+
 export interface AiCommandBarProps {
-  /** Override the destination route. Defaults to `/assistant`. */
+  /** Override the destination route for "Open in full chat". Defaults to `/assistant`. */
   toRoute?: string;
   /** Placeholder text shown when the input is empty. */
   placeholder?: string;
@@ -56,8 +57,8 @@ export interface AiCommandBarProps {
 
 /**
  * Suggested starter prompts — surfaced as chip buttons below the input
- * when it's empty. Track §23-themed so the first-time user sees the
- * promises in §23 made concrete.
+ * when it's empty AND no answer is currently shown. Track §23-themed
+ * so the first-time user sees the promises in §23 made concrete.
  */
 const SUGGESTIONS: { label: string; prompt: string }[] = [
   { label: "What's my Zakat?", prompt: "What's my Zakat this year?" },
@@ -65,6 +66,18 @@ const SUGGESTIONS: { label: string; prompt: string }[] = [
   { label: "Bonds by maturity", prompt: "Show my Sukuks and bonds by maturity year" },
   { label: "Cash flow this quarter", prompt: "What did my cash flow look like this quarter?" },
 ];
+
+interface InlineAnswer {
+  prompt: string;
+  /** Accumulated text deltas from the stream. */
+  text: string;
+  /** Server-assigned thread id (set after the `system` event). */
+  threadId?: string;
+  /** Set when the stream errors mid-flight. Prompt + text are preserved. */
+  error?: string;
+  /** True while a response is actively streaming. */
+  isStreaming: boolean;
+}
 
 export function AiCommandBar({
   toRoute = "/assistant",
@@ -74,29 +87,94 @@ export function AiCommandBar({
   pinned = true,
 }: AiCommandBarProps) {
   const [value, setValue] = useState(initialValue);
+  const [answer, setAnswer] = useState<InlineAnswer | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const navigate = useNavigate();
 
-  const submit = (prompt: string) => {
+  const runInline = useCallback(async (prompt: string) => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
-    const params = new URLSearchParams({
-      intent: "command",
-      prompt: trimmed,
-    });
-    navigate(`${toRoute}?${params.toString()}`);
-  };
+
+    // Cancel any in-flight previous stream — last question wins.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setAnswer({ prompt: trimmed, text: "", isStreaming: true });
+
+    try {
+      for await (const event of streamChatResponse(
+        { content: trimmed },
+        controller.signal,
+      ) as AsyncGenerator<AiStreamEvent>) {
+        if (controller.signal.aborted) break;
+        // The stream emits a small vocabulary of events. We only
+        // need three on the dashboard surface: `system` for the
+        // thread id (so "Open in full chat" can deep-link), `textDelta`
+        // for the incremental answer, and `error` to surface failures
+        // cleanly. Tool-call events show as inline "thinking" rather
+        // than the rich card the assistant page renders — the
+        // dashboard is a glance surface, not a full chat.
+        if (event.type === "system") {
+          setAnswer((prev) =>
+            prev ? { ...prev, threadId: event.threadId } : prev,
+          );
+        } else if (event.type === "textDelta") {
+          setAnswer((prev) =>
+            prev ? { ...prev, text: prev.text + event.delta } : prev,
+          );
+        } else if (event.type === "error") {
+          setAnswer((prev) =>
+            prev ? { ...prev, error: event.message, isStreaming: false } : prev,
+          );
+        }
+      }
+    } catch (err) {
+      // AbortError when a new question lands mid-stream is expected
+      // and intentional — ignore so we don't paint a scary toast.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      const message =
+        err instanceof Error ? err.message : "Failed to reach the AI service.";
+      setAnswer((prev) =>
+        prev ? { ...prev, error: message, isStreaming: false } : prev,
+      );
+      return;
+    }
+
+    setAnswer((prev) => (prev ? { ...prev, isStreaming: false } : prev));
+  }, []);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    submit(value);
+    void runInline(value);
+  };
+
+  const handleSuggestionClick = (prompt: string) => {
+    setValue(prompt);
+    void runInline(prompt);
+  };
+
+  const handleOpenFullChat = () => {
+    // Deep-link with the thread id if we have one — the assistant
+    // page resumes from the server-persisted thread, so the user
+    // doesn't lose context they just typed.
+    const params = new URLSearchParams({ intent: "command" });
+    if (answer?.threadId) params.set("thread", answer.threadId);
+    else if (answer?.prompt) params.set("prompt", answer.prompt);
+    else if (value.trim()) params.set("prompt", value.trim());
+    navigate(`${toRoute}?${params.toString()}`);
   };
 
   const handleVoiceClick = () => {
-    // Voice navigation surfaces the existing assistant page with the
-    // voice flag; PR-C18 wires real transcription. Until then this
-    // routes the user to the chat where they can dictate via the
-    // composer's existing mic affordance.
+    // Voice still routes to the assistant page — see file-level
+    // comment. PR-C18 wires real transcription.
     navigate(`${toRoute}?voice=1`);
+  };
+
+  const handleNew = () => {
+    abortRef.current?.abort();
+    setAnswer(null);
+    setValue("");
   };
 
   return (
@@ -118,6 +196,7 @@ export function AiCommandBar({
           aria-label={ariaLabel}
           className="bg-transparent text-foreground placeholder:text-muted-foreground flex-1 px-1 py-1 text-sm focus:outline-none"
           data-testid="ai-command-bar-input"
+          disabled={answer?.isStreaming === true}
         />
         <button
           type="button"
@@ -148,16 +227,24 @@ export function AiCommandBar({
         </button>
         <button
           type="submit"
-          aria-label="Send to Mizan"
-          disabled={value.trim().length === 0}
+          aria-label={answer?.isStreaming ? "Streaming…" : "Send to Mizan"}
+          disabled={value.trim().length === 0 || answer?.isStreaming === true}
           className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors"
           data-testid="ai-command-bar-submit"
         >
-          <Icons.ArrowUp className="h-4 w-4" />
+          {answer?.isStreaming ? (
+            <Icons.Spinner className="h-4 w-4 animate-spin" />
+          ) : (
+            <Icons.ArrowUp className="h-4 w-4" />
+          )}
         </button>
       </form>
 
-      {value.trim().length === 0 && (
+      {/* Suggestions: visible only when the input is empty AND no
+          answer is rendered. Once the user starts typing or has an
+          answer on screen, the chips would compete with the response
+          for attention. */}
+      {value.trim().length === 0 && !answer && (
         <div
           className="flex flex-wrap gap-1.5"
           aria-label="Suggested prompts"
@@ -167,12 +254,61 @@ export function AiCommandBar({
             <button
               key={s.label}
               type="button"
-              onClick={() => submit(s.prompt)}
+              onClick={() => handleSuggestionClick(s.prompt)}
               className="bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground rounded-full px-2.5 py-0.5 text-xs transition-colors"
             >
               {s.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Inline answer pane. Mirrors the small-card aesthetic of the
+          dashboard's other "tile" surfaces so it feels native to the
+          page rather than a chat overlay. */}
+      {answer && (
+        <div
+          className="border-border/60 bg-muted/30 mt-1 flex flex-col gap-2 rounded-lg border px-3 py-2"
+          data-testid="ai-command-bar-answer"
+          aria-live="polite"
+        >
+          <div className="text-muted-foreground flex items-center justify-between text-xs uppercase tracking-wide">
+            <span>Mizan{answer.isStreaming ? " is thinking…" : ""}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleOpenFullChat}
+                className="hover:text-foreground transition-colors"
+                data-testid="ai-command-bar-open-full"
+              >
+                Open in full chat →
+              </button>
+              <button
+                type="button"
+                onClick={handleNew}
+                aria-label="Clear answer"
+                className="hover:text-foreground transition-colors"
+                data-testid="ai-command-bar-clear"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+          {answer.error ? (
+            <p className="text-destructive text-sm" data-testid="ai-command-bar-error">
+              {answer.error}
+            </p>
+          ) : (
+            <p
+              className="text-foreground whitespace-pre-wrap text-sm leading-relaxed"
+              data-testid="ai-command-bar-response"
+            >
+              {answer.text}
+              {answer.isStreaming && (
+                <span className="bg-foreground/60 ml-0.5 inline-block h-3 w-1 animate-pulse align-middle" />
+              )}
+            </p>
+          )}
         </div>
       )}
     </section>
