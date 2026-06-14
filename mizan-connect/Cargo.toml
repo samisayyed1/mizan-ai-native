@@ -118,6 +118,7 @@ hex = "0.4"
 rustc_version_runtime = "0.3"
 rand = "0.8"
 url = "2"
+blake3 = "1.8.5"
 
 [build-dependencies]
 time = { version = "0.3", features = ["formatting"] }
