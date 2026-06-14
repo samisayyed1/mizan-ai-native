@@ -1533,6 +1533,34 @@ async fn spawn_chat_stream<E: AiEnvironment + 'static>(
             if is_allowed("get_health_status") {
                 allowed_tools.push(Box::new(tool_set.health_status));
             }
+            // Mutation tools — the AI assistant's "actually do things"
+            // surface. Each one returns a DRAFT preview the user confirms in
+            // an inline tool-call card (see
+            // `apps/frontend/src/features/ai-assistant/components/tool-uis/*`)
+            // — the tool itself never writes. Confirmation runs the matching
+            // mutation hook on the user's click. These were previously
+            // present in `ToolSet` + the dispatcher but never registered with
+            // the rig agent, so the LLM never knew they existed and the
+            // assistant felt read-only. Wiring them here unlocks the
+            // add / change / delete loop the partner-facing app needs.
+            if is_allowed("create_account") {
+                allowed_tools.push(Box::new(tool_set.create_account));
+            }
+            if is_allowed("update_account") {
+                allowed_tools.push(Box::new(tool_set.update_account));
+            }
+            if is_allowed("create_goal") {
+                allowed_tools.push(Box::new(tool_set.create_goal));
+            }
+            if is_allowed("create_liability") {
+                allowed_tools.push(Box::new(tool_set.create_liability));
+            }
+            if is_allowed("update_liability") {
+                allowed_tools.push(Box::new(tool_set.update_liability));
+            }
+            if is_allowed("add_alternative_asset") {
+                allowed_tools.push(Box::new(tool_set.add_alternative_asset));
+            }
 
             let mut builder = $client
                 .agent(&model_id)
