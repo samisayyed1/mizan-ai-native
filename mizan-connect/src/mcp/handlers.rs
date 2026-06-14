@@ -23,7 +23,6 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::audit;
@@ -554,7 +553,3 @@ mod tests {
         assert_eq!(RATE_WINDOW_SECS, 60);
     }
 }
-
-// `_` to avoid "unused" warnings on the `time` import while keeping
-// the file's deps explicit at the top.
-const _: Option<OffsetDateTime> = None;
