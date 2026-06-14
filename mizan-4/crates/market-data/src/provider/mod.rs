@@ -29,6 +29,7 @@ pub mod marketdata_app;
 pub mod metal_price_api;
 pub mod openfigi;
 pub mod tradingview;
+pub mod twelve_data;
 pub mod us_treasury_calc;
 pub mod yahoo;
 
