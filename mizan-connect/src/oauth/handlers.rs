@@ -60,9 +60,8 @@ pub async fn connect(
     user: AuthenticatedUser,
     Path(provider_slug): Path<String>,
 ) -> Result<Json<ConnectResponse>, AppError> {
-    let provider = Provider::parse(&provider_slug).ok_or_else(|| {
-        AppError::not_found(format!("unknown provider '{provider_slug}'"))
-    })?;
+    let provider = Provider::parse(&provider_slug)
+        .ok_or_else(|| AppError::not_found(format!("unknown provider '{provider_slug}'")))?;
     let descriptor = provider_descriptor(provider).ok_or_else(|| {
         AppError::internal(format!(
             "catalog missing descriptor for {provider:?} — out-of-sync seed",
@@ -174,9 +173,8 @@ pub async fn callback(
         )));
     }
 
-    let provider = Provider::parse(&provider_slug).ok_or_else(|| {
-        AppError::not_found(format!("unknown provider '{provider_slug}'"))
-    })?;
+    let provider = Provider::parse(&provider_slug)
+        .ok_or_else(|| AppError::not_found(format!("unknown provider '{provider_slug}'")))?;
 
     let oauth_cfg = state
         .config()
@@ -184,9 +182,11 @@ pub async fn callback(
         .as_ref()
         .ok_or_else(|| AppError::not_implemented("OAuth not configured on this server"))?;
 
-    let payload =
-        oauth_state::verify(&params.state, oauth_cfg.state_secret.expose_secret().as_bytes())
-            .map_err(|e| AppError::unauthorized(format!("invalid state: {e}")))?;
+    let payload = oauth_state::verify(
+        &params.state,
+        oauth_cfg.state_secret.expose_secret().as_bytes(),
+    )
+    .map_err(|e| AppError::unauthorized(format!("invalid state: {e}")))?;
 
     if payload.provider != provider {
         return Err(AppError::bad_request(
@@ -194,9 +194,8 @@ pub async fn callback(
         ));
     }
 
-    let descriptor = provider_descriptor(provider).ok_or_else(|| {
-        AppError::internal("catalog missing descriptor at callback time")
-    })?;
+    let descriptor = provider_descriptor(provider)
+        .ok_or_else(|| AppError::internal("catalog missing descriptor at callback time"))?;
 
     // Exchange the auth code for an access token.
     let token_set = exchange_code(
@@ -269,7 +268,8 @@ pub async fn callback(
         connection_id,
         scopes_granted: token_set.granted_scopes,
         expires_at: token_set.expires_at.and_then(|t| {
-            t.format(&time::format_description::well_known::Rfc3339).ok()
+            t.format(&time::format_description::well_known::Rfc3339)
+                .ok()
         }),
     }))
 }
@@ -353,10 +353,7 @@ async fn exchange_code(
         refresh_token: body.refresh_token,
         granted_scopes: body.scope.unwrap_or_default(),
         expires_at: body.expires_in.and_then(|s| {
-            OffsetDateTime::from_unix_timestamp(
-                OffsetDateTime::now_utc().unix_timestamp() + s,
-            )
-            .ok()
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp() + s).ok()
         }),
     })
 }
@@ -375,9 +372,8 @@ pub async fn disconnect(
     user: AuthenticatedUser,
     Path(provider_slug): Path<String>,
 ) -> Result<Json<DisconnectResponse>, AppError> {
-    let provider = Provider::parse(&provider_slug).ok_or_else(|| {
-        AppError::not_found(format!("unknown provider '{provider_slug}'"))
-    })?;
+    let provider = Provider::parse(&provider_slug)
+        .ok_or_else(|| AppError::not_found(format!("unknown provider '{provider_slug}'")))?;
 
     let rows = repository::disconnect(state.db(), user.id, provider, "user_initiated").await?;
 
@@ -440,7 +436,8 @@ pub async fn list_connections(
                     .format(&time::format_description::well_known::Rfc3339)
                     .unwrap_or_default(),
                 expires_at: r.expires_at.and_then(|t| {
-                    t.format(&time::format_description::well_known::Rfc3339).ok()
+                    t.format(&time::format_description::well_known::Rfc3339)
+                        .ok()
                 }),
                 reconsent_due_at: r
                     .reconsent_due_at
@@ -463,10 +460,7 @@ mod tests {
             "https://accounts.google.com/o/oauth2/v2/auth",
             "http://localhost:8080/v1/oauth/callback/google-drive",
             "client-id",
-            &[
-                "https://www.googleapis.com/auth/drive.readonly",
-                "openid",
-            ],
+            &["https://www.googleapis.com/auth/drive.readonly", "openid"],
             "STATE_TOKEN",
         );
         assert!(url.contains("client_id=client-id"));
@@ -479,16 +473,10 @@ mod tests {
 
     #[allow(dead_code)] // Used as a compile-time fence so the API stays
     fn _api_compiles() {
-        let _: fn(
-            State<AppState>,
-            AuthenticatedUser,
-            Path<String>,
-        ) -> _ = |s, u, p| async move { connect(s, u, p).await };
-        let _: fn(
-            State<AppState>,
-            Path<String>,
-            Query<CallbackParams>,
-        ) -> _ = |s, p, q| async move { callback(s, p, q).await };
+        let _: fn(State<AppState>, AuthenticatedUser, Path<String>) -> _ =
+            |s, u, p| async move { connect(s, u, p).await };
+        let _: fn(State<AppState>, Path<String>, Query<CallbackParams>) -> _ =
+            |s, p, q| async move { callback(s, p, q).await };
     }
 
     #[derive(serde::Deserialize, Debug)]

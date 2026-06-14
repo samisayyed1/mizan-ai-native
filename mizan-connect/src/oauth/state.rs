@@ -67,8 +67,7 @@ pub fn sign(payload: &StatePayload, secret: &[u8]) -> Result<String, StateError>
     let mut nonce = [0u8; NONCE_LEN];
     rand::thread_rng().fill_bytes(&mut nonce);
 
-    let payload_json =
-        serde_json::to_string(payload).map_err(|_| StateError::InvalidPayload)?;
+    let payload_json = serde_json::to_string(payload).map_err(|_| StateError::InvalidPayload)?;
 
     let sig = compute_sig(&nonce, payload_json.as_bytes(), secret);
 
@@ -171,7 +170,10 @@ mod tests {
         t[last] = t[last].wrapping_add(1);
         let err = verify(&String::from_utf8(t).unwrap(), &secret).unwrap_err();
         assert!(
-            matches!(err, StateError::InvalidSignature | StateError::Malformed | StateError::InvalidPayload),
+            matches!(
+                err,
+                StateError::InvalidSignature | StateError::Malformed | StateError::InvalidPayload
+            ),
             "{err:?}",
         );
     }

@@ -17,13 +17,15 @@ pub struct ProviderRow {
 /// Look up a provider's row id by its catalog slug. Returns `None` if
 /// the provider hasn't been seeded yet (would indicate the
 /// 0015_oauth_providers_catalog_seed migration didn't run).
-pub async fn provider_row(pool: &PgPool, provider: Provider) -> Result<Option<ProviderRow>, sqlx::Error> {
-    let row: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT id FROM oauth_providers WHERE name = $1 LIMIT 1",
-    )
-    .bind(provider.slug())
-    .fetch_optional(pool)
-    .await?;
+pub async fn provider_row(
+    pool: &PgPool,
+    provider: Provider,
+) -> Result<Option<ProviderRow>, sqlx::Error> {
+    let row: Option<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM oauth_providers WHERE name = $1 LIMIT 1")
+            .bind(provider.slug())
+            .fetch_optional(pool)
+            .await?;
     Ok(row.map(|(id,)| ProviderRow { id }))
 }
 
@@ -49,8 +51,7 @@ pub async fn upsert_connection(
     insert: &ConnectionInsert<'_>,
 ) -> Result<Uuid, sqlx::Error> {
     // 12 months of consent window per working-agreement §20.4.
-    let reconsent_due_at =
-        OffsetDateTime::now_utc() + time::Duration::days(365);
+    let reconsent_due_at = OffsetDateTime::now_utc() + time::Duration::days(365);
 
     let id: (Uuid,) = sqlx::query_as(
         r#"
@@ -107,9 +108,15 @@ pub async fn list_active_connections(
     pool: &PgPool,
     user_id: Uuid,
 ) -> Result<Vec<ConnectionListRow>, sqlx::Error> {
-    let rows: Vec<(String, String, String, OffsetDateTime, Option<OffsetDateTime>, OffsetDateTime)> =
-        sqlx::query_as(
-            r#"
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        OffsetDateTime,
+        Option<OffsetDateTime>,
+        OffsetDateTime,
+    )> = sqlx::query_as(
+        r#"
             SELECT
                 p.name,
                 p.display_name,
@@ -122,10 +129,10 @@ pub async fn list_active_connections(
             WHERE c.user_id = $1 AND c.disconnected_at IS NULL
             ORDER BY c.updated_at DESC
             "#,
-        )
-        .bind(user_id)
-        .fetch_all(pool)
-        .await?;
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
 
     let mut out = Vec::with_capacity(rows.len());
     for (name, display_name, scopes_granted, connected_at, expires_at, reconsent_due_at) in rows {

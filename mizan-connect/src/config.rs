@@ -196,7 +196,8 @@ pub struct OauthConfig {
     /// provider that's been wired with credentials. A missing entry
     /// causes the connect endpoint to return `not_implemented` for
     /// that specific provider; the catalog itself stays loaded.
-    pub provider_creds: std::collections::HashMap<crate::oauth::types::Provider, OauthProviderCreds>,
+    pub provider_creds:
+        std::collections::HashMap<crate::oauth::types::Provider, OauthProviderCreds>,
 }
 
 #[derive(Debug, Clone)]
@@ -904,12 +905,21 @@ fn build_oauth_config(_raw: &RawConfig) -> Option<OauthConfig> {
 
     let mut provider_creds = std::collections::HashMap::new();
     for (provider, env_prefix) in [
-        (crate::oauth::types::Provider::GoogleDrive, "OAUTH_GOOGLE_DRIVE"),
+        (
+            crate::oauth::types::Provider::GoogleDrive,
+            "OAUTH_GOOGLE_DRIVE",
+        ),
         (crate::oauth::types::Provider::Notion, "OAUTH_NOTION"),
         (crate::oauth::types::Provider::Slack, "OAUTH_SLACK"),
         (crate::oauth::types::Provider::Github, "OAUTH_GITHUB"),
-        (crate::oauth::types::Provider::GoogleCalendar, "OAUTH_GOOGLE_CALENDAR"),
-        (crate::oauth::types::Provider::OutlookCalendar, "OAUTH_OUTLOOK_CALENDAR"),
+        (
+            crate::oauth::types::Provider::GoogleCalendar,
+            "OAUTH_GOOGLE_CALENDAR",
+        ),
+        (
+            crate::oauth::types::Provider::OutlookCalendar,
+            "OAUTH_OUTLOOK_CALENDAR",
+        ),
         (crate::oauth::types::Provider::Zapier, "OAUTH_ZAPIER"),
     ] {
         let cid = std::env::var(format!("{env_prefix}_CLIENT_ID"))
