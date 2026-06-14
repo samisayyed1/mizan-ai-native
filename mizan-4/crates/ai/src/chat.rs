@@ -1549,6 +1549,9 @@ async fn spawn_chat_stream<E: AiEnvironment + 'static>(
             if is_allowed("update_account") {
                 allowed_tools.push(Box::new(tool_set.update_account));
             }
+            if is_allowed("delete_account") {
+                allowed_tools.push(Box::new(tool_set.delete_account));
+            }
             if is_allowed("create_goal") {
                 allowed_tools.push(Box::new(tool_set.create_goal));
             }
