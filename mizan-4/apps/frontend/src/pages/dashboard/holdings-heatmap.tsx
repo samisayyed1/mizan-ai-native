@@ -1,15 +1,18 @@
 /**
  * HoldingsHeatmap — Yahoo-Finance-style P&L heatmap for the dashboard.
  *
- * Renders one rectangle per security holding: area scales with current
- * market value (so big positions visually dominate), background tint
- * scales with unrealized-gain percent (green for winners, red for
- * losers, neutral for flat). One glance answers: "what's working, what
- * isn't, and where am I most concentrated?"
+ * Renders one rectangle per equity holding (stocks + ETFs + mutual
+ * funds — anything classified into the "equities" panel): area scales
+ * with current market value (so big positions visually dominate),
+ * background tint scales with unrealized-gain percent (green for
+ * winners, red for losers, neutral for flat). One glance answers:
+ * "what's working, what isn't, and where am I most concentrated?"
  *
- * Cash and alternative assets (gold, property, vehicles) are excluded
- * so the heatmap stays focused on tradeable securities where percent
- * return actually matters.
+ * Cash, alternative assets, sukuks, ULIPs, CPF/provident funds,
+ * private equity and anything non-equity are excluded — each has its
+ * own dedicated panel tile where return % is expressed in the right
+ * units (YTM for sukuks, surrender value for ULIPs). Mixing them into
+ * a green/red P&L grid alongside equities is apples-to-oranges.
  *
  * Click a tile → opens the holding's detail page. Mode toggle switches
  * between "Total" (lifetime unrealized P&L) and "Day" (today's change).
@@ -34,6 +37,7 @@ import { Icons } from "@mizan/ui/components/ui/icons";
 import { Button } from "@mizan/ui/components/ui/button";
 import { HoldingType, isAlternativeAssetKind } from "@/lib/constants";
 import { Holding } from "@/lib/types";
+import { classifyHolding } from "@/components/asset-class-panels/taxonomy";
 import { cn, formatCompactAmount } from "@mizan/ui";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -302,6 +306,13 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
     return holdings
       .filter((h) => h.holdingType !== HoldingType.CASH)
       .filter((h) => !(h.assetKind && isAlternativeAssetKind(h.assetKind)))
+      // Heatmap is a stocks-only view — sukuks, ULIPs, CPF, PE etc.
+      // already have their own dedicated panel tiles where return % is
+      // expressed in the right units (YTM for sukuks, surrender value
+      // for ULIPs). Mixing them into a green/red P&L grid alongside
+      // equities is apples-to-oranges. Reuses the same `classifyHolding`
+      // predicate the dashboard tile grid uses so the two stay in sync.
+      .filter((h) => classifyHolding(h) === "equities")
       .filter((h) => (h.marketValue?.base ?? 0) > 0)
       .map((h) => {
         const symbol = h.instrument?.symbol ?? h.id;
@@ -398,7 +409,7 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
             <div>
               <p className="text-foreground text-sm font-medium">No holdings to chart</p>
               <p className="text-muted-foreground mt-1 max-w-[280px] text-xs leading-relaxed">
-                Add a stock, ETF, or sukuk to see your portfolio at a glance — every tile is one
+                Add a stock or ETF to see your equity portfolio at a glance — every tile is one
                 position, sized by value, colored by performance.
               </p>
             </div>
