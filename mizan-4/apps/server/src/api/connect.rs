@@ -808,8 +808,15 @@ async fn get_entitlements(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<mizan_connect::Entitlements>> {
     let entitlements = match create_connect_client(&state).await {
-        Ok(client) => client.get_entitlements().await.unwrap_or_default(),
-        Err(_) => mizan_connect::Entitlements::default(),
+        // The success branch's `unwrap_or_default` still falls back to
+        // Free on cloud error — replace with the demo-mode-aware
+        // resolver so MIZAN_DEMO_MODE=1 unlocks Gold even when the
+        // Connect cloud is unreachable.
+        Ok(client) => client
+            .get_entitlements()
+            .await
+            .unwrap_or_else(|_| mizan_connect::resolve_offline_entitlements()),
+        Err(_) => mizan_connect::resolve_offline_entitlements(),
     };
     Ok(Json(entitlements))
 }

@@ -30,7 +30,9 @@ pub use client::{
     ConnectApiClient, PlaidExchangePublicTokenResponse, PlaidLinkTokenResponse,
     DEFAULT_CLOUD_API_URL,
 };
-pub use entitlements::{entitlements_for_plan, Entitlements, UNLIMITED};
+pub use entitlements::{
+    entitlements_for_plan, resolve_offline_entitlements, Entitlements, UNLIMITED,
+};
 pub use token_lifecycle::{
     ensure_valid_access_token, TokenLifecycleConfig, TokenLifecycleError, TokenLifecycleState,
     CLOUD_ACCESS_TOKEN_KEY, CLOUD_REFRESH_TOKEN_KEY,

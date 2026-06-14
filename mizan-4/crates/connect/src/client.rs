@@ -502,7 +502,12 @@ impl ConnectApiClient {
         let user_info = self.get_user_info().await?;
         let team = match user_info.team {
             Some(t) => t,
-            None => return Ok(Entitlements::default()),
+            // No team → user isn't subscribed via Connect. Route through
+            // `resolve_offline_entitlements` so the MIZAN_DEMO_MODE
+            // override still fires (the bare `default()` path bypassed
+            // demo mode, causing the Uncle Feroz pitch to render with
+            // Free tier even with the env vars set).
+            None => return Ok(crate::resolve_offline_entitlements()),
         };
 
         if let Some(explicit) = team.entitlements {
