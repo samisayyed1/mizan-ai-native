@@ -13,3 +13,29 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
+
+# Binary-only deps gated behind a feature so library consumers stay light.
+mizan-storage-sqlite = { workspace = true, optional = true }
+rusqlite = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+env_logger = { version = "0.11", optional = true }
+
+[features]
+default = []
+# Enables the `seed-uncle-portfolio` binary. Off by default so workspace
+# builds that only need the parser stay fast.
+seed-cli = [
+  "dep:mizan-storage-sqlite",
+  "dep:rusqlite",
+  "dep:uuid",
+  "dep:chrono",
+  "dep:log",
+  "dep:env_logger",
+]
+
+[[bin]]
+name = "seed-uncle-portfolio"
+path = "src/bin/seed_uncle_portfolio.rs"
+required-features = ["seed-cli"]
