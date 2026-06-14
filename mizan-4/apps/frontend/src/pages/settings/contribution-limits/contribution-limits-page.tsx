@@ -72,7 +72,7 @@ const SettingsContributionLimitPage = () => {
         </SettingsHeader>
         <Separator />
         <div className="w-full pt-8">
-          <h2 className="text-md text-muted-foreground mb-3 font-semibold">
+          <h2 className="text-foreground mb-3 text-lg font-semibold">
             Current Year ({currentYear})
           </h2>
           {currentYearLimits.length ? (
@@ -118,7 +118,7 @@ const SettingsContributionLimitPage = () => {
 
               {showPreviousYears && (
                 <div className="mt-8">
-                  <h2 className="text-md text-muted-foreground mb-3">Previous Years</h2>
+                  <h2 className="text-foreground mb-3 text-lg font-semibold">Previous Years</h2>
                   <div className="w-full space-y-4">
                     {previousYearsLimits.map((limit: ContributionLimit) => (
                       <ContributionLimitItem
