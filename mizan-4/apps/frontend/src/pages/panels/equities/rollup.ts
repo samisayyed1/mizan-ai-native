@@ -15,14 +15,21 @@
 import type { Holding } from "@/lib/types";
 
 /** Predicate matching equity-classified holdings: EQUITY / STOCK / ETF /
- * MUTUAL_FUND / OPTION on `assetType.key`. */
+ * MUTUAL_FUND / OPTION on `assetType.key`, plus the canonical taxonomy
+ * roots EQUITY_SECURITY + FUND_MUTUAL added by migration
+ * 2026-01-01-000002_taxonomies (and now written by the Uncle Feroz
+ * seeder + every SnapTrade / Plaid post-refactor import). Mirrors the
+ * dashboard classifier in `components/asset-class-panels/taxonomy.ts`
+ * so the panel page renders the same set of holdings the tile counts. */
 export function isEquityHolding(h: Holding): boolean {
   const key = h.instrument?.classifications?.assetType?.key?.toUpperCase() ?? "";
   return (
     key === "EQUITY" ||
     key === "STOCK" ||
+    key === "EQUITY_SECURITY" ||
     key === "ETF" ||
     key === "MUTUAL_FUND" ||
+    key === "FUND_MUTUAL" ||
     key === "OPTION"
   );
 }
@@ -33,9 +40,9 @@ export type EquitySubclass = "Stocks" | "ETFs" | "Mutual Funds" | "Options" | "O
 function classifyEquitySubclass(h: Holding): EquitySubclass {
   const key = h.instrument?.classifications?.assetType?.key?.toUpperCase() ?? "";
   if (key === "ETF") return "ETFs";
-  if (key === "MUTUAL_FUND") return "Mutual Funds";
+  if (key === "MUTUAL_FUND" || key === "FUND_MUTUAL") return "Mutual Funds";
   if (key === "OPTION") return "Options";
-  if (key === "EQUITY" || key === "STOCK") return "Stocks";
+  if (key === "EQUITY" || key === "STOCK" || key === "EQUITY_SECURITY") return "Stocks";
   return "Other";
 }
 

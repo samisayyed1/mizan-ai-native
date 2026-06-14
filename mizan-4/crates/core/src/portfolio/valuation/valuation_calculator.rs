@@ -162,23 +162,43 @@ fn calculate_investment_market_value_acct(
         } else {
             // QA Pass 12 cross-consistency: previously valued at ZERO, which
             // contradicted the holdings page where holdings_valuation_service
-            // falls back to cost basis for the same missing-quote case. Result
-            // was a $5,000 noquote position showing $5k on the holdings card
-            // but $0 in the dashboard headline — same fact, two numbers. Now
+            // falls back to cost basis for the same missing-quote case. Now
             // both paths agree: cost basis is the honest fallback when we
-            // don't know the live price. The position still has economic
-            // value (its acquisition price); the UI labels staleness via
-            // `as_of_date` and the absence of a `price`. Alternative assets
-            // are handled the same way — their cost basis IS their stored
-            // "current" value when no fresh quote exists.
+            // don't know the live price.
+            //
+            // `position.total_cost_basis` is stored in `position.currency` —
+            // the asset's native currency, not necessarily the account's
+            // reporting currency. The TOTAL portfolio account is in the base
+            // currency (e.g. USD); a position whose cost basis is 250,000
+            // INR would otherwise be added as 250,000 USD and silently
+            // inflate Net Worth by an order of magnitude. Always convert.
+            let (normalized_cost, normalized_position_currency) =
+                normalize_amount(position.total_cost_basis, &position.currency);
+            let cost_fx_rate = if normalized_position_currency == account_currency {
+                Decimal::ONE
+            } else {
+                get_rate_from_map(
+                    fx_rates_today,
+                    normalized_position_currency,
+                    account_currency,
+                    target_date,
+                )?
+            };
+            let cost_basis_in_acct = normalized_cost * cost_fx_rate;
             warn!(
-                "Missing quote for asset {} on date {}. Falling back to cost basis ({}) \
-                 for market_value — matches holdings page behaviour.",
-                asset_id, target_date, position.total_cost_basis
+                "Missing quote for asset {} on date {}. Falling back to cost basis ({} {} \
+                 → {} {} via fx {}) for market_value — matches holdings page behaviour.",
+                asset_id,
+                target_date,
+                position.total_cost_basis,
+                position.currency,
+                cost_basis_in_acct,
+                account_currency,
+                cost_fx_rate,
             );
-            total_position_market_value += position.total_cost_basis;
+            total_position_market_value += cost_basis_in_acct;
             if !position.is_alternative {
-                performance_eligible_market_value += position.total_cost_basis;
+                performance_eligible_market_value += cost_basis_in_acct;
             }
         }
     }

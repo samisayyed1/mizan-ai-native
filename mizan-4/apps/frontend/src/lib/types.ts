@@ -660,6 +660,18 @@ export interface Instrument {
 
   // Taxonomy-based classifications
   classifications?: AssetClassifications | null;
+
+  // Free-form JSON metadata mirrored from the Rust `Instrument.metadata`
+  // field (which mirrors `assets.metadata`). Panel rollups read
+  // domain-specific nested keys here:
+  //   - metadata.insurance.{category, surrenderValue, lastValuedAt}
+  //   - metadata.providentFund.{scheme, subAccount}
+  //   - metadata.bond.maturityDate
+  //   - metadata.property.{propertyType, intent}
+  //   - metadata.privateEquity.purchaseDate
+  // Typed loosely because the schema differs per asset kind; each
+  // per-panel reader narrows to its expected shape.
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface MonetaryValue {

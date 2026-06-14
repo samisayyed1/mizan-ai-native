@@ -31,7 +31,9 @@
  */
 import { Icons } from "@mizan/ui/components/ui/icons";
 import { type FormEvent, useCallback, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { useNavigate } from "react-router-dom";
+import remarkGfm from "remark-gfm";
 
 import { streamChatResponse } from "@/features/ai-assistant/api";
 import type { AiStreamEvent } from "@/features/ai-assistant/types";
@@ -299,15 +301,27 @@ export function AiCommandBar({
               {answer.error}
             </p>
           ) : (
-            <p
-              className="text-foreground whitespace-pre-wrap text-sm leading-relaxed"
+            // Render Anthropic's markdown — Claude reaches for `→`,
+            // `**bold**`, bullet lists, tables etc. by default. Raw
+            // text rendering surfaces those as visible glyphs which
+            // looks like the model is broken; ReactMarkdown +
+            // remark-gfm normalises them into clean typography. Same
+            // renderer the full /assistant page uses.
+            //
+            // Tailwind `prose` classes give us readable defaults
+            // (tight line-height, list bullets, monospace inline
+            // code) sized down with `prose-sm` to fit the dashboard
+            // card. `prose-invert` flips colours for the dark theme
+            // the dashboard ships by default.
+            <div
+              className="prose prose-sm dark:prose-invert text-foreground max-w-none text-sm leading-relaxed [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0"
               data-testid="ai-command-bar-response"
             >
-              {answer.text}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer.text}</ReactMarkdown>
               {answer.isStreaming && (
                 <span className="bg-foreground/60 ml-0.5 inline-block h-3 w-1 animate-pulse align-middle" />
               )}
-            </p>
+            </div>
           )}
         </div>
       )}
