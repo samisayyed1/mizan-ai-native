@@ -10,6 +10,7 @@ pub mod admin;
 pub mod advisor;
 pub mod audit;
 pub mod auth;
+pub mod auth_bounce;
 pub mod billing;
 pub mod config;
 pub mod connect;

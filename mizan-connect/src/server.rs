@@ -212,8 +212,17 @@ pub fn build_app(state: AppState) -> Router {
     // arrive in bursts and rate-limiting them would force Stripe into
     // exponential backoff against our own infrastructure. The webhook
     // is signature-authed (HMAC), so rate-limiting is the wrong tool.
+    //
+    // The OAuth bounce page (`/auth/callback`) ALSO sits at the top
+    // level — Supabase + Google's allow-listed redirect URIs use the
+    // bare hostname, not `/api/v1/...`, and the page is purely static
+    // HTML that re-broadcasts the auth params into the desktop's
+    // `mizan://` deep-link scheme. Static HTML so it costs effectively
+    // nothing inside the rate-limit budget; sits inside the layer for
+    // consistency with the rest of the surface.
     let rate_limited = Router::new()
         .merge(crate::health::router())
+        .merge(crate::auth_bounce::router())
         .nest("/v1", v1)
         .nest("/api/v1", api_v1)
         .with_state(state.clone())
