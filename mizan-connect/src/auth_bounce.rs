@@ -151,23 +151,22 @@ mod tests {
     use tower::ServiceExt;
 
     #[tokio::test]
-    async fn returns_html_with_bounce_script() {
+    async fn returns_html_with_bounce_script() -> anyhow::Result<()> {
         let app: Router<()> = router();
         let res = app
             .oneshot(
                 axum::http::Request::builder()
                     .uri("/auth/callback")
-                    .body(axum::body::Body::empty())
-                    .unwrap(),
+                    .body(axum::body::Body::empty())?,
             )
-            .await
-            .unwrap();
+            .await?;
         assert_eq!(res.status(), StatusCode::OK);
-        let bytes = to_bytes(res.into_body(), 8192).await.unwrap();
-        let body = std::str::from_utf8(&bytes).unwrap();
+        let bytes = to_bytes(res.into_body(), 8192).await?;
+        let body = std::str::from_utf8(&bytes)?;
         // Critical bits: the bounce script and the noscript fallback link.
         assert!(body.contains("mizan://auth/callback"));
         assert!(body.contains("window.location.replace"));
         assert!(body.contains("<noscript>"));
+        Ok(())
     }
 }
