@@ -157,6 +157,10 @@ impl<E: AiEnvironment + 'static> AgentToolDispatcher for ToolSetDispatcher<E> {
                 self.tool_set.health_status,
                 crate::tools::health::GetHealthStatusArgs
             ),
+            "research_asset" => invoke!(
+                self.tool_set.research_asset,
+                crate::tools::research_asset::ResearchAssetArgs
+            ),
 
             // ─── Mutating tools ────────────────────────────────────
             "create_account" => invoke!(
