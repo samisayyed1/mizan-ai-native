@@ -8,6 +8,7 @@ import { updateToolResult } from "@/adapters";
 import { useAccountMutations } from "@/pages/settings/accounts/components/use-account-mutations";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types — mirror crates/ai/src/tools/delete_account.rs
@@ -74,8 +75,9 @@ function normaliseResult(raw: unknown): DeleteAccountResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<DeleteAccountResult>;
+  const unwrapped = unwrapToolResult(raw, "target");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<DeleteAccountResult>;
   if (!obj.target || !obj.impact || !obj.validation) return null;
   return obj as DeleteAccountResult;
 }

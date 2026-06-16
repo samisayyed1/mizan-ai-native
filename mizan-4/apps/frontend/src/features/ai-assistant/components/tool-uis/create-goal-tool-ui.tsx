@@ -26,6 +26,7 @@ import { updateToolResult } from "@/adapters";
 import { useGoalMutations } from "@/features/goals/hooks/use-goals";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types (mirror crates/ai/src/tools/create_goal.rs)
@@ -102,8 +103,9 @@ function normaliseResult(raw: unknown): CreateGoalResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<CreateGoalResult>;
+  const unwrapped = unwrapToolResult(raw, "draft");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<CreateGoalResult>;
   if (!obj.draft || typeof obj.draft !== "object") return null;
   return obj as CreateGoalResult;
 }

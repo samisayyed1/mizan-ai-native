@@ -27,6 +27,8 @@ import { createAlternativeAsset, updateToolResult } from "@/adapters";
 import { QueryKeys } from "@/lib/query-keys";
 import type { AlternativeAssetKindApi } from "@/lib/types";
 
+import { unwrapToolResult } from "./shared";
+
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
 
 // ============================================================================
@@ -91,8 +93,9 @@ function normaliseResult(raw: unknown): AddAlternativeAssetResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<AddAlternativeAssetResult>;
+  const unwrapped = unwrapToolResult(raw, "draft");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<AddAlternativeAssetResult>;
   if (!obj.draft || typeof obj.draft !== "object") return null;
   return obj as AddAlternativeAssetResult;
 }

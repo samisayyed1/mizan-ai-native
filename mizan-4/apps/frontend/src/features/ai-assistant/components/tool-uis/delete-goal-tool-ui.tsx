@@ -8,6 +8,7 @@ import { updateToolResult } from "@/adapters";
 import { useGoalMutations } from "@/features/goals/hooks/use-goals";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { unwrapToolResult } from "./shared";
 
 // Types mirror crates/ai/src/tools/delete_goal.rs
 
@@ -64,8 +65,9 @@ function normaliseResult(raw: unknown): DeleteGoalResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<DeleteGoalResult>;
+  const unwrapped = unwrapToolResult(raw, "target");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<DeleteGoalResult>;
   if (!obj.target || !obj.impact || !obj.validation) return null;
   return obj as DeleteGoalResult;
 }
