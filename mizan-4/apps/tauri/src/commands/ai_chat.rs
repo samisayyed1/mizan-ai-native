@@ -153,6 +153,13 @@ pub async fn stream_agent_chat(
     }
 
     // ── Recipe selection ────────────────────────────────────────────
+    // Previously a no-match returned an error event ("No agent recipe
+    // matched this goal. Try the regular chat instead."), which was a
+    // dead end for the user — the "Add through Assistant" entry point
+    // is the obvious place to type an add-intent request, but only a
+    // handful of intents matched a recipe. Fall back to the broadest
+    // catch-all recipe instead so the LLM still answers with tool
+    // calls; the regular chat tool set is available either way.
     let has_attachment = !request.attachments.is_empty();
     let recipe = if let Some(forced_id) = request.recipe_id.as_deref() {
         ALL_RECIPES
@@ -161,19 +168,9 @@ pub async fn stream_agent_chat(
             .cloned()
             .unwrap_or(PORTFOLIO_FROM_CSV)
     } else {
-        match detect_recipe(&request.content, has_attachment) {
-            Some(r) => r.clone(),
-            None => {
-                let _ = on_event.send(AiStreamEvent::error(
-                    &thread_id,
-                    &run_id,
-                    Some(&message_id),
-                    "agent_no_recipe_match",
-                    "No agent recipe matched this goal. Try the regular chat instead.",
-                ));
-                return Ok(());
-            }
-        }
+        detect_recipe(&request.content, has_attachment)
+            .cloned()
+            .unwrap_or(PORTFOLIO_FROM_CSV)
     };
 
     // ── Planner ─────────────────────────────────────────────────────
