@@ -1044,7 +1044,7 @@ async fn build_portfolio_snapshot<E: AiEnvironment + ?Sized>(
     }
 
     // Top 5 investment holdings by base-currency market value.
-    investment_holdings.sort_by(|a, b| b.market_value.base.cmp(&a.market_value.base));
+    investment_holdings.sort_by_key(|h| std::cmp::Reverse(h.market_value.base));
     let top: Vec<&mizan_core::holdings::Holding> =
         investment_holdings.iter().take(5).copied().collect();
 
