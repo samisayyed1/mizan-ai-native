@@ -153,13 +153,17 @@ pub async fn stream_agent_chat(
     }
 
     // ── Recipe selection ────────────────────────────────────────────
-    // Previously a no-match returned an error event ("No agent recipe
-    // matched this goal. Try the regular chat instead."), which was a
-    // dead end for the user — the "Add through Assistant" entry point
-    // is the obvious place to type an add-intent request, but only a
-    // handful of intents matched a recipe. Fall back to the broadest
-    // catch-all recipe instead so the LLM still answers with tool
-    // calls; the regular chat tool set is available either way.
+    // The hard-coded RecipePlanner only emits sensible plans for the
+    // handful of intents listed in `ALL_RECIPES`. When the user types
+    // a free-form add-intent that doesn't match a recipe (e.g. "add
+    // 10 oz of gold" without a CSV, or "delete my Wise account"),
+    // returning a canned plan would be misleading — the agent
+    // would emit "Create the US Stocks portfolio · Parse the CSV ·
+    // Read back" steps that aren't related to the user's goal. Emit
+    // a distinct `agent_no_recipe_match` error code instead so the
+    // frontend can route the request to the regular chat path
+    // (`streamAiChat`), where the full mutation tool surface
+    // (create_account / record_activity / delete_* / …) is available.
     let has_attachment = !request.attachments.is_empty();
     let recipe = if let Some(forced_id) = request.recipe_id.as_deref() {
         ALL_RECIPES
@@ -168,9 +172,19 @@ pub async fn stream_agent_chat(
             .cloned()
             .unwrap_or(PORTFOLIO_FROM_CSV)
     } else {
-        detect_recipe(&request.content, has_attachment)
-            .cloned()
-            .unwrap_or(PORTFOLIO_FROM_CSV)
+        match detect_recipe(&request.content, has_attachment) {
+            Some(r) => r.clone(),
+            None => {
+                let _ = on_event.send(AiStreamEvent::error(
+                    &thread_id,
+                    &run_id,
+                    Some(&message_id),
+                    "agent_no_recipe_match",
+                    "No agent recipe matched this goal — routing to regular chat.",
+                ));
+                return Ok(());
+            }
+        }
     };
 
     // ── Planner ─────────────────────────────────────────────────────
