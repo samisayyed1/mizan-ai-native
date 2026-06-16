@@ -357,7 +357,7 @@ function ProviderSettings({
                         <Button
                           variant="outline"
                           size="icon"
-                          className="h-8 w-8"
+                          className="focus-visible:ring-primary focus-visible:ring-offset-background h-8 w-8 focus-visible:ring-2 focus-visible:ring-offset-2"
                           onClick={handleRevealApiKey}
                           disabled={isLoadingKey}
                           aria-label={showApiKey ? "Hide API key" : "Show API key"}
