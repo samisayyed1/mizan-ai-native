@@ -558,17 +558,35 @@ function EnabledMizanConnectProvider({
         // Note: This is needed in both dev and prod modes on iOS
         const useASWebAuth = isTauri && isMobile && isIOS;
 
-        // Determine redirect URL based on platform
-        // iOS ASWebAuth always needs deep link URL (works in dev and prod)
-        // Desktop prod uses hosted callback → deep link (can't use in dev - URL scheme not registered)
-        // Dev mode uses webview redirect (simpler, no deep link registration needed)
+        // Determine redirect URL based on platform.
+        //
+        // Why desktop dev now uses the hosted bounce page too:
+        // - Google's identity platform blocks OAuth from embedded
+        //   webviews (WKWebView on macOS, WebView2 on Windows) — the
+        //   redirect-in-webview path used to silently fail with
+        //   "disallowed_useragent" / "403". We need the system browser
+        //   in dev as well as prod.
+        // - The system browser will only honour HTTPS / HTTP redirect
+        //   targets, not custom schemes like `mizan://`. Pointing
+        //   Supabase straight at `mizan://...` triggers
+        //   `redirect_uri_mismatch`. So both dev and prod redirect to
+        //   the cloud's `/auth/callback` bounce page
+        //   (`crates/connect/src/auth_bounce.rs`), which immediately
+        //   rebroadcasts the auth params into `mizan://auth/callback`.
+        //   The desktop's deep-link listener (registered via
+        //   `tauri-plugin-deep-link`) catches it and runs the PKCE
+        //   exchange in `handleAuthCallback`.
+        // - Web (`!isTauri`) keeps the in-page redirect to the local
+        //   `/auth/callback` route — no bounce needed, the browser is
+        //   already the right environment to finish PKCE in.
         const redirectUrl = useASWebAuth
           ? DESKTOP_DEEP_LINK_URL // iOS: direct custom scheme, captured by ASWebAuth
-          : isTauri && import.meta.env.PROD
-            ? HOSTED_OAUTH_CALLBACK_URL // Desktop & Android: bounce page → mizan://
-            : getWebRedirectUrl(); // Web or dev mode
+          : isTauri && HOSTED_OAUTH_CALLBACK_URL
+            ? HOSTED_OAUTH_CALLBACK_URL // Desktop (dev + prod): bounce page → mizan://
+            : getWebRedirectUrl(); // Web, or desktop fallback if the bounce URL is unset
 
-        const useSystemBrowser = isTauri && import.meta.env.PROD && !useASWebAuth;
+        const useSystemBrowser =
+          isTauri && !!HOSTED_OAUTH_CALLBACK_URL && !useASWebAuth;
         const queryParams =
           provider === "google"
             ? {
