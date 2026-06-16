@@ -314,6 +314,14 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
       // predicate the dashboard tile grid uses so the two stay in sync.
       .filter((h) => classifyHolding(h) === "equities")
       .filter((h) => (h.marketValue?.base ?? 0) > 0)
+      // Drop aggregate rollup pseudo-assets ("US Stocks", "SG Stocks")
+      // — they have no per-position cost basis so they always render as
+      // a flat 0.0% gain tile, and because they're aggregates they're
+      // the BIGGEST tiles on screen. The hero visual of the dashboard
+      // ends up dominated by two uninformative grey rectangles. Drop
+      // them so the heatmap shows real positions (HSBC +10.8%, SPUS,
+      // ETFs, CPF tranches) where the % colour actually means something.
+      .filter((h) => h.instrument?.metadata?.is_rollup !== true)
       .map((h) => {
         const symbol = h.instrument?.symbol ?? h.id;
         const name = h.instrument?.name?.trim() || symbol;

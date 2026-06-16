@@ -208,13 +208,13 @@ describe("<NetWorthStrip />", () => {
     expect(screen.getByRole("link", { name: /Net Worth/i })).toBeInTheDocument();
   });
 
-  it('shows "no prior data" copy when the window has no comparable baseline', () => {
+  it("shows friendly first-day-of-data copy when the window has no comparable baseline", () => {
     const oneRow = [makeRow("2026-06-04", 1_000_000)];
     render(
       <MemoryRouter>
         <NetWorthStrip history={oneRow} baseCurrency="USD" defaultWindow="30d" />
       </MemoryRouter>,
     );
-    expect(screen.getByTestId("net-worth-delta").textContent).toMatch(/no prior data/);
+    expect(screen.getByTestId("net-worth-delta").textContent).toMatch(/First day of data/);
   });
 });
