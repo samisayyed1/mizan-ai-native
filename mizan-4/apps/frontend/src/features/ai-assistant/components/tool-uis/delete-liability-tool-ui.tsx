@@ -8,6 +8,8 @@ import { updateToolResult } from "@/adapters";
 import { useAssetManagement } from "@/pages/asset/hooks/use-asset-management";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // Types mirror crates/ai/src/tools/delete_liability.rs
 
@@ -54,8 +56,9 @@ function normaliseResult(raw: unknown): DeleteLiabilityResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<DeleteLiabilityResult>;
+  const unwrapped = unwrapToolResult(raw, "target");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<DeleteLiabilityResult>;
   if (!obj.target || !obj.validation) return null;
   return obj as DeleteLiabilityResult;
 }
@@ -163,6 +166,7 @@ function ConfirmCard({
   onSuccess: () => void;
 }) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
   const [armed, setArmed] = useState(false);
   const { deleteAssetMutation } = useAssetManagement();
@@ -170,6 +174,7 @@ function ConfirmCard({
   const handleConfirm = async () => {
     try {
       await deleteAssetMutation.mutateAsync(target.id);
+      refreshAfterMutation(queryClient);
       if (threadId) {
         try {
           await updateToolResult({

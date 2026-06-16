@@ -8,6 +8,8 @@ import { updateToolResult } from "@/adapters";
 import { useAccountMutations } from "@/pages/settings/accounts/components/use-account-mutations";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types — mirror crates/ai/src/tools/delete_account.rs
@@ -74,8 +76,9 @@ function normaliseResult(raw: unknown): DeleteAccountResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<DeleteAccountResult>;
+  const unwrapped = unwrapToolResult(raw, "target");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<DeleteAccountResult>;
   if (!obj.target || !obj.impact || !obj.validation) return null;
   return obj as DeleteAccountResult;
 }
@@ -194,6 +197,7 @@ function ConfirmCard({
   onSuccess,
 }: ConfirmCardProps) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
 
   const [armed, setArmed] = useState(false);
@@ -202,6 +206,7 @@ function ConfirmCard({
   const handleConfirm = async () => {
     try {
       await deleteAccountMutation.mutateAsync(target.id);
+      refreshAfterMutation(queryClient);
       if (threadId) {
         try {
           await updateToolResult({

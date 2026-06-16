@@ -25,6 +25,8 @@ import { updateToolResult } from "@/adapters";
 import { useAccountMutations } from "@/pages/settings/accounts/components/use-account-mutations";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types (mirror crates/ai/src/tools/update_account.rs)
@@ -105,8 +107,9 @@ function normaliseResult(raw: unknown): UpdateAccountResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<UpdateAccountResult>;
+  const unwrapped = unwrapToolResult(raw, "draft");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<UpdateAccountResult>;
   if (!obj.draft || !obj.current) return null;
   return obj as UpdateAccountResult;
 }
@@ -212,6 +215,7 @@ function DraftCard({
   onSuccess: () => void;
 }) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -272,6 +276,8 @@ function DraftCard({
         trackingMode: "NOT_SET",
         meta: draft.notes ?? null,
       });
+
+      refreshAfterMutation(queryClient);
 
       if (threadId) {
         try {

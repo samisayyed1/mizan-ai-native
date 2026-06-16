@@ -153,6 +153,17 @@ pub async fn stream_agent_chat(
     }
 
     // ── Recipe selection ────────────────────────────────────────────
+    // The hard-coded RecipePlanner only emits sensible plans for the
+    // handful of intents listed in `ALL_RECIPES`. When the user types
+    // a free-form add-intent that doesn't match a recipe (e.g. "add
+    // 10 oz of gold" without a CSV, or "delete my Wise account"),
+    // returning a canned plan would be misleading — the agent
+    // would emit "Create the US Stocks portfolio · Parse the CSV ·
+    // Read back" steps that aren't related to the user's goal. Emit
+    // a distinct `agent_no_recipe_match` error code instead so the
+    // frontend can route the request to the regular chat path
+    // (`streamAiChat`), where the full mutation tool surface
+    // (create_account / record_activity / delete_* / …) is available.
     let has_attachment = !request.attachments.is_empty();
     let recipe = if let Some(forced_id) = request.recipe_id.as_deref() {
         ALL_RECIPES
@@ -169,7 +180,7 @@ pub async fn stream_agent_chat(
                     &run_id,
                     Some(&message_id),
                     "agent_no_recipe_match",
-                    "No agent recipe matched this goal. Try the regular chat instead.",
+                    "No agent recipe matched this goal — routing to regular chat.",
                 ));
                 return Ok(());
             }
@@ -258,17 +269,25 @@ pub async fn stream_agent_chat(
 }
 
 /// Resolve the user's agent tier from the connect service capabilities.
+///
+/// Routes through `resolve_entitlements`, which already honours the
+/// `MIZAN_DEMO_MODE=1` + `MIZAN_ALLOW_PRODUCTION=1` override (see
+/// `commands::entitlements`). Previously this called
+/// `has_broker_sync()` directly, which bypassed the demo override and
+/// left Agent Mode showing "Sign in and upgrade" inside the pitch
+/// flow even with both env vars set. Now Agent Mode unlocks under the
+/// same gate every other Gold-tier surface uses, so the AI write
+/// tools surface (delete_account / update_holding / record_activities
+/// / …) actually fires for the demo user.
 async fn resolve_agent_tier(
     context: &Arc<ServiceContext>,
 ) -> mizan_ai::agent_chat_bridge::AgentTier {
     use mizan_ai::agent_chat_bridge::AgentTier;
-    // Treat Gold (live broker sync) as the proxy for "agent unlocked".
-    // When the broker sync capability is true, the user has paid
-    // tier — close enough for v1 until we surface an explicit
-    // `agent_mode` capability via the catalog.
-    match context.connect_service().has_broker_sync().await {
-        Ok(true) => AgentTier::Unlocked,
-        _ => AgentTier::Locked,
+    let entitlements = crate::commands::entitlements::resolve_entitlements(context).await;
+    if entitlements.broker_sync {
+        AgentTier::Unlocked
+    } else {
+        AgentTier::Locked
     }
 }
 

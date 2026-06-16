@@ -251,6 +251,24 @@ export function AddAssetDialog({
           // expects.
           ingest((ev as AiStreamEvent & { event: never }).event);
         } else if (ev.type === "error") {
+          // No recipe matched the user's free-form intent (e.g. "add
+          // 10 oz gold", "delete my old Wise account"). The agent
+          // runtime can only run canned plans for a handful of
+          // recipes (CSV import, retirement plan, etc.); for
+          // everything else, route the same prompt to the regular
+          // chat path on /assistant, where the full mutation tool
+          // surface (create_account / record_activity / delete_* /
+          // …) lives. The intent + prompt search params pre-fill
+          // the composer so the user just clicks Send.
+          if (ev.code === "agent_no_recipe_match") {
+            const params = new URLSearchParams({
+              intent: "add-asset",
+              prompt: composedPrompt,
+            });
+            navigate(`/assistant?${params.toString()}`);
+            onOpenChange(false);
+            return;
+          }
           // Detect "no Mizan Connect session" — the most common error
           // on a fresh install before sign-in. Surface a Sign-in CTA
           // instead of the raw "missing_api_key" code, which means
@@ -281,7 +299,7 @@ export function AddAssetDialog({
       setErrorKind("generic");
       setMode("error");
     }
-  }, [prompt, attachments, ingest, reset, presetAccountId, presetAccountName]);
+  }, [prompt, attachments, ingest, reset, presetAccountId, presetAccountName, navigate, onOpenChange]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
