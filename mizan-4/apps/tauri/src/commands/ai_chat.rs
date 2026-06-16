@@ -258,17 +258,25 @@ pub async fn stream_agent_chat(
 }
 
 /// Resolve the user's agent tier from the connect service capabilities.
+///
+/// Routes through `resolve_entitlements`, which already honours the
+/// `MIZAN_DEMO_MODE=1` + `MIZAN_ALLOW_PRODUCTION=1` override (see
+/// `commands::entitlements`). Previously this called
+/// `has_broker_sync()` directly, which bypassed the demo override and
+/// left Agent Mode showing "Sign in and upgrade" inside the pitch
+/// flow even with both env vars set. Now Agent Mode unlocks under the
+/// same gate every other Gold-tier surface uses, so the AI write
+/// tools surface (delete_account / update_holding / record_activities
+/// / …) actually fires for the demo user.
 async fn resolve_agent_tier(
     context: &Arc<ServiceContext>,
 ) -> mizan_ai::agent_chat_bridge::AgentTier {
     use mizan_ai::agent_chat_bridge::AgentTier;
-    // Treat Gold (live broker sync) as the proxy for "agent unlocked".
-    // When the broker sync capability is true, the user has paid
-    // tier — close enough for v1 until we surface an explicit
-    // `agent_mode` capability via the catalog.
-    match context.connect_service().has_broker_sync().await {
-        Ok(true) => AgentTier::Unlocked,
-        _ => AgentTier::Locked,
+    let entitlements = crate::commands::entitlements::resolve_entitlements(context).await;
+    if entitlements.broker_sync {
+        AgentTier::Unlocked
+    } else {
+        AgentTier::Locked
     }
 }
 
