@@ -24,10 +24,9 @@ import { toast } from "@mizan/ui/components/ui/use-toast";
 import { memo, useMemo, useState } from "react";
 
 import { createAlternativeAsset, updateToolResult } from "@/adapters";
-import { QueryKeys } from "@/lib/query-keys";
 import type { AlternativeAssetKindApi } from "@/lib/types";
 
-import { unwrapToolResult } from "./shared";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
 
@@ -170,9 +169,11 @@ function useAddAltAssetMutation() {
   return useMutation({
     mutationFn: createAlternativeAsset,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.HOLDINGS] });
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.ALTERNATIVE_HOLDINGS] });
-      queryClient.invalidateQueries({ queryKey: [QueryKeys.NET_WORTH] });
+      // "Live like water" — kick a portfolio recompute on the Rust
+      // side and invalidate every cache so Net Worth / heatmap /
+      // allocation / panels all reflect the new row within the
+      // ~1–2 s the recompute takes, not the next scheduled tick.
+      refreshAfterMutation(queryClient);
       toast({ title: "Asset added.", variant: "success" });
     },
     onError: (e: unknown) => {

@@ -13,3 +13,4 @@ export {
   formatActivityQuantity,
 } from "./activity-table-utils";
 export { unwrapToolResult } from "./unwrap-tool-result";
+export { refreshAfterMutation } from "./refresh-after-mutation";

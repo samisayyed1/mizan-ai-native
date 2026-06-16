@@ -8,7 +8,8 @@ import { updateToolResult } from "@/adapters";
 import { useGoalMutations } from "@/features/goals/hooks/use-goals";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
-import { unwrapToolResult } from "./shared";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // Types mirror crates/ai/src/tools/delete_goal.rs
 
@@ -171,6 +172,7 @@ function ConfirmCard({
   onSuccess: () => void;
 }) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
   const [armed, setArmed] = useState(false);
   const { deleteMutation } = useGoalMutations();
@@ -178,6 +180,7 @@ function ConfirmCard({
   const handleConfirm = async () => {
     try {
       await deleteMutation.mutateAsync(target.id);
+      refreshAfterMutation(queryClient);
       if (threadId) {
         try {
           await updateToolResult({

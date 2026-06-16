@@ -27,7 +27,7 @@ import { createAlternativeAsset, updateToolResult } from "@/adapters";
 import { QueryKeys } from "@/lib/query-keys";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
-import { unwrapToolResult } from "./shared";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types (mirror crates/ai/src/tools/create_liability.rs)
@@ -185,6 +185,7 @@ function DraftCard({
   onSuccess: (assetId: string) => void;
 }) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -223,6 +224,8 @@ function DraftCard({
         metadata,
         linkedAssetId: draft.linkedAssetId ?? undefined,
       });
+
+      refreshAfterMutation(queryClient);
 
       if (threadId) {
         try {

@@ -22,7 +22,7 @@ import {
 import { QueryKeys } from "@/lib/query-keys";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
-import { unwrapToolResult } from "./shared";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types (mirror crates/ai/src/tools/update_liability.rs)
@@ -207,6 +207,7 @@ function DraftCard({
   onSuccess: () => void;
 }) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
   const mutation = useUpdateLiabilityMutation();
 
@@ -215,6 +216,7 @@ function DraftCard({
   const handleConfirm = async () => {
     try {
       await mutation.mutateAsync(draft);
+      refreshAfterMutation(queryClient);
       if (threadId) {
         try {
           await updateToolResult({

@@ -26,7 +26,8 @@ import { updateToolResult } from "@/adapters";
 import { useAccountMutations } from "@/pages/settings/accounts/components/use-account-mutations";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
-import { unwrapToolResult } from "./shared";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types (mirror crates/ai/src/tools/create_account.rs)
@@ -202,6 +203,7 @@ function DraftCard({
   onSuccess,
 }: DraftCardProps) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -236,6 +238,8 @@ function DraftCard({
         trackingMode: "NOT_SET",
         meta: draft.notes?.trim() ? draft.notes.trim() : null,
       });
+
+      refreshAfterMutation(queryClient);
 
       if (threadId) {
         try {
