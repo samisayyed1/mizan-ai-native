@@ -294,3 +294,171 @@ impl<E: AiEnvironment + 'static> Tool for DeleteAlternativeAssetTool<E> {
         self.build_output(args).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::test_env::{MockEnvironment, MockHoldingsService};
+    use chrono::NaiveDate;
+    use mizan_core::{
+        assets::AssetKind,
+        holdings::{Holding, HoldingType, Instrument, MonetaryValue},
+    };
+    use rust_decimal::Decimal;
+
+    fn alt_holding(asset_id: &str, name: &str, kind: AssetKind) -> Holding {
+        Holding {
+            id: format!("h-{}", asset_id),
+            account_id: "TOTAL".to_string(),
+            holding_type: HoldingType::Cash,
+            instrument: Some(Instrument {
+                id: asset_id.to_string(),
+                symbol: asset_id.to_string(),
+                name: Some(name.to_string()),
+                currency: "USD".to_string(),
+                notes: None,
+                pricing_mode: "MANUAL".to_string(),
+                preferred_provider: None,
+                exchange_mic: None,
+                classifications: None,
+                metadata: None,
+            }),
+            asset_kind: Some(kind),
+            quantity: Decimal::ONE,
+            open_date: None,
+            lots: None,
+            contract_multiplier: Decimal::ONE,
+            local_currency: "USD".to_string(),
+            base_currency: "USD".to_string(),
+            fx_rate: None,
+            market_value: MonetaryValue::zero(),
+            cost_basis: None,
+            price: None,
+            purchase_price: None,
+            unrealized_gain: None,
+            unrealized_gain_pct: None,
+            realized_gain: None,
+            realized_gain_pct: None,
+            dividend_income: None,
+            total_gain: None,
+            total_gain_pct: None,
+            day_change: None,
+            day_change_pct: None,
+            prev_close_value: None,
+            weight: Decimal::ZERO,
+            as_of_date: NaiveDate::from_ymd_opt(2026, 6, 21).unwrap(),
+            metadata: None,
+        }
+    }
+
+    fn tool_with_holdings(holdings: Vec<Holding>) -> DeleteAlternativeAssetTool<MockEnvironment> {
+        let mut env = MockEnvironment::new();
+        env.holdings_service = Arc::new(MockHoldingsService { holdings });
+        DeleteAlternativeAssetTool::new(Arc::new(env))
+    }
+
+    #[tokio::test]
+    async fn resolves_property_by_name() {
+        let tool = tool_with_holdings(vec![alt_holding("p1", "Lake cabin", AssetKind::Property)]);
+        let out = tool
+            .build_output(DeleteAlternativeAssetArgs {
+                asset_ref: "Lake cabin".into(),
+                reason: Some("sold".into()),
+            })
+            .await
+            .unwrap();
+        assert!(out.validation.is_valid);
+        assert_eq!(out.target.id, "p1");
+        assert_eq!(out.target.kind, "PROPERTY");
+        assert_eq!(out.reason.as_deref(), Some("sold"));
+    }
+
+    #[tokio::test]
+    async fn resolves_vehicle_by_id() {
+        let tool = tool_with_holdings(vec![alt_holding("v1", "2021 Tesla", AssetKind::Vehicle)]);
+        let out = tool
+            .build_output(DeleteAlternativeAssetArgs {
+                asset_ref: "v1".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(out.validation.is_valid);
+        assert_eq!(out.target.kind, "VEHICLE");
+    }
+
+    #[tokio::test]
+    async fn ambiguous_match_blocks_confirm() {
+        let tool = tool_with_holdings(vec![
+            alt_holding("p1", "Apartment unit A", AssetKind::Property),
+            alt_holding("p2", "Apartment unit B", AssetKind::Property),
+        ]);
+        let out = tool
+            .build_output(DeleteAlternativeAssetArgs {
+                asset_ref: "apartment".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert_eq!(out.validation.candidates.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn missing_ref_blocks_confirm() {
+        let tool = tool_with_holdings(vec![alt_holding("p1", "Cabin", AssetKind::Property)]);
+        let out = tool
+            .build_output(DeleteAlternativeAssetArgs {
+                asset_ref: "".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+    }
+
+    #[tokio::test]
+    async fn unknown_ref_returns_actionable_warning() {
+        let tool = tool_with_holdings(vec![alt_holding("p1", "Cabin", AssetKind::Property)]);
+        let out = tool
+            .build_output(DeleteAlternativeAssetArgs {
+                asset_ref: "ferrari".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert!(!out.validation.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tradable_asset_kinds_are_ignored() {
+        // Equity holding must NOT match the alternative-asset resolver — it
+        // scopes to PROPERTY/VEHICLE/COLLECTIBLE/PRECIOUS_METAL/PRIVATE_EQUITY.
+        let mut equity = alt_holding("eq-1", "Apple Inc", AssetKind::Property);
+        equity.asset_kind = Some(AssetKind::Investment);
+        let tool = tool_with_holdings(vec![equity]);
+        let out = tool
+            .build_output(DeleteAlternativeAssetArgs {
+                asset_ref: "Apple".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+    }
+
+    #[tokio::test]
+    async fn private_equity_kind_resolves() {
+        let tool = tool_with_holdings(vec![alt_holding("pe1", "Acme PE Fund VII", AssetKind::PrivateEquity)]);
+        let out = tool
+            .build_output(DeleteAlternativeAssetArgs {
+                asset_ref: "Acme".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(out.validation.is_valid);
+        assert_eq!(out.target.kind, "PRIVATE_EQUITY");
+    }
+}

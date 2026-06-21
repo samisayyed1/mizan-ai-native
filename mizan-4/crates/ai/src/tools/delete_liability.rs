@@ -287,3 +287,181 @@ impl<E: AiEnvironment + 'static> Tool for DeleteLiabilityTool<E> {
         self.build_output(args).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::test_env::{MockEnvironment, MockHoldingsService};
+    use chrono::NaiveDate;
+    use mizan_core::{
+        assets::AssetKind,
+        holdings::{Holding, HoldingType, Instrument, MonetaryValue},
+    };
+    use rust_decimal::Decimal;
+    use serde_json::json;
+
+    fn liability_holding(asset_id: &str, name: &str, liability_type: &str, principal: f64) -> Holding {
+        Holding {
+            id: format!("h-{}", asset_id),
+            account_id: "TOTAL".to_string(),
+            holding_type: HoldingType::Cash, // liability holdings are non-position rows; type unused by delete tool
+            instrument: Some(Instrument {
+                id: asset_id.to_string(),
+                symbol: asset_id.to_string(),
+                name: Some(name.to_string()),
+                currency: "USD".to_string(),
+                notes: None,
+                pricing_mode: "MANUAL".to_string(),
+                preferred_provider: None,
+                exchange_mic: None,
+                classifications: None,
+                metadata: None,
+            }),
+            asset_kind: Some(AssetKind::Liability),
+            quantity: Decimal::ZERO,
+            open_date: None,
+            lots: None,
+            contract_multiplier: Decimal::ONE,
+            local_currency: "USD".to_string(),
+            base_currency: "USD".to_string(),
+            fx_rate: None,
+            market_value: MonetaryValue::zero(),
+            cost_basis: None,
+            price: None,
+            purchase_price: None,
+            unrealized_gain: None,
+            unrealized_gain_pct: None,
+            realized_gain: None,
+            realized_gain_pct: None,
+            dividend_income: None,
+            total_gain: None,
+            total_gain_pct: None,
+            day_change: None,
+            day_change_pct: None,
+            prev_close_value: None,
+            weight: Decimal::ZERO,
+            as_of_date: NaiveDate::from_ymd_opt(2026, 6, 21).unwrap(),
+            metadata: Some(json!({
+                "liability_type": liability_type,
+                "principal": principal,
+            })),
+        }
+    }
+
+    fn tool_with_holdings(holdings: Vec<Holding>) -> DeleteLiabilityTool<MockEnvironment> {
+        let mut env = MockEnvironment::new();
+        env.holdings_service = Arc::new(MockHoldingsService { holdings });
+        DeleteLiabilityTool::new(Arc::new(env))
+    }
+
+    #[tokio::test]
+    async fn resolves_by_asset_id() {
+        let tool = tool_with_holdings(vec![liability_holding("loan-1", "Car loan", "AUTO", 12_000.0)]);
+        let out = tool
+            .build_output(DeleteLiabilityArgs {
+                liability_ref: "loan-1".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(out.validation.is_valid);
+        assert!(out.validation.resolved);
+        assert_eq!(out.target.id, "loan-1");
+        assert_eq!(out.target.principal, Some(12_000.0));
+        // Surfaces the irreversibility warning the confirm card relies on.
+        assert!(out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.contains("irreversible")));
+    }
+
+    #[tokio::test]
+    async fn resolves_by_name_substring() {
+        let tool = tool_with_holdings(vec![liability_holding("m1", "Bank Mortgage 2027", "MORTGAGE", 350_000.0)]);
+        let out = tool
+            .build_output(DeleteLiabilityArgs {
+                liability_ref: "mortgage".into(),
+                reason: Some("refinanced".into()),
+            })
+            .await
+            .unwrap();
+        assert!(out.validation.is_valid);
+        assert_eq!(out.target.id, "m1");
+        assert_eq!(out.reason.as_deref(), Some("refinanced"));
+    }
+
+    #[tokio::test]
+    async fn ambiguous_match_blocks_confirm() {
+        let tool = tool_with_holdings(vec![
+            liability_holding("l1", "Mortgage A", "MORTGAGE", 200_000.0),
+            liability_holding("l2", "Mortgage B", "MORTGAGE", 150_000.0),
+        ]);
+        let out = tool
+            .build_output(DeleteLiabilityArgs {
+                liability_ref: "mortgage".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert_eq!(out.validation.candidates.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn missing_ref_blocks_confirm() {
+        let tool = tool_with_holdings(vec![liability_holding("l1", "Loan", "AUTO", 5_000.0)]);
+        let out = tool
+            .build_output(DeleteLiabilityArgs {
+                liability_ref: "  ".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert!(out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.contains("required")));
+    }
+
+    #[tokio::test]
+    async fn unknown_ref_returns_actionable_warning() {
+        let tool = tool_with_holdings(vec![liability_holding("l1", "Car loan", "AUTO", 5_000.0)]);
+        let out = tool
+            .build_output(DeleteLiabilityArgs {
+                liability_ref: "house".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert!(out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.contains("No liability matching")));
+    }
+
+    #[tokio::test]
+    async fn non_liability_assets_are_ignored() {
+        // Equity holding present — the resolver scopes to LIABILITY-kind only.
+        let mut equity = liability_holding("eq-1", "AAPL", "STOCK", 0.0);
+        equity.asset_kind = Some(AssetKind::Investment);
+        let tool = tool_with_holdings(vec![equity]);
+        let out = tool
+            .build_output(DeleteLiabilityArgs {
+                liability_ref: "AAPL".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert!(out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.contains("No liability matching")));
+    }
+}
