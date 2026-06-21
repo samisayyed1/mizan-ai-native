@@ -973,6 +973,38 @@ impl SnapshotService {
             }
         }
 
+        // Sanity guard: if the input map carried genuinely non-zero
+        // individual snapshots (positions with quantity OR cash balances
+        // with amount) but EVERY FX conversion above failed — leaving
+        // overall cost_basis at zero, no positions aggregated, and no
+        // cash converted — then writing a TOTAL row would mis-state the
+        // dashboard as $0. That's exactly the Net-Worth=$0 regression
+        // Sami flagged on 2026-06-21 (FX-rate-missing chain on demo-mode
+        // + LSE-listed ETFs without TwelveData coverage). Refuse to
+        // write rather than silently clobber the previous good TOTAL row.
+        //
+        // Note we check *values*, not map emptiness: a snapshot with
+        // `cash_balances={USD: 0}` is legitimately zero, and writing a
+        // $0 TOTAL for it is correct (account drained, no positions
+        // left). Only refuse when input had real value that disappeared
+        // in aggregation.
+        let input_had_value = individual_snapshots_on_date.values().any(|s| {
+            s.positions.values().any(|p| !p.quantity.is_zero())
+                || s.cash_balances.values().any(|amt| !amt.is_zero())
+        });
+        let output_is_empty = aggregated_positions.is_empty()
+            && cash_total_base.is_zero()
+            && overall_cost_basis_base_ccy.is_zero();
+        if input_had_value && output_is_empty {
+            return Err(crate::errors::Error::Unexpected(format!(
+                "TOTAL snapshot for {} aggregated to zero from {} non-empty individual \
+                 snapshot(s) — every FX conversion failed. Refusing to write a $0 TOTAL \
+                 over what may be valid prior data; investigate the FX-rate coverage.",
+                target_date,
+                individual_snapshots_on_date.len()
+            )));
+        }
+
         Ok(AccountStateSnapshot {
             id: format!(
                 "{}_{}",
