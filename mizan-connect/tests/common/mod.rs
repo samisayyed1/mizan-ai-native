@@ -69,11 +69,20 @@ impl TestApp {
                     || err_msg.contains("docker.sock")
                     || err_msg.contains("Cannot connect to the Docker daemon")
                 {
-                    eprintln!(
-                        "[skip] mizan-connect integration tests require a running Docker \
-                         daemon for testcontainers (postgres). Start Docker Desktop and rerun \
-                         `cargo test -p mizan-connect`."
-                    );
+                    // Write the skip notice with explicit allow — the
+                    // workspace clippy lints ban print_stderr by default
+                    // to prevent debug noise leaking into deployed
+                    // services, but a human-readable skip message at the
+                    // very start of the test process (before any test
+                    // body runs) is the intentional UX.
+                    #[allow(clippy::print_stderr)]
+                    {
+                        eprintln!(
+                            "[skip] mizan-connect integration tests require a running Docker \
+                             daemon for testcontainers (postgres). Start Docker Desktop and \
+                             rerun `cargo test -p mizan-connect`."
+                        );
+                    }
                     // Exit the process cleanly so the test reports as
                     // "ignored" rather than a panic stack trace.
                     std::process::exit(0);
