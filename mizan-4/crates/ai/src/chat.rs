@@ -1558,6 +1558,9 @@ async fn spawn_chat_stream<E: AiEnvironment + 'static>(
             if is_allowed("create_goal") {
                 allowed_tools.push(Box::new(tool_set.create_goal));
             }
+            if is_allowed("update_goal") {
+                allowed_tools.push(Box::new(tool_set.update_goal));
+            }
             if is_allowed("delete_goal") {
                 allowed_tools.push(Box::new(tool_set.delete_goal));
             }
