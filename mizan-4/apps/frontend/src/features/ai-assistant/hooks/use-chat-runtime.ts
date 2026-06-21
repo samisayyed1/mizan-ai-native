@@ -160,18 +160,6 @@ export type ExternalMessagePart =
       arguments: Record<string, unknown>;
       result?: unknown;
       meta?: Record<string, unknown>;
-    }
-  /**
-   * Agent-runtime progress card. Created when the SSE stream
-   * emits an event of type "agent"; accumulates inner
-   * AgentInnerEvent's keyed by runId. The message renderer
-   * matches part.type === "agent" and renders
-   * <AgentProgressCard events={part.events} />.
-   */
-  | {
-      type: "agent";
-      runId: string;
-      events: import("../types").AgentInnerEvent[];
     };
 
 /**
@@ -720,52 +708,6 @@ export function useChatRuntime(config?: ChatModelConfig) {
               if (event.threadId && nextTitle) {
                 setThreadTitleInCaches(event.threadId, nextTitle);
               }
-              break;
-            }
-
-            case "agent": {
-              // Agent runtime event. Accumulate into a single
-              // "agent" message part keyed by runId so the message
-              // renderer can show <AgentProgressCard events={...} />.
-              //
-              // We pull the runId off the inner event — every
-              // AgentInnerEvent carries one. If no agent part for
-              // that runId exists yet (first event of the run is
-              // typically plan_ready), we push a fresh part.
-              // Subsequent events for the same runId update
-              // part.events in place.
-              const inner = event.event;
-              const runId =
-                "runId" in inner && typeof inner.runId === "string"
-                  ? inner.runId
-                  : undefined;
-              if (!runId) {
-                break;
-              }
-              const existingIdx = streamParts.findIndex(
-                (p) => p.type === "agent" && p.runId === runId
-              );
-              if (existingIdx >= 0) {
-                const existing = streamParts[existingIdx];
-                if (existing.type === "agent") {
-                  replacePart(existingIdx, {
-                    ...existing,
-                    events: [...existing.events, inner],
-                  });
-                }
-              } else {
-                streamParts.push({
-                  type: "agent",
-                  runId,
-                  events: [inner],
-                });
-              }
-              // Reset text/reasoning indices so any later text deltas
-              // start a NEW part rather than appending to a stale one
-              // that pre-dated the agent run.
-              textPartIndex = null;
-              reasoningPartIndex = null;
-              updateAssistantMessage();
               break;
             }
 

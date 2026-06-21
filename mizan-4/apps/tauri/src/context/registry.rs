@@ -240,10 +240,6 @@ impl ServiceContext {
         Arc::clone(&self.ai_chat_service)
     }
 
-    pub fn ai_env(&self) -> Arc<TauriAiEnvironment> {
-        Arc::clone(&self.ai_environment)
-    }
-
     pub fn device_enroll_service(&self) -> Arc<DeviceEnrollService> {
         Arc::clone(&self.device_enroll_service)
     }

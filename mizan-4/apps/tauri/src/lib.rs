@@ -774,7 +774,6 @@ pub fn run() {
             commands::ai_providers::list_ai_models,
             // AI chat commands
             commands::ai_chat::stream_ai_chat,
-            commands::ai_chat::stream_agent_chat,
             commands::ai_chat::list_ai_threads,
             commands::ai_chat::get_ai_thread,
             commands::ai_chat::get_ai_thread_messages,

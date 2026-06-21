@@ -10,10 +10,8 @@ import {
 
 import type { FC, ReactNode } from "react";
 
-import { useEffect, useMemo, useState } from "react";
 import { Button } from "@mizan/ui/components/ui/button";
 import { Icons } from "@mizan/ui/components/ui/icons";
-import { AgentProgressCard } from "./agent-progress-card";
 import { ComposerAddAttachment, ComposerAttachments, UserMessageAttachments } from "./attachment";
 import { MarkdownText } from "./markdown-text";
 import { ToolFallback } from "./tool-fallback";
@@ -22,8 +20,6 @@ import { TooltipIconButton } from "./tooltip-icon-button";
 import { cn } from "@/lib/utils";
 import { useAccounts } from "@/hooks/use-accounts";
 import { Reasoning, ReasoningGroup } from "./reasoning";
-import type { AgentInnerEvent } from "../types";
-import { isAgentMode, setAgentMode } from "../api";
 
 export interface ThreadProps {
   composerActions?: ReactNode;
@@ -179,59 +175,11 @@ interface ComposerActionProps {
   composerActions?: ReactNode;
 }
 
-/**
- * Toggle for "Agent Mode" — switches the next send between the
- * legacy single-turn chat path and the autonomous Plan→Execute→
- * Verify→Undo runtime in `stream_agent_chat`. State lives in the
- * module-level `agentModeEnabled` flag in api/stream.ts so the
- * runtime's send handler can read it without prop drilling.
- *
- * Visual:  [ Agent ◯ ] (off) → [ Agent ● ] (on, accent-coloured)
- *
- * When ON: an inline hint replaces the placeholder ("Describe your
- * goal — the agent will plan + execute autonomously.") and the
- * send button keeps the same icon (no separate "run agent" button —
- * the toggle is the modifier).
- */
-const AgentModeToggle: FC = () => {
-  const [enabled, setEnabled] = useState<boolean>(() => isAgentMode());
-
-  // Mirror local state to the module flag so the runtime sees it.
-  useEffect(() => {
-    setAgentMode(enabled);
-  }, [enabled]);
-
-  return (
-    <TooltipIconButton
-      tooltip={
-        enabled
-          ? "Agent on — Mizan will plan + execute autonomously"
-          : "Turn on Agent to let Mizan run multi-step goals end-to-end"
-      }
-      side="top"
-      type="button"
-      onClick={() => setEnabled((v) => !v)}
-      variant={enabled ? "default" : "ghost"}
-      size="sm"
-      className={cn(
-        "aui-composer-agent-toggle h-7 gap-1 rounded-full px-2.5 text-xs font-medium",
-        enabled && "bg-amber-400 text-amber-950 hover:bg-amber-500"
-      )}
-      aria-pressed={enabled}
-      aria-label={enabled ? "Disable Agent Mode" : "Enable Agent Mode"}
-    >
-      <Icons.Sparkles className="size-3.5" />
-      Agent
-    </TooltipIconButton>
-  );
-};
-
 const ComposerAction: FC<ComposerActionProps> = ({ composerActions }) => {
   return (
     <div className="aui-composer-action-wrapper relative mx-1 mb-2 mt-2 flex items-center justify-between">
       <div className="flex items-center gap-1">
         <ComposerAddAttachment />
-        <AgentModeToggle />
         {composerActions}
       </div>
 
@@ -314,49 +262,6 @@ const TypingIndicator: FC<TypingIndicatorProps> = ({ position }) => {
   );
 };
 
-/**
- * Pulls every "agent" part out of the current assistant message and
- * renders one <AgentProgressCard /> per run_id. assistant-ui's
- * MessagePrimitive.Parts doesn't know how to render custom part
- * types, so we render agent parts ourselves above the standard
- * Parts primitive. The agent part itself is opaque to the chat
- * library — it just sits in the message.content.parts array
- * alongside text/reasoning/toolCall parts.
- */
-const AgentParts: FC = () => {
-  // assistant-ui's useAssistantState uses useSyncExternalStore — the
-  // selector MUST return a reference-stable value when the underlying
-  // store state is unchanged, otherwise React tears in an infinite
-  // re-render loop ("Maximum update depth exceeded"). Returning a
-  // freshly-allocated `.filter(...)` array here was exactly that bug.
-  // Pull the raw `message.content` reference (stable) and do the
-  // shape-narrowing filter in a `useMemo` keyed on that reference.
-  const rawParts = useAssistantState(({ message }) => message?.content);
-
-  const agentParts = useMemo(() => {
-    if (!Array.isArray(rawParts)) return [];
-    return (rawParts as readonly { type: string; runId?: string; events?: AgentInnerEvent[] }[])
-      .filter(
-        (p): p is { type: "agent"; runId: string; events: AgentInnerEvent[] } =>
-          p?.type === "agent" && typeof p.runId === "string" && Array.isArray(p.events)
-      );
-  }, [rawParts]);
-
-  if (agentParts.length === 0) return null;
-
-  return (
-    <>
-      {agentParts.map((part) => (
-        <AgentProgressCard
-          key={part.runId}
-          events={part.events}
-          title="Agent run"
-        />
-      ))}
-    </>
-  );
-};
-
 const AssistantMessage: FC = () => {
   return (
     <MessagePrimitive.Root
@@ -365,7 +270,6 @@ const AssistantMessage: FC = () => {
     >
       <div className="aui-assistant-message-content text-foreground wrap-break-word mx-2 text-sm leading-6">
         <TypingIndicator position="initial" />
-        <AgentParts />
         <MessagePrimitive.Parts
           components={{
             Text: MarkdownText,
