@@ -42,29 +42,64 @@ const RING_RADIUS = 42;
 const RING_CIRC = 2 * Math.PI * RING_RADIUS;
 
 /**
- * Mizan gold ladder — overrides the taxonomy's per-category colour so
- * the donut reads on-brand. Segments are sorted largest → smallest
- * before we assign these, so the brightest tone always lands on the
- * biggest slice. Drawn from the Mizan brand palette (gold-cream →
- * gold-primary → gold-deep, plus one warm-gold accent for the long tail).
+ * Distinct-hue palette per asset-class, keyed by the panel id the
+ * `classifyHolding` taxonomy returns. The donut used to apply a pure
+ * gold ladder which made every slice a shade of gold — Sami's
+ * feedback 2026-06-21: "donut was all white, should shade right for
+ * different asset classes." Each colour here is picked for (a) high
+ * contrast against the dark surface, (b) semantic resonance with the
+ * class, and (c) coherent with the Mizan warm-gold brand identity.
  *
- * Eight stops covers every realistic asset-class count (taxonomy ships
- * 12, but a single portfolio rarely fills more than 6–8 simultaneously).
- * Anything beyond eight wraps back to the start of the ladder.
+ * Equities keep the brand gold-primary because they're the hero
+ * class. Everything else gets a distinct hue in the same warm,
+ * muted family so the donut reads as ONE chart, not a colour soup.
  */
-const GOLD_LADDER = [
-  "hsl(40 67% 87%)", // gold-cream — biggest slice
-  "hsl(31 49% 64%)", // gold-primary
-  "hsl(45 62% 58%)", // warm bright gold
+const PANEL_COLOR: Record<string, string> = {
+  equities:             "hsl(40 67% 60%)", // Mizan gold-primary
+  "bonds-sukuks":       "hsl(195 35% 55%)", // muted teal — stable, fixed-income
+  "bank-cash":          "hsl(155 30% 55%)", // sage green — liquidity
+  "real-estate":        "hsl(20 50% 55%)",  // warm terracotta — bricks + mortar
+  "private-equity":     "hsl(280 28% 58%)", // muted violet — illiquid
+  "provident-funds":    "hsl(220 28% 58%)", // dusk blue — long horizon
+  insurance:            "hsl(330 28% 60%)", // soft mauve — protection
+  crypto:               "hsl(265 45% 62%)", // electric violet
+  commodities:          "hsl(35 55% 50%)",  // bronze
+  collectibles:         "hsl(345 35% 58%)", // dusty rose
+  forex:                "hsl(180 30% 52%)", // sea-teal
+  "brokerage-accounts": "hsl(31 38% 46%)",  // gold-deep — sub-aggregate
+  other:                "hsl(31 28% 36%)",  // dimmest
+};
+
+// Long-tail fallback ladder for unknown categories — same warm gold
+// family, sorted dark→light so smallest slices stay subdued.
+const FALLBACK_LADDER = [
+  "hsl(31 49% 64%)",
   "hsl(31 42% 52%)",
   "hsl(31 38% 46%)",
-  "hsl(31 32% 41%)", // gold-deep
-  "hsl(31 28% 36%)",
-  "hsl(31 24% 33%)",
+  "hsl(31 32% 41%)",
 ] as const;
 
-function goldFor(index: number): string {
-  return GOLD_LADDER[index % GOLD_LADDER.length]!;
+/**
+ * Resolve a colour for one allocation segment. We try in order:
+ *   1. The backend's per-category color (the taxonomy already ships one).
+ *   2. Our PANEL_COLOR map keyed by the categoryId.
+ *   3. The fallback ladder wrapped by index.
+ *
+ * That preserves the donut's brand coherence while honouring whatever
+ * the backend explicitly set, and never falls back to "white" on a
+ * known category.
+ */
+function colorFor(
+  categoryColor: string | undefined,
+  categoryId: string,
+  index: number,
+): string {
+  if (categoryColor && categoryColor.trim() && categoryColor !== "transparent") {
+    return categoryColor;
+  }
+  const mapped = PANEL_COLOR[categoryId];
+  if (mapped) return mapped;
+  return FALLBACK_LADDER[index % FALLBACK_LADDER.length]!;
 }
 
 export function AllocationDonut({
@@ -92,7 +127,7 @@ export function AllocationDonut({
     const length = (c.percentage / 100) * RING_CIRC;
     const offset = -cum;
     cum += length;
-    return { ...c, length, offset, color: goldFor(idx) };
+    return { ...c, length, offset, color: colorFor(c.color, c.categoryId, idx) };
   });
 
   const hovered = hoveredId
