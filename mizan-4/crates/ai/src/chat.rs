@@ -1533,6 +1533,9 @@ async fn spawn_chat_stream<E: AiEnvironment + 'static>(
             if is_allowed("get_health_status") {
                 allowed_tools.push(Box::new(tool_set.health_status));
             }
+            if is_allowed("research_asset") {
+                allowed_tools.push(Box::new(tool_set.research_asset));
+            }
             // Mutation tools — the AI assistant's "actually do things"
             // surface. Each one returns a DRAFT preview the user confirms in
             // an inline tool-call card (see

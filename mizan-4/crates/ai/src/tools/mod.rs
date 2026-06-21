@@ -38,6 +38,7 @@ pub mod income;
 pub mod lifecycle_safety;
 pub mod memory_safety;
 pub mod performance;
+pub mod research_asset;
 pub mod record_activities;
 pub mod record_activity;
 pub mod scenario_alert_safety;
@@ -67,6 +68,7 @@ pub use holdings::GetHoldingsTool;
 pub use import_csv::ImportCsvTool;
 pub use income::GetIncomeTool;
 pub use performance::GetPerformanceTool;
+pub use research_asset::ResearchAssetTool;
 pub use record_activities::RecordActivitiesTool;
 pub use record_activity::RecordActivityTool;
 pub use update_account::UpdateAccountTool;
@@ -88,6 +90,7 @@ pub struct ToolSet<E: AiEnvironment> {
     pub valuation: GetValuationHistoryTool<E>,
     pub goals: GetGoalsTool<E>,
     pub performance: GetPerformanceTool<E>,
+    pub research_asset: ResearchAssetTool<E>,
     pub record_activity: RecordActivityTool<E>,
     pub record_activities: RecordActivitiesTool<E>,
     pub import_csv: ImportCsvTool<E>,
@@ -117,6 +120,7 @@ impl<E: AiEnvironment> ToolSet<E> {
             valuation: GetValuationHistoryTool::new(env.clone(), base_currency.clone()),
             goals: GetGoalsTool::new(env.clone()),
             performance: GetPerformanceTool::new(env.clone(), base_currency.clone()),
+            research_asset: ResearchAssetTool::new(env.clone()),
             record_activity: RecordActivityTool::new(env.clone()),
             record_activities: RecordActivitiesTool::new(env.clone()),
             import_csv: ImportCsvTool::new(env.clone(), base_currency),
