@@ -78,7 +78,7 @@ export default function ReportsIndexPage() {
             icon={<Icons.Activity2 className="h-6 w-6"
                 style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open payoff projection"}
-            onClick={() => onAction("/holdings?tab=liabilities")}
+            onClick={() => onAction("/reports/liability-payoff")}
             locked={locked}
           />
           <ReportTile
