@@ -450,7 +450,7 @@ function DraftCard({
   );
 }
 
-function CreateLiabilityToolUIContentImpl({ result, status, toolCallId }: Props) {
+export function CreateLiabilityToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitted, setSubmitted] = useState(false);
 

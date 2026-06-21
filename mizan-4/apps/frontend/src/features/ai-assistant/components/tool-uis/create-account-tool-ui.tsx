@@ -433,7 +433,7 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 // Top-level renderer
 // ============================================================================
 
-function CreateAccountToolUIContentImpl({ result, status, toolCallId }: Props) {
+export function CreateAccountToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitSuccess, setSubmitSuccess] = useState<
     { submitted: true; createdAccountId: string } | { submitted: false }

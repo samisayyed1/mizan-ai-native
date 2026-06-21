@@ -272,7 +272,7 @@ function ConfirmCard({
   );
 }
 
-function DeleteLiabilityToolUIContentImpl({ result, status, toolCallId }: Props) {
+export function DeleteLiabilityToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitted, setSubmitted] = useState(false);
 

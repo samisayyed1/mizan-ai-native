@@ -420,7 +420,7 @@ function DraftCard({
   );
 }
 
-function CreateGoalToolUIContentImpl({ result, status, toolCallId }: Props) {
+export function CreateGoalToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitSuccess, setSubmitSuccess] = useState<
     { submitted: true; createdGoalId: string } | { submitted: false }
