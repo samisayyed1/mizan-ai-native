@@ -57,6 +57,7 @@
 #![allow(clippy::result_large_err)]
 
 pub mod chat;
+pub(crate) mod working_context;
 pub mod env;
 pub mod error;
 #[cfg(test)]
