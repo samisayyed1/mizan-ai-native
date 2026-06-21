@@ -171,7 +171,7 @@ export {
 } from "./addons";
 
 // AI Streaming (Tauri Channel-based implementation)
-export { streamAiChat, streamAgentChat, type AgentRunRequest } from "./ai-streaming";
+export { streamAiChat } from "./ai-streaming";
 
 // Notifications — personalized AI wealth-insight center (Notify-6).
 // The desktop adapter calls Tauri commands backed by the SQLite
