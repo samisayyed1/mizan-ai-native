@@ -84,43 +84,54 @@ export interface BrokerageAccountRow {
 /**
  * Roll holdings into per-account rows, descending by total value.
  * Only `accountType === 'SECURITIES'` accounts are included.
- * Accounts with zero positions are excluded — they belong on the
- * Connections settings page, not the asset-class dashboard.
+ *
+ * Every active brokerage account is listed — even if its current
+ * market value rolls up to $0. A freshly-seeded account whose
+ * positions have cost basis but no live quote yet (cold start, or
+ * the market-data scheduler hasn't backfilled) still deserves to
+ * appear so the user can navigate into it. Falling back to cost
+ * basis when market value is missing keeps the row meaningful
+ * instead of empty.
  */
 export function rollupByAccount(
   holdings: readonly Holding[],
   accounts: readonly Account[],
 ): BrokerageAccountRow[] {
-  const brokerageAccountIds = new Set(
-    accounts.filter(isBrokerageAccount).map((a) => a.id),
-  );
-  const accountById = new Map(accounts.map((a) => [a.id, a]));
+  const brokerageAccounts = accounts.filter(isBrokerageAccount);
+  const brokerageAccountIds = new Set(brokerageAccounts.map((a) => a.id));
 
-  // Aggregate per-account sums + position counts
+  // Aggregate per-account sums + position counts, falling back to
+  // cost basis when no current market value exists.
   const totals = new Map<string, { sum: number; count: number }>();
   for (const h of holdings) {
     if (!brokerageAccountIds.has(h.accountId)) continue;
-    const value = h.marketValue?.base ?? 0;
-    if (!Number.isFinite(value) || value <= 0) continue;
+    const marketValue = h.marketValue?.base;
+    const costBasis = h.costBasis?.base;
+    const value =
+      Number.isFinite(marketValue) && (marketValue ?? 0) > 0
+        ? (marketValue as number)
+        : Number.isFinite(costBasis) && (costBasis ?? 0) > 0
+          ? (costBasis as number)
+          : 0;
     const entry = totals.get(h.accountId) ?? { sum: 0, count: 0 };
     entry.sum += value;
-    entry.count += 1;
+    if (value > 0) entry.count += 1;
     totals.set(h.accountId, entry);
   }
 
-  const rows: BrokerageAccountRow[] = [];
-  for (const [accountId, { sum, count }] of totals.entries()) {
-    const account = accountById.get(accountId);
-    if (!account) continue;
-    rows.push({
-      accountId,
+  // Every active brokerage account shows up — even at $0 — so a
+  // freshly-seeded account is still navigable from the panel.
+  const rows: BrokerageAccountRow[] = brokerageAccounts.map((account) => {
+    const t = totals.get(account.id) ?? { sum: 0, count: 0 };
+    return {
+      accountId: account.id,
       accountName: account.name,
       broker: brokerLabelFor(account),
-      totalValueBase: sum,
-      positionCount: count,
+      totalValueBase: t.sum,
+      positionCount: t.count,
       currency: account.currency,
-    });
-  }
+    };
+  });
   rows.sort((a, b) => b.totalValueBase - a.totalValueBase);
   return rows;
 }
