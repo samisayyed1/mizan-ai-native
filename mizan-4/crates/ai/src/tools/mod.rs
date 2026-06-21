@@ -29,6 +29,7 @@ pub mod delete_account;
 pub mod delete_alternative_asset;
 pub mod delete_goal;
 pub mod delete_liability;
+pub mod delete_stock_position;
 pub mod goals;
 pub mod health;
 pub mod holding_safety;
@@ -64,6 +65,7 @@ pub use delete_account::DeleteAccountTool;
 pub use delete_alternative_asset::DeleteAlternativeAssetTool;
 pub use delete_goal::DeleteGoalTool;
 pub use delete_liability::DeleteLiabilityTool;
+pub use delete_stock_position::DeleteStockPositionTool;
 pub use goals::GetGoalsTool;
 pub use health::GetHealthStatusTool;
 pub use holdings::GetHoldingsTool;
@@ -108,6 +110,7 @@ pub struct ToolSet<E: AiEnvironment> {
     pub create_liability: CreateLiabilityTool<E>,
     pub update_liability: UpdateLiabilityTool<E>,
     pub delete_liability: DeleteLiabilityTool<E>,
+    pub delete_stock_position: DeleteStockPositionTool<E>,
     pub add_alternative_asset: AddAlternativeAssetTool<E>,
     pub update_alternative_asset: UpdateAlternativeAssetTool<E>,
     pub delete_alternative_asset: DeleteAlternativeAssetTool<E>,
@@ -140,6 +143,7 @@ impl<E: AiEnvironment> ToolSet<E> {
             create_liability: CreateLiabilityTool::new(env.clone()),
             update_liability: UpdateLiabilityTool::new(env.clone()),
             delete_liability: DeleteLiabilityTool::new(env.clone()),
+            delete_stock_position: DeleteStockPositionTool::new(env.clone()),
             add_alternative_asset: AddAlternativeAssetTool::new(env.clone()),
             update_alternative_asset: UpdateAlternativeAssetTool::new(env.clone()),
             delete_alternative_asset: DeleteAlternativeAssetTool::new(env),

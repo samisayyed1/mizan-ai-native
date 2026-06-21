@@ -1573,6 +1573,9 @@ async fn spawn_chat_stream<E: AiEnvironment + 'static>(
             if is_allowed("delete_liability") {
                 allowed_tools.push(Box::new(tool_set.delete_liability));
             }
+            if is_allowed("delete_stock_position") {
+                allowed_tools.push(Box::new(tool_set.delete_stock_position));
+            }
             if is_allowed("add_alternative_asset") {
                 allowed_tools.push(Box::new(tool_set.add_alternative_asset));
             }
