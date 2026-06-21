@@ -34,6 +34,14 @@ once_cell = "1"
 # CSV parsing
 csv = "1.3"
 
+# XLSX → CSV conversion for AI attachments. calamine is the standard
+# Rust XLSX reader (~200KB after stripping); pure-Rust, no Office or
+# COM dependency.
+calamine = "0.30"
+
+# Base64 decode for attachment data shipped to the chat dispatcher.
+base64 = "0.22"
+
 # Streaming
 tokio-stream = "0.1"
 
@@ -51,3 +59,6 @@ tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Agent tests use InMemoryTruthLedger as a fake.
 mizan-financial-truth = { workspace = true, features = ["test-utils"] }
+# XLSX fixtures for crates/ai/src/xlsx.rs tests. Dev-only — runtime
+# uses `calamine` to read XLSX, not to write it.
+rust_xlsxwriter = "0.92"
