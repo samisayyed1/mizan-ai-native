@@ -87,7 +87,7 @@ export default function ReportsIndexPage() {
             icon={<Icons.PieChart className="h-6 w-6"
                 style={{ color: "hsl(31 38% 46%)" }} />}
             ctaLabel={locked ? "Upgrade to unlock" : "Open health report"}
-            onClick={() => onAction("/health")}
+            onClick={() => onAction("/reports/portfolio-health")}
             locked={locked}
           />
         </div>
