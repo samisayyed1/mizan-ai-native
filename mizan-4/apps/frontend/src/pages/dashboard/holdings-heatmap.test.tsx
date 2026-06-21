@@ -199,6 +199,51 @@ describe("<HoldingsHeatmap />", () => {
     expect(screen.queryByText(/No holdings to chart/)).not.toBeInTheDocument();
   });
 
+  it("shows a 'Quotes are still loading' cover in Total mode when every tile is flat (cold-start / no-quote regression)", () => {
+    // Cold start: positions exist with cost basis but no market value
+    // ⇒ unrealizedGainPct = 0 everywhere ⇒ every tile renders as
+    // neutral slate. Without the cover the heatmap reads as a
+    // rendering bug instead of an honest "no data yet" state.
+    const holdings: Holding[] = [
+      makeHolding({
+        id: "h-aapl",
+        instrument: {
+          id: "AAPL",
+          symbol: "AAPL",
+          currency: "USD",
+          quoteMode: "MARKET",
+          classifications: { assetType: { key: "EQUITY_SECURITY" } },
+        } as Holding["instrument"],
+        marketValue: { local: 0, base: 0 },
+        costBasis: { local: 17_500, base: 17_500 },
+        unrealizedGainPct: 0,
+        unrealizedGain: { local: 0, base: 0 },
+      }),
+      makeHolding({
+        id: "h-nvda",
+        instrument: {
+          id: "NVDA",
+          symbol: "NVDA",
+          currency: "USD",
+          quoteMode: "MARKET",
+          classifications: { assetType: { key: "EQUITY_SECURITY" } },
+        } as Holding["instrument"],
+        marketValue: { local: 0, base: 0 },
+        costBasis: { local: 12_000, base: 12_000 },
+        unrealizedGainPct: 0,
+        unrealizedGain: { local: 0, base: 0 },
+      }),
+    ];
+
+    render(
+      <MemoryRouter>
+        <HoldingsHeatmap holdings={holdings} isLoading={false} baseCurrency="USD" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/Quotes are still loading/)).toBeInTheDocument();
+  });
+
   it("hides a position with neither market value nor cost basis", () => {
     // Negative case for the cold-start fallback: a holding with zero
     // market value AND zero cost basis is genuine noise and should
