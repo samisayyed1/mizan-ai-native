@@ -8,6 +8,8 @@ import { updateToolResult } from "@/adapters";
 import { useGoalMutations } from "@/features/goals/hooks/use-goals";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // Types mirror crates/ai/src/tools/delete_goal.rs
 
@@ -64,8 +66,9 @@ function normaliseResult(raw: unknown): DeleteGoalResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<DeleteGoalResult>;
+  const unwrapped = unwrapToolResult(raw, "target");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<DeleteGoalResult>;
   if (!obj.target || !obj.impact || !obj.validation) return null;
   return obj as DeleteGoalResult;
 }
@@ -169,6 +172,7 @@ function ConfirmCard({
   onSuccess: () => void;
 }) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
   const [armed, setArmed] = useState(false);
   const { deleteMutation } = useGoalMutations();
@@ -176,6 +180,7 @@ function ConfirmCard({
   const handleConfirm = async () => {
     try {
       await deleteMutation.mutateAsync(target.id);
+      refreshAfterMutation(queryClient);
       if (threadId) {
         try {
           await updateToolResult({

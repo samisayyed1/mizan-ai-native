@@ -61,6 +61,27 @@ export interface NetWorthStripProps {
 }
 
 /**
+ * "As of" label for the freshness line below the headline.
+ * Today → "today"; yesterday → "yesterday"; older → ISO date.
+ * Keeps the indicator legible at a glance without dragging in a
+ * date-fns formatter just for one short string.
+ */
+function formatAsOf(valuationDate: string): string {
+  const entryMs = Date.parse(valuationDate);
+  if (Number.isNaN(entryMs)) return valuationDate;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const ageDays = Math.floor((startOfToday.getTime() - entryMs) / dayMs);
+  if (ageDays <= 0) return "today";
+  if (ageDays === 1) return "yesterday";
+  // ISO yyyy-mm-dd is unambiguous regardless of locale; partners
+  // reviewing a cross-border portfolio shouldn't have to guess at
+  // dd/mm vs mm/dd.
+  return new Date(entryMs).toISOString().slice(0, 10);
+}
+
+/**
  * Cutoff timestamp for each window, computed against `nowMs`.
  * "All" returns `null` — caller compares against history[0].
  */
@@ -283,7 +304,14 @@ export function NetWorthStrip({
           </div>
           <div className={`mt-1 text-sm tabular-nums ${deltaColor}`} data-testid="net-worth-delta">
             {delta.noBaseline ? (
-              <span>— no prior data in this window</span>
+              // Friendlier framing than the original "— no prior data
+              // in this window" — that phrasing read like a bug. New
+              // users genuinely have only one valuation snapshot for
+              // the first day or two and there's nothing wrong; tell
+              // them why the delta is empty + give a CTA back to "All".
+              <span className="text-muted-foreground">
+                First day of data — switch to <span className="font-medium">All</span> to see history as it builds.
+              </span>
             ) : (
               <>
                 {isPositive ? "▲" : "▼"} {isPrivacyMode ? "•••" : formatAmount(Math.abs(delta.amount), baseCurrency)}
@@ -297,6 +325,19 @@ export function NetWorthStrip({
               </>
             )}
           </div>
+          {/* "As of" freshness indicator — partners reviewing the
+              dashboard need to know the headline is live, not a stale
+              cache. Reads the most-recent valuationDate off the
+              history we already have in scope; fade in below the delta
+              line so it doesn't compete with the headline figure. */}
+          {!isLoading && history && history.length > 0 && (
+            <div
+              className="text-muted-foreground/70 mt-1 text-xs"
+              data-testid="net-worth-as-of"
+            >
+              As of {formatAsOf(history[history.length - 1]!.valuationDate)}
+            </div>
+          )}
         </Link>
         {/* Allocation donut — sits to the right of the headline,
             vertically centred against the headline + delta block.

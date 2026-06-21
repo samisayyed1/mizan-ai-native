@@ -349,7 +349,7 @@ export {
 // ============================================================================
 
 // AI Streaming (web-specific HTTP fetch implementation)
-export { streamAiChat, streamAgentChat, type AgentRunRequest } from "./ai-streaming";
+export { streamAiChat } from "./ai-streaming";
 
 // Notifications — no-op stub on web; the engine + storage live on the
 // desktop. See ./notifications for the rationale.

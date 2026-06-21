@@ -27,6 +27,7 @@ import { createAlternativeAsset, updateToolResult } from "@/adapters";
 import { QueryKeys } from "@/lib/query-keys";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types (mirror crates/ai/src/tools/create_liability.rs)
@@ -91,8 +92,9 @@ function normaliseResult(raw: unknown): CreateLiabilityResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<CreateLiabilityResult>;
+  const unwrapped = unwrapToolResult(raw, "draft");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<CreateLiabilityResult>;
   if (!obj.draft || typeof obj.draft !== "object") return null;
   return obj as CreateLiabilityResult;
 }
@@ -183,6 +185,7 @@ function DraftCard({
   onSuccess: (assetId: string) => void;
 }) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -221,6 +224,8 @@ function DraftCard({
         metadata,
         linkedAssetId: draft.linkedAssetId ?? undefined,
       });
+
+      refreshAfterMutation(queryClient);
 
       if (threadId) {
         try {

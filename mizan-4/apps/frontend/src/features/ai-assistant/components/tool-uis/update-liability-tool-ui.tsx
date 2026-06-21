@@ -22,6 +22,7 @@ import {
 import { QueryKeys } from "@/lib/query-keys";
 
 import { useRuntimeContext } from "../../hooks/use-runtime-context";
+import { refreshAfterMutation, unwrapToolResult } from "./shared";
 
 // ============================================================================
 // Types (mirror crates/ai/src/tools/update_liability.rs)
@@ -77,8 +78,9 @@ function normaliseResult(raw: unknown): UpdateLiabilityResult | null {
       return null;
     }
   }
-  if (typeof raw !== "object") return null;
-  const obj = raw as Partial<UpdateLiabilityResult>;
+  const unwrapped = unwrapToolResult(raw, "draft");
+  if (!unwrapped || typeof unwrapped !== "object") return null;
+  const obj = unwrapped as Partial<UpdateLiabilityResult>;
   if (!obj.draft || !obj.validation) return null;
   return obj as UpdateLiabilityResult;
 }
@@ -205,6 +207,7 @@ function DraftCard({
   onSuccess: () => void;
 }) {
   const runtime = useRuntimeContext();
+  const queryClient = useQueryClient();
   const threadId = runtime.currentThreadId;
   const mutation = useUpdateLiabilityMutation();
 
@@ -213,6 +216,7 @@ function DraftCard({
   const handleConfirm = async () => {
     try {
       await mutation.mutateAsync(draft);
+      refreshAfterMutation(queryClient);
       if (threadId) {
         try {
           await updateToolResult({

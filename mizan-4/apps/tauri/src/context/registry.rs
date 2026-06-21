@@ -79,9 +79,9 @@ pub struct ServiceContext {
     pub ai_provider_service: Arc<dyn AiProviderServiceTrait>,
     pub ai_chat_service: Arc<ChatService<TauriAiEnvironment>>,
     /// Same AiEnvironment the chat service holds. Surfaced separately
-    /// so commands outside the chat dispatcher (notably the agent
-    /// runtime in `stream_agent_chat`) can build their own ToolSet
-    /// against the same env without going through the chat service.
+    /// so non-chat callers (currently `scheduler::generate_ai_digest`)
+    /// can spin up their own LLM clients without going through the
+    /// chat dispatcher.
     pub ai_environment: Arc<TauriAiEnvironment>,
     pub device_enroll_service: Arc<DeviceEnrollService>,
     pub device_sync_runtime: Arc<DeviceSyncRuntimeState>,
@@ -238,10 +238,6 @@ impl ServiceContext {
 
     pub fn ai_chat_service(&self) -> Arc<ChatService<TauriAiEnvironment>> {
         Arc::clone(&self.ai_chat_service)
-    }
-
-    pub fn ai_env(&self) -> Arc<TauriAiEnvironment> {
-        Arc::clone(&self.ai_environment)
     }
 
     pub fn device_enroll_service(&self) -> Arc<DeviceEnrollService> {

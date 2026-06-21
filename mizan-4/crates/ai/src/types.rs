@@ -763,24 +763,6 @@ pub enum AiStreamEvent {
         title: String,
     },
 
-    /// Agent runtime event — emitted when a chat turn is routed
-    /// through the autonomous [`crate::agent::AgentRuntime`] instead
-    /// of the standard single-turn chat path. Carries an inner
-    /// [`crate::agent::AgentEvent`] (plan ready, step progress,
-    /// verification result, undo handle, etc.) that the frontend
-    /// renders into a live progress card.
-    ///
-    /// The thread_id + run_id + message_id let the frontend
-    /// associate the agent run with the originating chat turn so
-    /// the card replaces the "..." placeholder and the final
-    /// summary lands in the chat history.
-    #[serde(rename_all = "camelCase")]
-    Agent {
-        thread_id: String,
-        run_id: String,
-        message_id: String,
-        event: crate::agent::AgentEvent,
-    },
 }
 
 impl AiStreamEvent {
