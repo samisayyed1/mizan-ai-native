@@ -268,7 +268,8 @@ fn attachment_cache_key(attachment: &MessageAttachment) -> AttachmentCacheKey {
 
 fn attachment_effective_size(attachment: &MessageAttachment) -> usize {
     let is_binary = attachment.content_type.starts_with("image/")
-        || attachment.content_type == "application/pdf";
+        || attachment.content_type == "application/pdf"
+        || crate::xlsx::is_xlsx_mime(&attachment.content_type);
     if is_binary {
         attachment.data.len() * 3 / 4
     } else {
@@ -1186,6 +1187,33 @@ fn build_user_prompt(user_message: &str, attachments: &[MessageAttachment]) -> M
                 parts.push(UserContent::Text(Text {
                     text: format!("[Attached CSV file: {}]\n{}", att.name, att.data),
                 }));
+            }
+            ct if crate::xlsx::is_xlsx_mime(ct) => {
+                // XLSX is binary — the LLM can't consume it directly the
+                // way it can a PDF document. Convert to CSV in-process
+                // and surface it as a text part with a header line
+                // naming the sheet, so the model has the same shape it
+                // sees for a native CSV upload.
+                match crate::xlsx::xlsx_attachment_to_csv(&att.data, 10_000) {
+                    Ok((sheet_name, csv)) => {
+                        parts.push(UserContent::Text(Text {
+                            text: format!(
+                                "[Attached XLSX file: {} (sheet: {})]\n{}",
+                                att.name, sheet_name, csv
+                            ),
+                        }));
+                    }
+                    Err(e) => {
+                        debug!("XLSX attachment {} failed to convert: {}", att.name, e);
+                        parts.push(UserContent::Text(Text {
+                            text: format!(
+                                "[Attached XLSX file: {} — could not be parsed: {}. \
+                                 Ask the user to re-export as CSV.]",
+                                att.name, e
+                            ),
+                        }));
+                    }
+                }
             }
             ct if ct.starts_with("image/") => {
                 let media_type = match ct {

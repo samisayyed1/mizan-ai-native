@@ -208,9 +208,20 @@ interface ThreadListItemData {
 /** Maximum attachment size in bytes (10 MB). */
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
-/** Accepted file types for the AI assistant. */
+/** Accepted file types for the AI assistant.
+ *
+ * XLSX/XLS land here because the chat dispatcher converts them to CSV
+ * server-side via the `mizan_ai::xlsx` module before passing them to
+ * the model — Claude can't consume the binary OpenXML format
+ * directly, but the conversion is transparent to the user.
+ */
 const ACCEPTED_FILE_TYPES =
-  ".csv,text/csv,application/csv,image/png,image/jpeg,image/jpg,application/pdf";
+  ".csv,text/csv,application/csv," +
+  "image/png,image/jpeg,image/jpg," +
+  "application/pdf," +
+  ".xlsx,.xls," +
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet," +
+  "application/vnd.ms-excel";
 
 /** Read a File as a base64 string (without the data: prefix). */
 function fileToBase64(file: File): Promise<string> {
