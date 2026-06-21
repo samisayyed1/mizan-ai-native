@@ -362,12 +362,19 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
       .slice(0, MAX_TILES);
   }, [holdings, mode]);
 
-  // Detect Day-mode having no actual day-change data — every tile would
-  // be neutral grey, which reads as a rendering bug. Surface honestly.
-  const dayModeHasNoData =
-    mode === "day" &&
+  // Detect mode having no actual change data — every tile would be
+  // neutral slate, which reads as a rendering bug. Surface honestly.
+  // Now covers BOTH modes: Total-mode tiles also flat-line when
+  // there are no quotes for the underlying assets (cold-start or
+  // an exchange the quote scheduler doesn't cover, like LSE-listed
+  // Sharia ETFs that ride on TwelveData). The Day-mode-only check
+  // missed this; Total-mode users saw a slate-blue grid with no
+  // explanation and assumed the heatmap was broken.
+  const everyTileIsFlat =
     data.length > 0 &&
     data.every((d) => Math.abs(d.changePct) < 0.0001 && Math.abs(d.changeAmount) < 0.01);
+  const dayModeHasNoData = mode === "day" && everyTileIsFlat;
+  const totalModeHasNoData = mode === "total" && everyTileIsFlat;
 
   if (isLoading) {
     return (
@@ -522,6 +529,20 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
                 <p className="text-muted-foreground mt-1 text-xs">
                   Mizan needs two consecutive trading days of quotes to compute today's
                   change. Switch to Total for lifetime return.
+                </p>
+              </div>
+            </div>
+          )}
+          {totalModeHasNoData && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/55 backdrop-blur-sm">
+              <div className="text-center px-4">
+                <p className="text-foreground text-sm font-medium">
+                  Quotes are still loading
+                </p>
+                <p className="text-muted-foreground mt-1 text-xs max-w-[280px]">
+                  Mizan needs at least one market quote per position to color the
+                  heatmap. The quote scheduler runs in the background — refresh
+                  in a moment, or open a position to enter a manual price.
                 </p>
               </div>
             </div>
