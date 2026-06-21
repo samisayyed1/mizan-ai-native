@@ -1502,21 +1502,24 @@ impl ActivityRepositoryTrait for ActivityRepository {
                 .map_err(StorageError::from)?;
 
             for (asset_id, min_date_str, max_date_str) in results {
-                // Parse the date strings (they are stored as RFC3339, extract the date portion)
-                let first_date = min_date_str.and_then(|s| {
-                    // Activity dates are stored as RFC3339, parse to get the date
+                // Parse activity_date. Historically RFC3339 (`2025-12-18T12:00:00Z`),
+                // but seed scripts + AI tool calls sometimes write date-only
+                // strings (`2026-06-21`). Strict `parse_from_rfc3339` returns
+                // None for the latter, which made the split-sync acquisition
+                // guard at sync.rs:776 silently skip — every historical split
+                // for a newly-seeded asset got back-filled to its market
+                // listing date instead of the actual position-open date.
+                // Fall back to NaiveDate so both shapes resolve cleanly.
+                let parse_date = |s: String| -> Option<NaiveDate> {
                     DateTime::parse_from_rfc3339(&s)
                         .ok()
                         .map(|dt| dt.date_naive())
-                });
-
-                let last_date = max_date_str.and_then(|s| {
-                    DateTime::parse_from_rfc3339(&s)
-                        .ok()
-                        .map(|dt| dt.date_naive())
-                });
-
-                result_map.insert(asset_id, (first_date, last_date));
+                        .or_else(|| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok())
+                };
+                result_map.insert(
+                    asset_id,
+                    (min_date_str.and_then(parse_date), max_date_str.and_then(parse_date)),
+                );
             }
         }
 
