@@ -1,6 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-
-import { AddAssetDialog } from "./add-asset-dialog";
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface AddAssetContextValue {
   /**
@@ -34,31 +33,25 @@ interface AddAssetContextValue {
 const AddAssetContext = createContext<AddAssetContextValue | null>(null);
 
 /**
- * Provider for the app-wide Add Asset command surface.
+ * Provider for the app-wide Add command surface.
  *
- * Old behaviour (deprecated): clicking Add navigated to
- * /assistant?intent=add-asset&prompt=... and the user landed on the
- * full assistant page mid-thought. Jarring + lost wherever-you-were
- * context.
+ * Current behaviour: clicking Add navigates straight to
+ * `/assistant?intent=add-asset&prompt=…`. The user lands in the
+ * standalone AI page where the full chat history, the full tool
+ * surface (research_asset, create_account, add_alternative_asset,
+ * record_activity, …), and the streaming runtime all live. One
+ * coherent place to plan, mutate, and verify.
  *
- * New behaviour: clicking Add opens a dialog IN PLACE with two
- * options — "Ask Mizan AI" (inline chat + file drop + agent run)
- * and "Add manually" (links to /settings/accounts). The agent
- * progress card renders inside the same dialog, so the user
- * watches their portfolio get built without ever leaving the
- * surface they started on.
+ * Previous iteration (deprecated 2026-06-21) was an inline modal
+ * with two options ("Ask Mizan AI" / "Add manually"). It split the
+ * mental model — the modal said "describe it or drop a file" but
+ * the actual write tools live on /assistant, so the user ended up
+ * bounced anyway. Routing directly removes the extra step + keeps
+ * the assistant as the single source of truth for any state
+ * mutation.
  */
 export function AddAssetProvider({ children }: { children: ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [initialPrompt, setInitialPrompt] = useState<string | undefined>(
-    undefined,
-  );
-  const [presetAccountId, setPresetAccountId] = useState<string | undefined>(
-    undefined,
-  );
-  const [presetAccountName, setPresetAccountName] = useState<string | undefined>(
-    undefined,
-  );
+  const navigate = useNavigate();
 
   const open = useCallback(
     (options?: {
@@ -67,33 +60,29 @@ export function AddAssetProvider({ children }: { children: ReactNode }) {
       accountId?: string;
       accountName?: string;
     }) => {
-      setInitialPrompt(options?.prompt);
-      setPresetAccountId(options?.accountId);
-      setPresetAccountName(options?.accountName);
-      setIsOpen(true);
+      // Build the search params so the assistant page can pre-fill its
+      // composer + scope the agent's tool calls to the right account.
+      const params = new URLSearchParams({ intent: "add-asset" });
+      if (options?.prompt) params.set("prompt", options.prompt);
+      if (options?.accountId) params.set("accountId", options.accountId);
+      if (options?.accountName) params.set("accountName", options.accountName);
+      navigate(`/assistant?${params.toString()}`);
     },
-    [],
+    [navigate],
   );
 
-  const close = useCallback(() => setIsOpen(false), []);
+  const close = useCallback(() => {
+    // No modal anymore — close is a no-op kept on the context for
+    // backwards-compat with callers that opened-then-closed
+    // programmatically. Safe to delete once those callers migrate.
+  }, []);
 
   const value = useMemo<AddAssetContextValue>(
     () => ({ open, close }),
     [open, close],
   );
 
-  return (
-    <AddAssetContext.Provider value={value}>
-      {children}
-      <AddAssetDialog
-        open={isOpen}
-        onOpenChange={setIsOpen}
-        initialPrompt={initialPrompt}
-        presetAccountId={presetAccountId}
-        presetAccountName={presetAccountName}
-      />
-    </AddAssetContext.Provider>
-  );
+  return <AddAssetContext.Provider value={value}>{children}</AddAssetContext.Provider>;
 }
 
 export function useAddAsset(): AddAssetContextValue {
