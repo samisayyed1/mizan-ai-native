@@ -329,7 +329,11 @@ function DraftCard({
   );
 }
 
-function UpdateGoalToolUIContentImpl({ result, status, toolCallId }: Props) {
+// Exported for render-test coverage. Same pattern as
+// delete-stock-position-tool-ui.tsx — tests render the impl directly
+// without the assistant-ui runtime. The makeAssistantToolUI wrapper
+// below still owns the chat-time render path.
+export function UpdateGoalToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitted, setSubmitted] = useState(false);
 
