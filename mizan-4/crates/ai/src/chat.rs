@@ -1576,6 +1576,9 @@ async fn spawn_chat_stream<E: AiEnvironment + 'static>(
             if is_allowed("add_alternative_asset") {
                 allowed_tools.push(Box::new(tool_set.add_alternative_asset));
             }
+            if is_allowed("update_alternative_asset") {
+                allowed_tools.push(Box::new(tool_set.update_alternative_asset));
+            }
             if is_allowed("delete_alternative_asset") {
                 allowed_tools.push(Box::new(tool_set.delete_alternative_asset));
             }
