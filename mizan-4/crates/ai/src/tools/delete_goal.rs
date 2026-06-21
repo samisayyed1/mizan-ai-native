@@ -295,3 +295,132 @@ impl<E: AiEnvironment + 'static> Tool for DeleteGoalTool<E> {
         self.build_output(args).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::test_env::{MockEnvironment, MockGoalService};
+    use mizan_core::goals::Goal;
+
+    fn make_goal(id: &str, title: &str, status: &str) -> Goal {
+        Goal {
+            id: id.to_string(),
+            goal_type: "RETIREMENT".to_string(),
+            title: title.to_string(),
+            description: None,
+            target_amount: Some(1_000_000.0),
+            status_lifecycle: status.to_string(),
+            status_health: "ON_TRACK".to_string(),
+            priority: 1,
+            cover_image_key: None,
+            currency: Some("USD".to_string()),
+            start_date: None,
+            target_date: Some("2055-01-01".to_string()),
+            summary_current_value: Some(250_000.0),
+            summary_progress: Some(25.0),
+            projected_completion_date: None,
+            projected_value_at_target_date: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            summary_target_amount: Some(1_000_000.0),
+        }
+    }
+
+    fn tool_with_goals(goals: Vec<Goal>) -> DeleteGoalTool<MockEnvironment> {
+        let mut env = MockEnvironment::new();
+        env.goal_service = Arc::new(MockGoalService { goals });
+        DeleteGoalTool::new(Arc::new(env))
+    }
+
+    #[tokio::test]
+    async fn resolves_by_exact_title() {
+        let tool = tool_with_goals(vec![make_goal("g1", "Retirement", "ACTIVE")]);
+        let out = tool
+            .build_output(DeleteGoalArgs {
+                goal_ref: "Retirement".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(out.validation.is_valid);
+        assert!(out.validation.resolved);
+        assert_eq!(out.target.id, "g1");
+        // ACTIVE goal surfaces the pause-instead warning.
+        assert!(out.impact.is_active);
+        assert!(out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.contains("pausing it instead")));
+    }
+
+    #[tokio::test]
+    async fn ambiguous_match_blocks_confirm() {
+        let tool = tool_with_goals(vec![
+            make_goal("g1", "Retirement primary", "ACTIVE"),
+            make_goal("g2", "Retirement backup", "ACTIVE"),
+        ]);
+        let out = tool
+            .build_output(DeleteGoalArgs {
+                goal_ref: "Retirement".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert!(!out.validation.resolved);
+        assert_eq!(out.validation.candidates.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn missing_ref_blocks_confirm() {
+        let tool = tool_with_goals(vec![make_goal("g1", "Retirement", "ACTIVE")]);
+        let out = tool
+            .build_output(DeleteGoalArgs {
+                goal_ref: "  ".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert!(!out.validation.warnings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn unknown_ref_returns_actionable_warning() {
+        let tool = tool_with_goals(vec![make_goal("g1", "Retirement", "ACTIVE")]);
+        let out = tool
+            .build_output(DeleteGoalArgs {
+                goal_ref: "nonexistent".into(),
+                reason: None,
+            })
+            .await
+            .unwrap();
+        assert!(!out.validation.is_valid);
+        assert!(out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.to_lowercase().contains("no goal") || w.to_lowercase().contains("not found")));
+    }
+
+    #[tokio::test]
+    async fn draft_goal_does_not_emit_active_warning() {
+        let tool = tool_with_goals(vec![make_goal("g1", "Draft idea", "DRAFT")]);
+        let out = tool
+            .build_output(DeleteGoalArgs {
+                goal_ref: "Draft idea".into(),
+                reason: Some("just exploring".into()),
+            })
+            .await
+            .unwrap();
+        assert!(out.validation.is_valid);
+        assert!(!out.impact.is_active);
+        assert!(!out
+            .validation
+            .warnings
+            .iter()
+            .any(|w| w.contains("pausing it instead")));
+        assert_eq!(out.reason.as_deref(), Some("just exploring"));
+    }
+}
