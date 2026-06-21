@@ -349,7 +349,7 @@ function ConfirmCard({
 // Top-level renderer
 // ============================================================================
 
-function DeleteAccountToolUIContentImpl({ result, status, toolCallId }: Props) {
+export function DeleteAccountToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitted, setSubmitted] = useState(false);
 

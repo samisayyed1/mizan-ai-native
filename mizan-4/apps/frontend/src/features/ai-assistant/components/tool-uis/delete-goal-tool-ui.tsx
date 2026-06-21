@@ -286,7 +286,7 @@ function ConfirmCard({
   );
 }
 
-function DeleteGoalToolUIContentImpl({ result, status, toolCallId }: Props) {
+export function DeleteGoalToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitted, setSubmitted] = useState(false);
 

@@ -417,7 +417,7 @@ function DraftCard({
   );
 }
 
-function UpdateAccountToolUIContentImpl({ result, status, toolCallId }: Props) {
+export function UpdateAccountToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitted, setSubmitted] = useState(false);
 
