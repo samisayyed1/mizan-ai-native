@@ -5339,4 +5339,81 @@ mod tests {
             "Cost basis must carry through A→B→C chain: 10 * $50 = $500"
         );
     }
+
+    /// Regression test for the Net-Worth=$0 dashboard bug Sami flagged
+    /// on 2026-06-21. Set-up: one SGD-denominated account with a real
+    /// cash position, but the FX service knows no SGD→USD rate for the
+    /// target date. Before the guard added in
+    /// `generate_total_portfolio_snapshot_for_date`, the TOTAL row was
+    /// silently written as $0 because every FX conversion failed and
+    /// the aggregator dropped the position. After the fix, the function
+    /// returns Err and the caller skips the row — the dashboard
+    /// continues to show the previous good TOTAL instead of clobbering
+    /// it with a misleading $0.
+    #[tokio::test]
+    async fn total_aggregation_refuses_to_emit_zero_when_input_has_value_but_fx_fails() {
+        let base_currency = "USD";
+        let date_str = "2026-06-21";
+        let target_date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").unwrap();
+
+        let mut account_repo = MockAccountRepository::new();
+        let account = create_test_account_with_archive_state(
+            "sgd_acc",
+            "SGD",
+            "SG Portfolio",
+            true,
+            false,
+        );
+        account_repo.add_account(account);
+
+        // SGD account with a real $100K cash balance.
+        let mut snap = create_blank_snapshot("sgd_acc", "SGD", date_str);
+        snap.cash_balances.insert("SGD".to_string(), dec!(100_000));
+        snap.net_contribution = dec!(100_000);
+        snap.net_contribution_base = dec!(0);
+
+        let non_archived_ids: HashSet<String> =
+            vec!["sgd_acc".to_string()].into_iter().collect();
+        let mock_snapshot_repo = MockArchiveAwareSnapshotRepository::new(non_archived_ids);
+        mock_snapshot_repo.add_snapshots(vec![snap]);
+
+        // FX service with NO SGD→USD rate. Every conversion fails.
+        let fx = Arc::new(MockFxService::new());
+        let activity_repo = Arc::new(MockActivityRepository::new());
+        let asset_repo = Arc::new(MockAssetRepository::new());
+
+        let svc = SnapshotService::new(
+            Arc::new(RwLock::new(base_currency.to_string())),
+            Arc::new(account_repo),
+            activity_repo,
+            Arc::new(mock_snapshot_repo.clone()),
+            asset_repo,
+            fx,
+        );
+
+        let result = svc
+            .recalculate_total_portfolio_snapshots(SnapshotRecalcMode::IncrementalFromLast)
+            .await;
+        // Top-level call still succeeds — the per-date error is logged
+        // and the loop carries on. What matters is the SIDE effect.
+        assert!(result.is_ok());
+
+        // The crucial assertion: NO TOTAL row was written, because
+        // emitting one would have meant $0 cash and $0 cost basis
+        // despite the input snapshot carrying SGD 100K.
+        let total_rows: Vec<_> = mock_snapshot_repo
+            .get_saved_snapshots()
+            .into_iter()
+            .filter(|s| {
+                s.account_id == PORTFOLIO_TOTAL_ACCOUNT_ID && s.snapshot_date == target_date
+            })
+            .collect();
+        assert_eq!(
+            total_rows.len(),
+            0,
+            "Expected the guard to skip writing a $0 TOTAL row when FX fails on real input. \
+             Got {} row(s) instead.",
+            total_rows.len()
+        );
+    }
 }
