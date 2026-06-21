@@ -301,7 +301,12 @@ function ConfirmCard({
   );
 }
 
-function DeleteStockPositionToolUIContentImpl({ result, status, toolCallId }: Props) {
+// Exported for render-test coverage. Tests render this directly so we
+// don't have to thread the full assistant-ui runtime + state primitives
+// just to assert the card states (loading / unresolved / resolved /
+// confirmed / submitted). The makeAssistantToolUI wrapper below still
+// owns the actual chat-time render path; the impl is the same.
+export function DeleteStockPositionToolUIContentImpl({ result, status, toolCallId }: Props) {
   const parsed = useMemo(() => normaliseResult(result), [result]);
   const [submitted, setSubmitted] = useState(false);
 
