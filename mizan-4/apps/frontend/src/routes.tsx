@@ -16,6 +16,7 @@ import ActivityImportPage from "@/pages/activity/import/activity-import-page";
 import AssetsPage from "@/pages/asset/assets-page";
 import PortfolioPage from "@/pages/dashboard/portfolio-page";
 import AdvisorDashboardPage from "@/pages/advisor/advisor-dashboard-page";
+import LiabilityPayoffReportPage from "@/pages/reports/liability-payoff-report-page";
 import MonthlyReportsPage from "@/pages/reports/monthly-reports-page";
 import ReportsIndexPage from "@/pages/reports/reports-index-page";
 import ZakatPage from "@/pages/zakat/zakat-page";
@@ -105,6 +106,7 @@ export function AppRoutes() {
               <Route path="zakat" element={<ZakatPage />} />
               <Route path="reports" element={<ReportsIndexPage />} />
               <Route path="reports/monthly" element={<MonthlyReportsPage />} />
+              <Route path="reports/liability-payoff" element={<LiabilityPayoffReportPage />} />
               <Route path="advisor" element={<AdvisorDashboardPage />} />
               <Route path="activities" element={<ActivityPage />} />
               <Route path="activities/manage" element={<ActivityManagerPage />} />
