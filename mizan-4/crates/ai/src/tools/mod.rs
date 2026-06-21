@@ -43,6 +43,7 @@ pub mod record_activities;
 pub mod record_activity;
 pub mod scenario_alert_safety;
 pub mod update_account;
+pub mod update_alternative_asset;
 pub mod update_goal;
 pub mod update_liability;
 pub mod valuation;
@@ -73,6 +74,7 @@ pub use research_asset::ResearchAssetTool;
 pub use record_activities::RecordActivitiesTool;
 pub use record_activity::RecordActivityTool;
 pub use update_account::UpdateAccountTool;
+pub use update_alternative_asset::UpdateAlternativeAssetTool;
 pub use update_goal::UpdateGoalTool;
 pub use update_liability::UpdateLiabilityTool;
 pub use valuation::GetValuationHistoryTool;
@@ -107,6 +109,7 @@ pub struct ToolSet<E: AiEnvironment> {
     pub update_liability: UpdateLiabilityTool<E>,
     pub delete_liability: DeleteLiabilityTool<E>,
     pub add_alternative_asset: AddAlternativeAssetTool<E>,
+    pub update_alternative_asset: UpdateAlternativeAssetTool<E>,
     pub delete_alternative_asset: DeleteAlternativeAssetTool<E>,
 }
 
@@ -138,6 +141,7 @@ impl<E: AiEnvironment> ToolSet<E> {
             update_liability: UpdateLiabilityTool::new(env.clone()),
             delete_liability: DeleteLiabilityTool::new(env.clone()),
             add_alternative_asset: AddAlternativeAssetTool::new(env.clone()),
+            update_alternative_asset: UpdateAlternativeAssetTool::new(env.clone()),
             delete_alternative_asset: DeleteAlternativeAssetTool::new(env),
         }
     }

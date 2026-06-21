@@ -24,6 +24,7 @@ import { IncomeToolUI } from "./income-tool-ui";
 import { PerformanceToolUI } from "./performance-tool-ui";
 import { RecordActivityToolUI } from "./record-activity-tool-ui";
 import { RecordActivitiesToolUI } from "./record-activities-tool-ui";
+import { UpdateAlternativeAssetToolUI } from "./update-alternative-asset-tool-ui";
 import { UpdateGoalToolUI } from "./update-goal-tool-ui";
 import { UpdateLiabilityToolUI } from "./update-liability-tool-ui";
 import { ValuationToolUI } from "./valuation-tool-ui";
@@ -53,6 +54,7 @@ export const toolUIs = {
   record_activities: RecordActivitiesToolUI,
   search_activities: ActivitiesToolUI,
   update_account: UpdateAccountToolUI,
+  update_alternative_asset: UpdateAlternativeAssetToolUI,
   update_goal: UpdateGoalToolUI,
   update_liability: UpdateLiabilityToolUI,
 } as const;
@@ -80,6 +82,7 @@ export {
   RecordActivityToolUI,
   RecordActivitiesToolUI,
   UpdateAccountToolUI,
+  UpdateAlternativeAssetToolUI,
   UpdateGoalToolUI,
   UpdateLiabilityToolUI,
   ValuationToolUI,
