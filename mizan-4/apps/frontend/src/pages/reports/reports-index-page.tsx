@@ -8,21 +8,32 @@ import {
   CardTitle,
 } from "@mizan/ui/components/ui/card";
 import { Icons } from "@mizan/ui/components/ui/icons";
+import { useNavigate } from "react-router-dom";
 
-import { useEntitlements, useUpgradeGate } from "@/features/mizan-connect";
+import { useEntitlements } from "@/features/mizan-connect";
 
 /** Assistant-native wealth reports grounded in computed local state. */
 export default function ReportsIndexPage() {
   const { entitlements } = useEntitlements();
-  const { requestUpgrade } = useUpgradeGate();
+  const navigate = useNavigate();
   const locked = !entitlements.advancedReports;
 
+  // Client-side navigation. Two earlier bugs:
+  //   1. `window.location.assign(path)` triggered a full page reload
+  //      that hit the dev server with a deep path before Vite's
+  //      history fallback resolved it — user saw a 404.
+  //   2. The index page gated navigation behind `entitlements.advancedReports`
+  //      and called `requestUpgrade()` when locked, so users on the
+  //      default (false) entitlement state saw the gate fire and no
+  //      page ever loaded.
+  //
+  // Each destination page (`/income`, `/health`, `/panels/real-estate`,
+  // `/holdings`) already owns its own entitlement banner / upgrade CTA
+  // when relevant, so we always navigate and let the target handle
+  // its own access state. The lock badge on the tile is purely
+  // informational — it doesn't block the click.
   const onAction = (path: string) => {
-    if (locked) {
-      requestUpgrade("advanced_reports");
-      return;
-    }
-    window.location.assign(path);
+    navigate(path);
   };
 
   return (
