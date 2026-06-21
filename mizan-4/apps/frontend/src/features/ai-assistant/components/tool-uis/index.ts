@@ -16,6 +16,7 @@ import { DeleteAccountToolUI } from "./delete-account-tool-ui";
 import { DeleteAlternativeAssetToolUI } from "./delete-alternative-asset-tool-ui";
 import { DeleteGoalToolUI } from "./delete-goal-tool-ui";
 import { DeleteLiabilityToolUI } from "./delete-liability-tool-ui";
+import { DeleteStockPositionToolUI } from "./delete-stock-position-tool-ui";
 import { GoalsToolUI } from "./goals-tool-ui";
 import { UpdateAccountToolUI } from "./update-account-tool-ui";
 import { HoldingsToolUI } from "./holdings-tool-ui";
@@ -42,6 +43,7 @@ export const toolUIs = {
   delete_alternative_asset: DeleteAlternativeAssetToolUI,
   delete_goal: DeleteGoalToolUI,
   delete_liability: DeleteLiabilityToolUI,
+  delete_stock_position: DeleteStockPositionToolUI,
   get_accounts: AccountsToolUI,
   get_asset_allocation: AllocationToolUI,
   get_goals: GoalsToolUI,
@@ -74,6 +76,7 @@ export {
   DeleteAlternativeAssetToolUI,
   DeleteGoalToolUI,
   DeleteLiabilityToolUI,
+  DeleteStockPositionToolUI,
   GoalsToolUI,
   HoldingsToolUI,
   ImportCsvToolUI,
