@@ -167,4 +167,61 @@ describe("<HoldingsHeatmap />", () => {
     fireEvent.click(total);
     expect(screen.getByText("Heatmap")).toBeInTheDocument();
   });
+
+  it("renders cold-start positions sized by cost basis when market value is missing", () => {
+    // Regression for: freshly-seeded equities with no live quote yet
+    // showed 'No holdings to chart' even though the Equities tile + the
+    // Holdings page already displayed the positions. The fix sizes
+    // tiles by cost basis when market value is unset; the heatmap
+    // surfaces the toggle (and thus the tile grid) instead of the
+    // empty state.
+    const holdings: Holding[] = [
+      makeHolding({
+        id: "h-aapl-cold",
+        instrument: {
+          id: "AAPL",
+          symbol: "AAPL",
+          currency: "USD",
+          quoteMode: "MARKET",
+          classifications: { assetType: { key: "EQUITY_SECURITY" } },
+        } as Holding["instrument"],
+        marketValue: { local: 0, base: 0 },
+        costBasis: { local: 5_240, base: 5_240 },
+      }),
+    ];
+    render(
+      <MemoryRouter>
+        <HoldingsHeatmap holdings={holdings} isLoading={false} baseCurrency="USD" />
+      </MemoryRouter>,
+    );
+    // Toggle is visible only when at least one tradeable tile exists.
+    expect(screen.getByRole("button", { name: /Total/i })).toBeInTheDocument();
+    expect(screen.queryByText(/No holdings to chart/)).not.toBeInTheDocument();
+  });
+
+  it("hides a position with neither market value nor cost basis", () => {
+    // Negative case for the cold-start fallback: a holding with zero
+    // market value AND zero cost basis is genuine noise and should
+    // stay out of the heatmap.
+    const holdings: Holding[] = [
+      makeHolding({
+        id: "h-empty",
+        instrument: {
+          id: "GHOST",
+          symbol: "GHOST",
+          currency: "USD",
+          quoteMode: "MARKET",
+          classifications: { assetType: { key: "EQUITY_SECURITY" } },
+        } as Holding["instrument"],
+        marketValue: { local: 0, base: 0 },
+        costBasis: { local: 0, base: 0 },
+      }),
+    ];
+    render(
+      <MemoryRouter>
+        <HoldingsHeatmap holdings={holdings} isLoading={false} baseCurrency="USD" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/No holdings to chart/)).toBeInTheDocument();
+  });
 });

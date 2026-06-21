@@ -313,7 +313,18 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
       // equities is apples-to-oranges. Reuses the same `classifyHolding`
       // predicate the dashboard tile grid uses so the two stay in sync.
       .filter((h) => classifyHolding(h) === "equities")
-      .filter((h) => (h.marketValue?.base ?? 0) > 0)
+      // Tile size: market value if known, else cost basis. A
+      // freshly-seeded position whose quote hasn't fetched yet has
+      // marketValue.base = 0; without the cost-basis fallback the
+      // whole heatmap shows "No holdings to chart" at cold start
+      // even though Equities tile + Holdings page already display
+      // the positions correctly. Falling back keeps the visual
+      // consistent across all dashboard surfaces.
+      .filter((h) => {
+        const mv = h.marketValue?.base ?? 0;
+        const cb = h.costBasis?.base ?? 0;
+        return mv > 0 || cb > 0;
+      })
       // Drop aggregate rollup pseudo-assets ("US Stocks", "SG Stocks")
       // — they have no per-position cost basis so they always render as
       // a flat 0.0% gain tile, and because they're aggregates they're
@@ -331,10 +342,16 @@ export function HoldingsHeatmap({ holdings, isLoading, baseCurrency }: HoldingsH
           mode === "total"
             ? (h.unrealizedGain?.base ?? 0)
             : (h.dayChange?.base ?? 0);
+        // Size by market value, falling back to cost basis when no
+        // live quote has landed yet (cold-start). Without this the
+        // tile would be 0 area and effectively invisible.
+        const marketSize = h.marketValue?.base ?? 0;
+        const costSize = h.costBasis?.base ?? 0;
+        const size = marketSize > 0 ? marketSize : costSize;
         return {
           name,
           symbol: symbol.split(".")[0],
-          size: h.marketValue?.base ?? 0,
+          size,
           changePct,
           changeAmount,
           holdingId: h.id,
