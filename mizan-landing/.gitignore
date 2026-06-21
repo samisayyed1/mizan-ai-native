@@ -48,3 +48,6 @@ next-env.d.ts
 
 # TS build artifacts
 tsconfig.tsbuildinfo
+
+# Netlify CLI deploy artifacts
+/.netlify/
