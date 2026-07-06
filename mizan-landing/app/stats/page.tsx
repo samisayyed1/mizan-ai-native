@@ -36,11 +36,19 @@ export default async function StatsPage({
   // Seed the dashboard with server-fetched data so it's instant; the
   // client island then polls for live updates.
   let initial = null;
+  let fetchError: string | null = null;
   try {
     initial = await getWaitlistStats();
-  } catch {
+  } catch (e) {
+    // Log for Netlify function output + surface a short message on the
+    // page so the auth'd user knows the auth worked but the DB read
+    // failed (usually missing Supabase env or missing waitlist table).
+    console.error("[stats/page] getWaitlistStats failed", e);
+    fetchError = e instanceof Error ? e.message : String(e);
     initial = null;
   }
 
-  return <StatsDashboard token={key} initial={initial} />;
+  return (
+    <StatsDashboard token={key} initial={initial} fetchError={fetchError} />
+  );
 }

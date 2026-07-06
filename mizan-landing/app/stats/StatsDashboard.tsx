@@ -49,9 +49,11 @@ function relative(iso: string | null): string {
 export function StatsDashboard({
   token,
   initial,
+  fetchError,
 }: {
   token: string;
   initial: WaitlistStats | null;
+  fetchError?: string | null;
 }) {
   const [stats, setStats] = useState<WaitlistStats | null>(initial);
   const [updatedAt, setUpdatedAt] = useState<number>(Date.now());
@@ -107,6 +109,26 @@ export function StatsDashboard({
             </span>
           </span>
         </div>
+
+        {/* Fetch error banner — shown when the server-side initial
+            load threw. The dashboard still renders (client polling may
+            recover), but we surface the reason so the auth'd user
+            knows what to fix. */}
+        {fetchError && !stats && (
+          <div className="mt-6 rounded-2xl border border-destructive/40 bg-destructive/5 p-4 text-sm">
+            <p className="font-medium text-destructive">
+              Auth passed, but the stats query failed.
+            </p>
+            <p className="mt-1 text-foreground/70 text-xs font-mono break-all">
+              {fetchError}
+            </p>
+            <p className="mt-2 text-foreground/60 text-xs">
+              Usually this means the Supabase env vars are missing on
+              Netlify, the waitlist table doesn't exist in prod, or
+              RLS is blocking the service-role read.
+            </p>
+          </div>
+        )}
 
         {/* Hero count */}
         <section className="mt-10 rounded-3xl border border-gold-primary/20 bg-depth-card p-8 text-center md:p-12">
