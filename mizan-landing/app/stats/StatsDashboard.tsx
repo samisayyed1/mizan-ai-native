@@ -124,7 +124,7 @@ export function StatsDashboard({
             </p>
             <p className="mt-2 text-foreground/60 text-xs">
               Usually this means the Supabase env vars are missing on
-              Netlify, the waitlist table doesn't exist in prod, or
+              Netlify, the waitlist table doesn&apos;t exist in prod, or
               RLS is blocking the service-role read.
             </p>
           </div>

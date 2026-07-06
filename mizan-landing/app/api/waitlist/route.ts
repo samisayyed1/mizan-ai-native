@@ -1,21 +1,26 @@
 /**
  * POST /api/waitlist
  *
- * Idempotent waitlist signup.
+ * Idempotent waitlist signup, backed by Netlify Blobs.
  *
  * Flow:
  *   1. Rate-limit by IP (5 / 10min, Upstash sliding window; in-memory
  *      fallback when Upstash env is missing — dev convenience only).
  *   2. Parse + validate via zod.
- *   3. Insert into `public.waitlist`. On 23505 (unique violation),
- *      look up the existing row and return its position + ref_code so
- *      a refresh / re-submit is a no-op for the user.
+ *   3. Upsert into the Netlify Blobs `waitlist` store. Duplicate email
+ *      returns the existing position + ref_code (409) so a refresh /
+ *      re-submit is a no-op for the user.
  *   4. Fire confirmation email via Resend (stubbed if no API key).
  *   5. Fire Plausible custom event server-side (best-effort, never
  *      throws).
  *
  * Errors are surfaced as `{ error: string }` with conventional status
  * codes so the client can show a usable message without parsing.
+ *
+ * Storage note: this used to be Supabase. Moved to Netlify Blobs on
+ * 2026-06-21 after the free-tier Supabase project auto-paused and
+ * every signup started returning 500. Blobs is native to Netlify, has
+ * no idle-pause behaviour, and needs no external configuration.
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -24,7 +29,7 @@ import { ConfirmEmail } from "@/emails/Confirm";
 import { rateLimit } from "@/lib/rate-limit";
 import { getResend, RESEND_FROM } from "@/lib/resend";
 import { type WaitlistResponse, waitlistSchema } from "@/lib/schemas";
-import { getSupabase } from "@/lib/supabase";
+import { upsertWaitlistEntry } from "@/lib/waitlist-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,82 +94,35 @@ export async function POST(req: NextRequest): Promise<NextResponse<WaitlistRespo
   }
   const { email, country, painPoint, ref } = parsed.data;
 
-  // 3) Insert.
-  let supabase;
+  // 3) Upsert into Blobs.
+  let result;
   try {
-    supabase = getSupabase();
-  } catch (e) {
-    // Env var misconfiguration — surface it so we don't waste an hour
-    // hunting a mystery 500 next time envs drop out of the deploy.
-    console.error("[waitlist] supabase client init failed", e);
-    return NextResponse.json(
-      {
-        error: "Signup service unavailable — Supabase env vars missing.",
-        debug_code: "supabase_env_missing",
-      },
-      { status: 500 },
-    );
-  }
-  const insertPayload: Record<string, unknown> = { email, country };
-  if (painPoint) insertPayload.pain_point = painPoint;
-  if (ref) insertPayload.referred_by = ref;
-
-  const inserted = await supabase
-    .from("waitlist")
-    .insert(insertPayload)
-    .select("position, ref_code")
-    .single();
-
-  let position: number;
-  let refCode: string;
-
-  if (inserted.error) {
-    // Unique violation → idempotent re-submit.
-    if (inserted.error.code === "23505") {
-      const existing = await supabase
-        .from("waitlist")
-        .select("position, ref_code")
-        .eq("email", email)
-        .single();
-      if (existing.error || !existing.data) {
-        return NextResponse.json(
-          { error: "Could not retrieve existing signup." },
-          { status: 500 },
-        );
-      }
-      position = Number(existing.data.position);
-      refCode = existing.data.ref_code;
-      // 409 + the existing record so the form can show the success state.
-      return NextResponse.json(
-        { position, refCode, alreadyRegistered: true },
-        { status: 409 },
-      );
-    }
-    // Log the underlying Postgres error to Netlify function logs so we
-    // can diagnose prod-only failures. Also surface a compact
-    // `debug_code` in the response — Supabase / Postgres error codes are
-    // not sensitive (they identify constraint violations, missing
-    // tables, RLS blocks, etc.), and this saves us a round-trip through
-    // "user reports failure → dev asks for logs → user pastes them" for
-    // every prod incident.
-    console.error("[waitlist] insert failed", {
-      code: inserted.error.code,
-      message: inserted.error.message,
-      details: inserted.error.details,
-      hint: inserted.error.hint,
+    result = await upsertWaitlistEntry({
+      email,
+      country,
+      painPoint: painPoint ?? undefined,
+      referredBy: ref ?? undefined,
     });
+  } catch (e) {
+    console.error("[waitlist] blob upsert failed", e);
     return NextResponse.json(
       {
         error: "Could not save signup.",
-        debug_code: inserted.error.code ?? null,
-        debug_message: inserted.error.message ?? null,
+        debug_message: e instanceof Error ? e.message : String(e),
       },
       { status: 500 },
     );
   }
 
-  position = Number(inserted.data.position);
-  refCode = inserted.data.ref_code;
+  const { inserted, entry } = result;
+
+  // Duplicate → 409 + existing record so the form can show the success state.
+  if (!inserted) {
+    return NextResponse.json(
+      { position: entry.position, refCode: entry.refCode, alreadyRegistered: true },
+      { status: 409 },
+    );
+  }
 
   // 4) Confirmation email — fire and forget the analytics, but await
   //    the send so we can log failures into the response shape if
@@ -180,12 +138,15 @@ export async function POST(req: NextRequest): Promise<NextResponse<WaitlistRespo
       from: RESEND_FROM,
       to: email,
       subject: "You're on the Mizan waitlist",
-      react: ConfirmEmail({ refCode, siteUrl: SITE_URL }),
+      react: ConfirmEmail({ refCode: entry.refCode, siteUrl: SITE_URL }),
     }),
   ]);
 
   // 5) Server-side analytics, fire-and-forget.
   void fireServerPlausible(req);
 
-  return NextResponse.json({ position, refCode }, { status: 201 });
+  return NextResponse.json(
+    { position: entry.position, refCode: entry.refCode },
+    { status: 201 },
+  );
 }
