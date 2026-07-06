@@ -90,7 +90,21 @@ export async function POST(req: NextRequest): Promise<NextResponse<WaitlistRespo
   const { email, country, painPoint, ref } = parsed.data;
 
   // 3) Insert.
-  const supabase = getSupabase();
+  let supabase;
+  try {
+    supabase = getSupabase();
+  } catch (e) {
+    // Env var misconfiguration — surface it so we don't waste an hour
+    // hunting a mystery 500 next time envs drop out of the deploy.
+    console.error("[waitlist] supabase client init failed", e);
+    return NextResponse.json(
+      {
+        error: "Signup service unavailable — Supabase env vars missing.",
+        debug_code: "supabase_env_missing",
+      },
+      { status: 500 },
+    );
+  }
   const insertPayload: Record<string, unknown> = { email, country };
   if (painPoint) insertPayload.pain_point = painPoint;
   if (ref) insertPayload.referred_by = ref;
@@ -126,8 +140,25 @@ export async function POST(req: NextRequest): Promise<NextResponse<WaitlistRespo
         { status: 409 },
       );
     }
+    // Log the underlying Postgres error to Netlify function logs so we
+    // can diagnose prod-only failures. Also surface a compact
+    // `debug_code` in the response — Supabase / Postgres error codes are
+    // not sensitive (they identify constraint violations, missing
+    // tables, RLS blocks, etc.), and this saves us a round-trip through
+    // "user reports failure → dev asks for logs → user pastes them" for
+    // every prod incident.
+    console.error("[waitlist] insert failed", {
+      code: inserted.error.code,
+      message: inserted.error.message,
+      details: inserted.error.details,
+      hint: inserted.error.hint,
+    });
     return NextResponse.json(
-      { error: "Could not save signup." },
+      {
+        error: "Could not save signup.",
+        debug_code: inserted.error.code ?? null,
+        debug_message: inserted.error.message ?? null,
+      },
       { status: 500 },
     );
   }
