@@ -36,7 +36,30 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(stats, {
       headers: { "Cache-Control": "no-store" },
     });
-  } catch {
-    return NextResponse.json({ error: "stats_failed" }, { status: 500 });
+  } catch (e) {
+    // Surface the underlying failure so we can fix it without a
+    // round-trip through the deploy logs. Same pattern as the waitlist
+    // route — token check has already passed, so the caller is
+    // authorized and the debug info is safe to return.
+    console.error("[stats] getWaitlistStats failed", e);
+    const message = e instanceof Error ? e.message : String(e);
+    // Supabase PostgrestError carries a `code` field. `getSupabase`
+    // throws a plain Error with the "Supabase env vars missing" text
+    // when SUPABASE_URL/SERVICE_ROLE aren't set.
+    const supabaseCode =
+      typeof e === "object" && e !== null && "code" in e
+        ? String((e as { code: unknown }).code)
+        : null;
+    return NextResponse.json(
+      {
+        error: "stats_failed",
+        debug_code: supabaseCode,
+        debug_message: message,
+      },
+      {
+        status: 500,
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
   }
 }
