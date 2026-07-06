@@ -52,6 +52,18 @@ export function WaitlistForm() {
         body: JSON.stringify(payload),
       });
 
+      // 409 Conflict is an INTENDED idempotent-success response — the
+      // email was already on the waitlist and the API returned the
+      // existing position + refCode. Show the same confirmation card
+      // as a fresh signup so the user sees "you're on the list" instead
+      // of a confusing "Submit failed (409)" error.
+      if (res.status === 409) {
+        const data = (await res.json()) as WaitlistResponse;
+        setResult(data);
+        setStatus("success");
+        return;
+      }
+
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? `Submit failed (${res.status})`);
