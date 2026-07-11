@@ -13,13 +13,28 @@ const adaptCallback = <T>(handler: EventCallback<T>): TauriEventCallback<T> => {
 };
 
 // Helper to adapt Tauri's unlisten function to our unified type.
-// The try-catch guards against a Tauri race condition where unlisten is called
-// before the listen_js_script has executed in the webview (e.g. React strict mode
-// cleanup), causing "listeners[eventId].handlerId" to be undefined.
+//
+// Tauri's `UnlistenFn` is typed as `() => void` but the returned function
+// actually kicks off an async `invoke()` under the hood. That async work
+// can reject *after* the sync call site returns, which meant our sync
+// try/catch was letting the rejection escape as an unhandled promise
+// error ("Cannot read properties of undefined (reading 'unregisterListener')"
+// from Tauri's own event chunk). React strict mode unmount + navigation
+// during boot are the two paths that hit this in the wild.
+//
+// Fix: capture whatever `unlisten()` returns, await it if it looks like a
+// promise, and swallow any rejection. Safe because the failure modes are
+// all "listener wasn't fully registered / was already removed".
 const adaptUnlisten = (unlisten: TauriUnlistenFn): UnlistenFn => {
   return async () => {
     try {
-      unlisten();
+      const maybePromise = unlisten() as unknown;
+      if (
+        maybePromise &&
+        typeof (maybePromise as { then?: unknown }).then === "function"
+      ) {
+        await (maybePromise as Promise<unknown>).catch(() => {});
+      }
     } catch {
       // Listener was never fully registered or already removed — safe to ignore.
     }
